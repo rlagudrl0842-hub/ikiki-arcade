@@ -221,6 +221,8 @@ function results() {
     if (tr.rank === 1) { sfx('win', sfxOn); setTimeout(() => { const c = h('canvas', { class: 'fx' }); document.body.append(c); confetti(c, [t.color, '#ffd43b', '#fff'], 120); setTimeout(() => c.remove(), 5000); }, 50); }
   }
   if (my) el.append(h('div', { class: 'mine' }, '내 기록: ', h('b', {}, my.show ?? my.raw)));
+  const ace = lr.aces?.[t.id];
+  if (ace) el.append(h('div', { class: 'mvp' }, `🏅 우리 팀 에이스 ${ace.name}${ace.show ? ` (${ace.show})` : ''}${ace.id === active().pid ? ' · 바로 나!' : ''}`));
   if (lr.mvp) { const mt = teamOf(S, lr.mvp.team); el.append(h('div', { class: 'mvp' }, `⭐ MVP ${mt.icon} ${lr.mvp.name}${lr.mvp.show ? ` (${lr.mvp.show})` : ''}`)); }
   el.append(mini());
   return el;
@@ -239,7 +241,8 @@ function ended() {
   const me = ME[active().pid]?.me;
   const r = S.standings.rows.find((x) => x.id === me?.team);
   const t = teamOf(S, me?.team);
-  return h('div', { class: 'center' }, h('div', { class: 'cic' }, '🎉'), h('div', { class: 'ct' }, '참가해 줘서 고마워요!'), r ? h('div', { class: 'muted' }, `${t.icon} ${t.name} 최종 ${r.rank}위 · ${r.total}점`) : null, mini());
+  const tm = S.teamMvp?.[me?.team];
+  return h('div', { class: 'center' }, h('div', { class: 'cic' }, '🎉'), h('div', { class: 'ct' }, '참가해 줘서 고마워요!'), r ? h('div', { class: 'muted' }, `${t.icon} ${t.name} 최종 ${r.rank}위 · ${r.total}점`) : null, tm ? h('div', { class: 'mvp' }, `🏅 우리 팀 MVP ${tm.name}`) : null, mini());
 }
 
 // ---------------- 게임 ----------------

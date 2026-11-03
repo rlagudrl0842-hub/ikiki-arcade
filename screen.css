@@ -222,3 +222,7 @@ body.offline #stage::after { content: '📡 서버 연결 중…'; position: abs
 canvas.fx { z-index: 60; }
 
 .wl { position: absolute; font-weight: 900; color: #111; text-shadow: 0 1px 0 #fff8; white-space: nowrap; font-size: 20px; }
+
+.rnm { display: flex; flex-direction: column; min-width: 0; } .rnm b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rnm small { font-size: 20px; color: var(--y); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fnm { display: flex; flex-direction: column; min-width: 0; } .fmvp { font-size: 22px; color: var(--y); font-weight: 700; }

@@ -128,6 +128,7 @@ export class Event {
       standings: this.standings(), prevRanks: this.prevRanks,
       cheer: Object.fromEntries(this.cheer), cheerEvent: this.cheerEvent,
       lastResult: this.lastResult, ceremonyStep: this.state.ceremonyStep,
+      teamMvp: ['ceremony', 'ended'].includes(this.state.phase) ? this.teamMvp() : null,
     };
   }
 
@@ -316,7 +317,7 @@ export class Event {
     let res;
     try { res = g.finish(now); } catch (e) { console.error('finish', e); res = { players: {} }; }
     const item = this.currentItem() || { weight: 1 };
-    const out = res.noPoints ? { teams: [], mvp: null } : this.scoreRun(g, res, item.weight ?? 1);
+    const out = res.noPoints ? { teams: [], mvp: null, aces: {} } : this.scoreRun(g, res, item.weight ?? 1);
     this.prevRanks = Object.fromEntries(this.standings().rows.map((r) => [r.id, r.rank]));
     this.db.tx(() => {
       for (const [pid, s] of Object.entries(res.players || {})) {
@@ -326,7 +327,7 @@ export class Event {
       this.db.run("UPDATE runs SET status='done', ended_at=? WHERE id=?", now, g.runId);
       for (const b of res.bonus || []) this.db.run('INSERT INTO adjustments(event_id,team_id,delta,kind,reason,at) VALUES(?,?,?,?,?,?)', this.id, b.team, b.delta, 'luck', b.reason, now);
     });
-    this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, extra: res.extra || null, bonus: res.bonus || null, reason };
+    this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, aces: out.aces, extra: res.extra || null, bonus: res.bonus || null, reason };
     this.game = null;
     this.state.runId = null;
     this.state.idx = Math.min(this.state.idx + 1, this.settings.playlist.length);
@@ -367,12 +368,15 @@ export class Event {
       const hasTeamMetric = res.teams && res.teams[t.id] != null;
       t.points = (t.n === 0 && !hasTeamMetric) ? 0 : Math.round(weight * 10 * (nT - t.rank + 1) * 10) / 10;
     }
-    let mvp = null;
+    let mvp = null; const aces = {};
     for (const [pid, s] of Object.entries(res.players || {})) {
       const p = this.players.get(pid); if (!p || p.excluded) continue;
       if (!mvp || s.norm > mvp.norm || (s.norm === mvp.norm && s.raw > mvp.raw)) mvp = { id: pid, name: p.name, team: p.team, norm: s.norm, raw: s.raw, show: s.show ?? null };
+      // 팀별 에이스: 이 게임에서 팀 안 최고 기록
+      const a = aces[p.team];
+      if (!a || s.norm > a.norm || (s.norm === a.norm && s.raw > a.raw)) aces[p.team] = { id: pid, name: p.name, norm: s.norm, raw: s.raw, show: s.show ?? null };
     }
-    return { teams: sorted, mvp };
+    return { teams: sorted, mvp, aces };
   }
 
   afterResults(manual) {
@@ -509,6 +513,18 @@ export class Event {
   }
 
   loadLastResult() { return null; }
+
+  // 행사 전체 팀 MVP: 끝난 게임들의 환산 점수(0~100) 합이 팀 안에서 가장 높은 참가자
+  teamMvp() {
+    const rows = this.db.all("SELECT ps.player_id pid, SUM(ps.norm) total, COUNT(*) games FROM player_scores ps JOIN runs r ON r.id=ps.run_id WHERE r.event_id=? AND r.status='done' GROUP BY ps.player_id", this.id);
+    const out = {};
+    for (const x of rows) {
+      const p = this.players.get(x.pid); if (!p || p.excluded || !p.team) continue;
+      const cur = out[p.team];
+      if (!cur || x.total > cur.total) out[p.team] = { name: p.name, total: Math.round(x.total), games: x.games };
+    }
+    return out;
+  }
 
   broadcastSoon() {
     if (this._bs || this.hub.closed) return;

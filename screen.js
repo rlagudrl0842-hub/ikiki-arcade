@@ -167,7 +167,7 @@ function results(prev) {
     const max = Math.max(1, ...lr.teams.map((x) => x.metric));
     lr.teams.slice().reverse().forEach((r, i) => {
       const t = team(r.id);
-      const row = h('div', { class: `ritem r${r.rank}`, style: { '--tc': t.color, animationDelay: `${i * 0.25}s` } }, h('div', { class: 'rrk' }, `${r.rank}위`), h('span', { class: 'ric' }, t.icon), h('b', {}, t.name),
+      const row = h('div', { class: `ritem r${r.rank}`, style: { '--tc': t.color, animationDelay: `${i * 0.25}s` } }, h('div', { class: 'rrk' }, `${r.rank}위`), h('span', { class: 'ric' }, t.icon), h('div', { class: 'rnm' }, h('b', {}, t.name), lr.aces?.[r.id] ? h('small', {}, `🏅 ${lr.aces[r.id].name}${lr.aces[r.id].show ? ` · ${lr.aces[r.id].show}` : ''}`) : null),
         h('div', { class: 'rbar' }, h('div', { style: { width: `${(r.metric / max) * 100}%` } })), h('span', { class: 'rm' }, r.label || `${r.metric}`), h('em', {}, `+${r.points}`));
       list.prepend(row);
     });
@@ -211,7 +211,7 @@ function ceremony() {
 }
 function ended() {
   const tbl = h('div', { class: 'final' });
-  for (const r of S.standings.rows) { const t = team(r.id); tbl.append(h('div', { class: 'frow', style: { '--tc': t.color } }, h('b', {}, `${r.rank}위`), h('span', {}, `${t.icon} ${t.name}`), h('small', {}, `게임 ${r.games} · 보너스 ${r.bonus} · 1위 ${r.wins}회`), h('em', {}, `${r.total}점`))); }
+  for (const r of S.standings.rows) { const t = team(r.id); tbl.append(h('div', { class: 'frow', style: { '--tc': t.color } }, h('b', {}, `${r.rank}위`), h('div', { class: 'fnm' }, h('span', {}, `${t.icon} ${t.name}`), S.teamMvp?.[r.id] ? h('small', { class: 'fmvp' }, `🏅 팀 MVP ${S.teamMvp[r.id].name}`) : null), h('small', {}, `게임 ${r.games} · 보너스 ${r.bonus} · 1위 ${r.wins}회`), h('em', {}, `${r.total}점`))); }
   stage.append(topbar(), h('div', { class: 'endv' }, h('div', { class: 'ct' }, '🎉 최종 순위 🎉'), tbl, h('div', { class: 'thanks' }, '모두 수고했어요! 아이키키 팀 대항 오락실')));
 }
 
