@@ -371,6 +371,7 @@ function tabSettings(body) {
   const topN = h('input', { class: 'inp sm', type: 'number', min: 1, max: 50, value: s.topN });
   const teamCount = select(Object.fromEntries(Array.from({ length: 15 }, (_, i) => [i + 2, `${i + 2}팀`])), S.teams.length);
   const assign = select({ choose: '참가자가 팀 고르기', auto: '자동 배정' }, s.teamAssign);
+  const rename = select({ rep: '👑 팀 대표만', all: '팀원 누구나', off: '끄기 (진행자만)' }, s.teamRename || 'rep');
   const intro = h('input', { class: 'inp sm', type: 'number', min: 3, max: 60, value: s.introSec });
   const res = h('input', { class: 'inp sm', type: 'number', min: 3, max: 60, value: s.resultSec });
   const voice = h('input', { type: 'checkbox', checked: s.voice }); const sfxc = h('input', { type: 'checkbox', checked: s.sfx });
@@ -379,11 +380,11 @@ function tabSettings(body) {
   body.append(h('div', { class: 'stack' },
     field('행사 이름', name),
     h('div', { class: 'grid2' }, field('연령 모드', mode, '혼합 모드: 참가할 때 유아/초등/어른을 고르고, 같은 게임도 연령별 난이도로 진행 + 점수는 0~100으로 환산해 공정하게 비교'), field('초등 난이도', lvl), field('점수 방식', scoring), field('상위 N명 (상위 N명 평균일 때)', topN),
-      field('팀 수', teamCount, '점수가 생긴 뒤에는 바꿀 수 없어요'), field('팀 정하기', assign), field('게임 설명 시간(초)', intro), field('결과 발표 시간(초)', res), field('역전 룰렛 보너스 상한 (1위 총점의 %)', cap)),
+      field('팀 수', teamCount, '점수가 생긴 뒤에는 바꿀 수 없어요'), field('팀 정하기', assign), field('참가자 팀 이름 바꾸기', rename, '대기 화면에서 폰으로 우리 팀 이름·아이콘을 바꿔요. 이상한 이름은 👥 탭에서 진행자가 고칠 수 있어요'), field('게임 설명 시간(초)', intro), field('결과 발표 시간(초)', res), field('역전 룰렛 보너스 상한 (1위 총점의 %)', cap)),
     h('label', { class: 'chk' }, voice, ' 🗣 음성 안내 (대형 화면)'), h('label', { class: 'chk' }, sfxc, ' 🔊 효과음'),
     field('참가 주소 (QR에 들어갈 주소)', url, '배포 주소(예: https://ikiki-arcade.onrender.com) 또는 노트북 와이파이 주소(예: http://192.168.0.15:8080). 비우면 지금 접속한 주소'),
     h('button', { class: 'btn', onclick: async () => {
-      await save({ name: name.value, settings: { mode: mode.value, elemLevel: lvl.value, scoring: scoring.value, topN: +topN.value, teamCount: +teamCount.value, teamAssign: assign.value, introSec: +intro.value, resultSec: +res.value, voice: voice.checked, sfx: sfxc.checked, rouletteCapPct: +cap.value, joinUrl: url.value.trim() } });
+      await save({ name: name.value, settings: { mode: mode.value, elemLevel: lvl.value, scoring: scoring.value, topN: +topN.value, teamCount: +teamCount.value, teamAssign: assign.value, teamRename: rename.value, introSec: +intro.value, resultSec: +res.value, voice: voice.checked, sfx: sfxc.checked, rouletteCapPct: +cap.value, joinUrl: url.value.trim() } });
       toast('설정을 저장했어요');
     } }, '💾 설정 저장'),
     h('h3', {}, '개인정보'), h('p', { class: 'muted small' }, '행사가 끝나면 참가자 이름을 "참가자1, 2…"로 바꿔 개인정보를 지울 수 있어요. 점수 기록은 남아요.'),

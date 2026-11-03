@@ -102,6 +102,7 @@ function onMsg(m) {
     }
     toast(m.msg); return;
   }
+  if (m.t === 'ok' && m.rid === 'team') { toast('✅ 팀 이름을 바꿨어요'); return; }
   if (m.t === 'state') { const prev = S; S = m; onState(prev); return; }
   if (m.t === 'me') { ME[m.pid] = m; const sp = sess.players.find((p) => p.pid === m.pid); if (sp) { sp.team = m.me.team; sp.name = m.me.name; store(KEY, sess); } if (m.game) VIEW[m.pid] = m.game; render(); return; }
   if (m.t === 'g') {
@@ -181,8 +182,32 @@ function lobby() {
     h('div', { class: 'badge', style: { '--tc': t.color } }, h('div', { class: 'bi' }, t.icon), h('div', { class: 'bt' }, t.name), h('div', { class: 'muted' }, `우리 팀 ${S.counts[t.id]?.total || 0}명`)),
     h('div', { class: 'ct' }, S.notice && /시상식/.test(S.notice) ? '🏆 곧 시상식이에요!' : '게임을 기다리는 중…'),
     S.item ? h('div', { class: 'muted' }, `다음 게임: ${S.item.emoji} ${S.item.name}`) : null,
-    cheerBtn(t), mini());
+    renameBtn(me, t), cheerBtn(t), mini());
   return el;
+}
+// ---- 우리 팀 이름 바꾸기 (진행자가 허용했을 때) ----
+const TEAM_EMOJI = ['🐯', '🐬', '🐥', '🐸', '🦄', '🦊', '🐳', '🐷', '🐢', '🐺', '🦁', '🐧', '🐝', '🐲', '🦋', '🐻', '⚡', '🔥', '⭐', '🚀', '⚽', '🏀', '🌈', '👑', '💎', '🍀', '🌊', '🍓', '🦖', '🤖', '👻', '🎯'];
+function renameBtn(me, t) {
+  const mode = S.settings?.teamRename || 'rep';
+  if (!me?.team || mode === 'off') return null;
+  if (mode === 'rep' && !me.rep) return h('div', { class: 'muted small' }, '✏️ 팀 이름은 👑 팀 대표가 바꿀 수 있어요');
+  return h('button', { class: 'btn ghost', onclick: () => renameSheet(t) }, '✏️ 우리 팀 이름 바꾸기');
+}
+function renameSheet(t) {
+  $('.sheet')?.remove();
+  let icon = t.icon;
+  const inp = h('input', { class: 'inp', value: t.name, maxlength: 10, placeholder: '팀 이름 (10자까지)', enterkeyhint: 'done' });
+  const grid = h('div', { class: 'emgrid' });
+  for (const e of TEAM_EMOJI) {
+    const b = h('button', { class: `em ${e === icon ? 'sel' : ''}`, onclick: () => { icon = e; grid.querySelectorAll('.em').forEach((x) => x.classList.toggle('sel', x === b)); } }, e);
+    grid.append(b);
+  }
+  const save = () => { const name = inp.value.trim(); if (!name) return toast('팀 이름을 써 주세요'); live.send({ t: 'team', name, icon, pid: active().pid, rid: 'team' }); m.remove(); };
+  inp.addEventListener('keydown', (e) => e.key === 'Enter' && save());
+  const m = h('div', { class: 'sheet' }, h('b', {}, '✏️ 우리 팀 이름 바꾸기'), inp, h('div', { class: 'muted small' }, '아이콘 고르기'), grid,
+    h('button', { class: 'btn wide', onclick: save }, '바꾸기'), h('button', { class: 'btn ghost wide', onclick: () => m.remove() }, '취소'));
+  document.body.append(m);
+  inp.focus();
 }
 function cheerBtn(t) {
   let n = 0;

@@ -209,3 +209,6 @@ body.kid .num { font-size: 40px; }
 .tbody { width: 100%; flex: 1; display: flex; flex-direction: column; }
 
 .wl { position: absolute; font-weight: 900; color: #111; text-shadow: 0 1px 0 #fff8; white-space: nowrap; font-size: 16px; }
+.emgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.emgrid .em { font-size: 24px; aspect-ratio: 1; border-radius: 10px; border: 2px solid transparent; background: #ffffff12; padding: 0; }
+.emgrid .em.sel { border-color: var(--y); background: #ffd43b30; }

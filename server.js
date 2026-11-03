@@ -428,6 +428,7 @@ export function createServer(opts = {}) {
       const p = ev.players.get(pid); if (!p) return;
       if (m.t === 'in') return ev.input(p, m);
       if (m.t === 'cheer') return ev.cheerTap(p, m.n);
+      if (m.t === 'team') { ev.renameTeam(p, m.name, m.icon); return hub.send(ws, { t: 'ok', rid: m.rid }); }
       if (m.t === 'me') return hub.send(ws, { ...ev.playerView(p), pid: p.id });
       return;
     }

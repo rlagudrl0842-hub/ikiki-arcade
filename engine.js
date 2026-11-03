@@ -6,6 +6,8 @@ import { AGE_LABEL } from './common.js';
 export const TEAM_COLORS = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#b06bff', '#ff922b', '#22d3ee', '#f472b6',
   '#a3e635', '#94a3b8', '#fb7185', '#60a5fa', '#facc15', '#34d399', '#c084fc', '#fdba74'];
 export const TEAM_ICONS = ['🐯', '🐬', '🐥', '🐸', '🦄', '🦊', '🐳', '🐷', '🐢', '🐺', '🦁', '🐧', '🐝', '🐲', '🦋', '🐻'];
+// 참가자가 고를 수 있는 팀 아이콘
+export const RENAME_ICONS = [...TEAM_ICONS, '⚡', '🔥', '⭐', '🚀', '⚽', '🏀', '🌈', '👑', '💎', '🍀', '🌊', '🍓', '🦖', '🤖', '👻', '🎯'];
 const DEFAULT_NAMES = ['호랑이', '돌고래', '병아리', '개구리', '유니콘', '여우', '고래', '꿀꿀이', '거북이', '늑대', '사자', '펭귄', '꿀벌', '용', '나비', '곰'];
 
 export const DEFAULT_SETTINGS = {
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS = {
   teamAssign: 'choose',   // choose | auto
   joinUrl: '',
   rouletteCapPct: 10,     // 운 보너스 상한 (총점 대비 %)
+  teamRename: 'rep',      // 참가자 팀 이름 바꾸기: off 끄기 | rep 팀 대표만 | all 팀원 누구나
   playlist: [],           // [{game, dur, weight}]
 };
 
@@ -117,7 +120,7 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       idx: this.state.idx, total: this.settings.playlist.length,
       playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur })),
@@ -504,6 +507,27 @@ export class Event {
   }
 
   // 점수 수동 수정 (이력 저장)
+  // 참가자가 폰에서 우리 팀 이름·아이콘 바꾸기 (대기 화면에서만)
+  renameTeam(p, name, icon) {
+    const mode = this.settings.teamRename || 'rep';
+    if (mode === 'off') throw new Err('팀 이름은 진행자만 바꿀 수 있어요');
+    if (mode === 'rep' && !p.rep) throw new Err('팀 이름은 👑 팀 대표만 바꿀 수 있어요');
+    if (this.phase !== 'lobby') throw new Err('게임 시작 전 대기 화면에서만 바꿀 수 있어요');
+    const t = this.teams.find((x) => x.id === p.team); if (!t) throw new Err('팀이 없어요');
+    const now = Date.now();
+    this._renameAt ||= new Map();
+    if (now - (this._renameAt.get(t.id) || 0) < 3000) throw new Err('잠깐! 3초 뒤에 다시 바꿀 수 있어요');
+    let nm = String(name ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim();
+    if (!nm) throw new Err('팀 이름을 써 주세요');
+    nm = [...nm].slice(0, 10).join('');
+    if (this.teams.some((x) => x.id !== t.id && x.name === nm)) throw new Err('다른 팀이 쓰는 이름이에요');
+    if (icon != null && !RENAME_ICONS.includes(icon)) throw new Err('아이콘 오류');
+    t.name = nm; if (icon) t.icon = icon; this._renameAt.set(t.id, now);
+    this.db.run('UPDATE teams SET name=?, icon=? WHERE event_id=? AND id=?', t.name, t.icon, this.id, t.id);
+    this.audit('teamRename', { team: t.id, name: t.name, icon: t.icon, by: p.name });
+    this.broadcastState();
+  }
+
   adjust(teamId, delta, reason) {
     if (!this.teams.some((t) => t.id === teamId)) throw new Err('팀 오류');
     if (!Number.isFinite(delta) || Math.abs(delta) > 1000) throw new Err('점수는 -1000~1000 사이로 입력하세요');
@@ -567,6 +591,7 @@ export function sanitizeSettings(s) {
   if (['choose', 'auto'].includes(s.teamAssign)) o.teamAssign = s.teamAssign;
   if (typeof s.joinUrl === 'string' && s.joinUrl.length < 200 && (s.joinUrl === '' || /^https?:\/\/[^\s"'<>]+$/.test(s.joinUrl))) o.joinUrl = s.joinUrl.replace(/\/+$/, '');
   if (Number.isInteger(s.rouletteCapPct) && s.rouletteCapPct >= 0 && s.rouletteCapPct <= 30) o.rouletteCapPct = s.rouletteCapPct;
+  if (['off', 'rep', 'all'].includes(s.teamRename)) o.teamRename = s.teamRename;
   if (Array.isArray(s.playlist) && s.playlist.length <= 40) {
     o.playlist = s.playlist.filter((p) => p && GAMES[p.game]).map((p) => ({
       game: p.game,
