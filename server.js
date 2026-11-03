@@ -25,6 +25,7 @@ export function createServer(opts = {}) {
   const db = openDb(dbFile);
   const port = opts.port ?? Number(process.env.PORT || 8080);
   const quiet = opts.quiet ?? false;
+  const loginLimit = opts.loginLimit ?? 8; // 1분에 로그인 시도 횟수 (테스트에서만 바꿈)
   const log = (...a) => { if (!quiet) console.log(...a); };
 
   // ---- 관리자 비밀번호 ----
@@ -36,6 +37,17 @@ export function createServer(opts = {}) {
     if (dbFile !== ':memory:') fs.writeFileSync(path.join(path.dirname(dbFile), 'ADMIN_PASSWORD.txt'), `관리자 비밀번호: ${adminPassword}\n(관리자 화면에서 바꿀 수 있어요)\n`);
     log(`🔑 처음 생성된 관리자 비밀번호: ${adminPassword}  (data/ADMIN_PASSWORD.txt 에도 저장됨)`);
   }
+  // ---- 마스터 계정 (기존 관리자 비밀번호 = 마스터, 아이디 admin) ----
+  const masterHash = db.getKV('admin_hash');
+  let master = db.get("SELECT id FROM users WHERE role='master' ORDER BY id LIMIT 1");
+  if (!master) {
+    db.run("INSERT INTO users(username,name,hash,role,active,created_at) VALUES('admin','번개쌤',?,'master',1,?)", masterHash, Date.now());
+    master = db.get("SELECT id FROM users WHERE role='master' ORDER BY id LIMIT 1");
+  } else db.run('UPDATE users SET hash=?, active=1 WHERE id=?', masterHash, master.id);
+  const MASTER_ID = master.id;
+  // 계정이 생기기 전에 만든 행사는 마스터 것
+  db.run('UPDATE events SET owner_id=? WHERE owner_id IS NULL', MASTER_ID);
+
   // ---- 기본 OX 문제 ----
   if (!db.get('SELECT 1 FROM questions LIMIT 1')) db.tx(() => { for (const q of DEFAULT_QUESTIONS) db.run('INSERT INTO questions(age,text,emoji,answer) VALUES(?,?,?,?)', ...q); });
 
@@ -52,16 +64,27 @@ export function createServer(opts = {}) {
     if (events.has(eid)) return events.get(eid);
     const row = db.get('SELECT * FROM events WHERE id=? AND deleted=0', eid);
     if (!row) return null;
-    const ev = new Event(hub, row); events.set(eid, ev); return ev;
+    const ev = new Event(hub, row); ev.ownerId = row.owner_id ?? MASTER_ID; events.set(eid, ev); return ev;
+  };
+  const newEvent = (user, data) => {
+    const id = Event.create(hub, data);
+    db.run('UPDATE events SET owner_id=? WHERE id=?', user.id, id);
+    const ev = events.get(id); if (ev) ev.ownerId = user.id;
+    return id;
   };
   const byCode = (code) => { const row = db.get('SELECT id FROM events WHERE code=? AND deleted=0', String(code || '').toUpperCase().slice(0, 8)); return row ? getEvent(row.id) : null; };
 
   // ---- 인증 ----
-  const isAdmin = (tok) => {
-    if (!tok || typeof tok !== 'string') return false;
-    const s = db.get('SELECT expires_at FROM sessions WHERE token=?', tok);
-    return !!s && s.expires_at > Date.now();
+  // 로그인한 강사 (막힌 계정·만료된 로그인은 null)
+  const userOf = (tok) => {
+    if (!tok || typeof tok !== 'string') return null;
+    const s = db.get('SELECT expires_at, user_id FROM sessions WHERE token=?', tok);
+    if (!s || s.expires_at <= Date.now()) return null;
+    const u = db.get('SELECT id, username, name, role, active FROM users WHERE id=?', s.user_id ?? MASTER_ID);
+    return u && u.active ? u : null;
   };
+  // 마스터는 모든 행사, 강사는 자기 행사만
+  const canEv = (u, ev) => !!u && !!ev && (u.role === 'master' || ev.ownerId === u.id);
   const loginTries = new Map();
   const limited = (key, max, winMs) => {
     const now = Date.now(); const a = (loginTries.get(key) || []).filter((t) => t > now - winMs); a.push(now); loginTries.set(key, a); return a.length > max;
@@ -109,8 +132,10 @@ export function createServer(opts = {}) {
     const method = req.method;
     const body = method === 'POST' ? await readBody(req) : {};
     const tok = (req.headers.authorization || '').replace(/^Bearer /, '');
-    const needAdmin = () => { if (!isAdmin(tok)) throw new Err('관리자 로그인이 필요해요', 401); };
-    const evOr404 = (id) => { const ev = getEvent(id); if (!ev) throw new Err('행사를 찾을 수 없어요', 404); return ev; };
+    let user = null;
+    const needAdmin = () => { user = userOf(tok); if (!user) throw new Err('관리자 로그인이 필요해요', 401); };
+    const needMaster = () => { if (user?.role !== 'master') throw new Err('마스터 계정만 할 수 있어요', 403); };
+    const evOr404 = (id) => { const ev = getEvent(id); if (!ev || !canEv(user, ev)) throw new Err('행사를 찾을 수 없어요', 404); return ev; };
     const [a, b, c, d] = parts;
 
     // 공개 API
@@ -135,24 +160,68 @@ export function createServer(opts = {}) {
       return json(res, 200, { eventId: ev.id, pid: p.id, secret: p.secret, name: p.name, team: p.team });
     }
     if (a === 'login' && method === 'POST') {
-      if (limited('login:' + ip, 8, 60000)) throw new Err('로그인 시도가 너무 많아요. 1분 뒤에 다시 해 주세요', 429);
-      if (!verifyPw(String(body.password || ''), db.getKV('admin_hash'))) { await sleep(400); throw new Err('비밀번호가 틀렸어요', 401); }
+      if (limited('login:' + ip, loginLimit, 60000)) throw new Err('로그인 시도가 너무 많아요. 1분 뒤에 다시 해 주세요', 429);
+      // 아이디를 비우면 마스터(admin) — 예전 로그인 방식 그대로 쓸 수 있게
+      const uname = String(body.username || '').trim().toLowerCase() || 'admin';
+      const u = db.get('SELECT * FROM users WHERE username=?', uname);
+      if (!u || !verifyPw(String(body.password || ''), u.hash)) { await sleep(400); throw new Err('아이디 또는 비밀번호가 틀렸어요', 401); }
+      if (!u.active) throw new Err('사용이 중지된 계정이에요. 마스터에게 문의해 주세요', 403);
       const t = crypto.randomBytes(24).toString('base64url');
-      db.run('INSERT INTO sessions(token,created_at,expires_at) VALUES(?,?,?)', t, Date.now(), Date.now() + 7 * 864e5);
+      db.run('INSERT INTO sessions(token,created_at,expires_at,user_id) VALUES(?,?,?,?)', t, Date.now(), Date.now() + 7 * 864e5, u.id);
       db.run('DELETE FROM sessions WHERE expires_at<?', Date.now());
-      return json(res, 200, { token: t });
+      return json(res, 200, { token: t, user: { username: u.username, name: u.name, role: u.role } });
     }
 
     // ---- 관리자 API ----
     needAdmin();
     if (a === 'logout' && method === 'POST') { db.run('DELETE FROM sessions WHERE token=?', tok); return json(res, 200, { ok: true }); }
+    if (a === 'me' && method === 'GET') return json(res, 200, { user: { username: user.username, name: user.name, role: user.role } });
     if (a === 'password' && method === 'POST') {
       const np = String(body.password || '');
       if (np.length < 6) throw new Err('비밀번호는 6자 이상으로 해 주세요');
-      db.setKV('admin_hash', hashPw(np)); db.run('DELETE FROM sessions WHERE token<>?', tok);
+      const hsh = hashPw(np);
+      db.run('UPDATE users SET hash=? WHERE id=?', hsh, user.id);
+      if (user.id === MASTER_ID) db.setKV('admin_hash', hsh);
+      db.run('DELETE FROM sessions WHERE token<>? AND (user_id=? OR (user_id IS NULL AND ?=?))', tok, user.id, user.id, MASTER_ID);
       return json(res, 200, { ok: true });
     }
+    // ---- 강사 계정 관리 (마스터 전용) ----
+    if (a === 'users') {
+      needMaster();
+      if (!b && method === 'GET') {
+        return json(res, 200, { users: db.all("SELECT u.id, u.username, u.name, u.role, u.active, u.created_at, (SELECT COUNT(*) FROM events e WHERE e.owner_id=u.id AND e.deleted=0) events FROM users u ORDER BY u.role='master' DESC, u.id") });
+      }
+      if (b === 'add' && method === 'POST') {
+        const uname = String(body.username || '').trim().toLowerCase();
+        const nm = String(body.name || '').trim().slice(0, 20);
+        const pw = String(body.password || '');
+        if (!/^[a-z0-9_]{3,20}$/.test(uname)) throw new Err('아이디는 영어 소문자·숫자 3~20자로 해 주세요');
+        if (!nm) throw new Err('강사 이름을 넣어 주세요');
+        if (pw.length < 6) throw new Err('비밀번호는 6자 이상으로 해 주세요');
+        if (db.get('SELECT 1 FROM users WHERE username=?', uname)) throw new Err('이미 있는 아이디예요');
+        db.run("INSERT INTO users(username,name,hash,role,active,created_at) VALUES(?,?,?,'teacher',1,?)", uname, nm, hashPw(pw), Date.now());
+        return json(res, 200, { ok: true });
+      }
+      const target = db.get('SELECT * FROM users WHERE id=?', Number(b));
+      if (!target) throw new Err('계정을 찾을 수 없어요', 404);
+      if (target.role === 'master') throw new Err('마스터 계정은 여기서 바꿀 수 없어요');
+      if (c === 'password' && method === 'POST') {
+        const pw = String(body.password || ''); if (pw.length < 6) throw new Err('비밀번호는 6자 이상으로 해 주세요');
+        db.run('UPDATE users SET hash=? WHERE id=?', hashPw(pw), target.id); db.run('DELETE FROM sessions WHERE user_id=?', target.id);
+        return json(res, 200, { ok: true });
+      }
+      if (c === 'active' && method === 'POST') {
+        db.run('UPDATE users SET active=? WHERE id=?', body.active ? 1 : 0, target.id);
+        if (!body.active) db.run('DELETE FROM sessions WHERE user_id=?', target.id);
+        return json(res, 200, { ok: true });
+      }
+      if (c === 'rename' && method === 'POST') {
+        const nm = String(body.name || '').trim().slice(0, 20); if (!nm) throw new Err('이름을 넣어 주세요');
+        db.run('UPDATE users SET name=? WHERE id=?', nm, target.id); return json(res, 200, { ok: true });
+      }
+    }
     if (a === 'questions') {
+      if (method === 'POST') needMaster(); // OX 문제는 모든 강사가 같이 쓰므로 마스터만 수정
       if (method === 'GET') return json(res, 200, { questions: db.all('SELECT * FROM questions ORDER BY age, id') });
       if (b === 'save' && method === 'POST') {
         const q = body; const age = ['kid', 'elem', 'adult'].includes(q.age) ? q.age : null;
@@ -165,11 +234,12 @@ export function createServer(opts = {}) {
       if (b === 'delete' && method === 'POST') { db.run('DELETE FROM questions WHERE id=?', Number(body.id)); return json(res, 200, { ok: true }); }
     }
     if (a === 'events' && !b && method === 'GET') {
-      const rows = db.all('SELECT e.id, e.code, e.name, e.created_at, e.ended_at, e.settings, (SELECT COUNT(*) FROM players p WHERE p.event_id=e.id) players FROM events e WHERE deleted=0 ORDER BY created_at DESC LIMIT 200');
+      const master = user.role === 'master';
+      const rows = db.all(`SELECT e.id, e.code, e.name, e.created_at, e.ended_at, e.settings, e.owner_id, u.name owner, (SELECT COUNT(*) FROM players p WHERE p.event_id=e.id) players FROM events e LEFT JOIN users u ON u.id=e.owner_id WHERE e.deleted=0 ${master ? "" : "AND e.owner_id=?"} ORDER BY e.created_at DESC LIMIT 300`, ...(master ? [] : [user.id]));
       return json(res, 200, { events: rows.map((r) => ({ ...r, mode: JSON.parse(r.settings).mode, settings: undefined, phase: events.get(r.id)?.phase ?? null })) });
     }
     if (a === 'events' && !b && method === 'POST') {
-      const id = Event.create(hub, { name: body.name, settings: body.settings });
+      const id = newEvent(user, { name: body.name, settings: body.settings });
       return json(res, 200, { id });
     }
     if (a === 'events' && b) {
@@ -177,7 +247,7 @@ export function createServer(opts = {}) {
       if (!c && method === 'GET') return json(res, 200, { ...ev.publicState(), full: { settings: ev.settings, players: [...ev.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded, online: p.online })) } });
       if (c === 'update' && method === 'POST') { updateEvent(ev, body); return json(res, 200, { ok: true }); }
       if (c === 'clone' && method === 'POST') {
-        const id = Event.create(hub, { name: `${ev.name} (복사)`, settings: { ...ev.settings, teamCount: ev.teams.length } });
+        const id = newEvent(user, { name: `${ev.name} (복사)`, settings: { ...ev.settings, teamCount: ev.teams.length } });
         const ne = getEvent(id);
         db.tx(() => { for (const t of ev.teams) db.run('UPDATE teams SET name=?, color=?, icon=? WHERE event_id=? AND id=?', t.name, t.color, t.icon, id, t.id); });
         ne.teams = ev.teams.map((t) => ({ ...t }));
@@ -340,13 +410,14 @@ export function createServer(opts = {}) {
         return;
       }
       if (m.role === 'screen') {
-        const ev = byCode(m.code) || (isAdmin(m.token) ? getEvent(String(m.eid || '')) : null);
+        let ev = byCode(m.code);
+        if (!ev) { const u = userOf(m.token); const e2 = u ? getEvent(String(m.eid || '')) : null; ev = canEv(u, e2) ? e2 : null; }
         if (!ev) throw new Err('행사를 찾을 수 없어요', 404);
         attach(ws, ev, 'screen'); hub.send(ws, ev.publicState()); return;
       }
       if (m.role === 'admin') {
-        if (!isAdmin(m.token)) throw new Err('관리자 로그인이 필요해요', 401);
-        const ev = getEvent(String(m.eid || '')); if (!ev) throw new Err('행사를 찾을 수 없어요', 404);
+        const u = userOf(m.token); if (!u) throw new Err('관리자 로그인이 필요해요', 401);
+        const ev = getEvent(String(m.eid || '')); if (!canEv(u, ev)) throw new Err('행사를 찾을 수 없어요', 404);
         attach(ws, ev, 'admin'); ws.token = m.token; hub.send(ws, ev.publicState()); return;
       }
       return;
@@ -361,7 +432,7 @@ export function createServer(opts = {}) {
       return;
     }
     if (ws.role === 'admin' && m.t === 'cmd') {
-      if (!isAdmin(ws.token)) throw new Err('관리자 로그인이 필요해요', 401);
+      if (!canEv(userOf(ws.token), ev)) throw new Err('관리자 로그인이 필요해요', 401);
       ev.command(m.op, m.arg || {}, m.seq);
       return hub.send(ws, { t: 'ok', rid: m.rid });
     }

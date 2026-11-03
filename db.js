@@ -46,12 +46,20 @@ CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, age TEXT NOT NULL, text TEXT NOT NULL, emoji TEXT, answer INTEGER NOT NULL, active INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'teacher', active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  // 강사별 계정: 예전 데이터베이스에 칸 추가 (기존 행사·점수는 그대로)
+  const addCol = (table, col, def) => { if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); };
+  addCol('events', 'owner_id', 'INTEGER');
+  addCol('sessions', 'user_id', 'INTEGER');
   const cache = new Map();
   const st = (sql) => { let s = cache.get(sql); if (!s) { s = db.prepare(sql); cache.set(sql, s); } return s; };
   const api = {

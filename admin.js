@@ -3,6 +3,7 @@ import { $, h, Live, api, store, AGE, MODE, teamOf, qrImg } from './client.js';
 
 const app = $('#app');
 let token = store('ikiki:admin');
+let me = null; // { username, name, role }
 let games = [];
 let S = null, live = null, eid = null, tab = 'run', full = null, busy = false;
 
@@ -15,10 +16,13 @@ const fmtDate = (t) => new Date(t).toLocaleString('ko-KR', { month: 'numeric', d
 addEventListener('hashchange', route);
 init();
 async function init() { games = (await api('/api/games')).games; route(); }
+const isMaster = () => me?.role === 'master';
+async function loadMe() { if (!me) me = (await A('/api/me')).user; return me; }
 
 function route() {
   live?.stop(); live = null; S = null;
-  if (!token) return login();
+  document.body.classList.remove('offline');
+  if (!token) { me = null; return login(); }
   const m = location.hash.match(/e=([\w-]+)/);
   if (m) { eid = m[1]; return consoleView(); }
   eid = null; home();
@@ -27,23 +31,30 @@ function route() {
 // ---------------- 로그인 ----------------
 function login() {
   app.innerHTML = '';
-  const pw = h('input', { class: 'inp', type: 'password', placeholder: '관리자 비밀번호', autocomplete: 'current-password' });
+  const un = h('input', { class: 'inp', placeholder: '아이디', autocomplete: 'username', autocapitalize: 'off', value: store('ikiki:lastuser') || '' });
+  const pw = h('input', { class: 'inp', type: 'password', placeholder: '비밀번호', autocomplete: 'current-password' });
   const err = h('div', { class: 'err' });
   const go = async () => {
-    try { const r = await api('/api/login', { password: pw.value }); token = r.token; store('ikiki:admin', token); route(); } catch (e) { err.textContent = e.message; }
+    try {
+      const r = await api('/api/login', { username: un.value.trim(), password: pw.value });
+      token = r.token; me = r.user; store('ikiki:admin', token); store('ikiki:lastuser', un.value.trim() || null); route();
+    } catch (e) { err.textContent = e.message; }
   };
+  un.addEventListener('keydown', (e) => e.key === 'Enter' && pw.focus());
   pw.addEventListener('keydown', (e) => e.key === 'Enter' && go());
-  app.append(h('main', { class: 'login card' }, h('div', { class: 'brand big' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실')), h('h2', {}, '진행자 로그인'), pw, err, h('button', { class: 'btn', onclick: go }, '로그인'),
-    h('p', { class: 'muted small' }, '처음 실행했다면 비밀번호는 서버 실행 창 또는 data/ADMIN_PASSWORD.txt 에 있어요')));
-  pw.focus();
+  app.append(h('main', { class: 'login card' }, h('div', { class: 'brand big' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실')), h('h2', {}, '진행자 로그인'), un, pw, err, h('button', { class: 'btn', onclick: go }, '로그인'),
+    h('p', { class: 'muted small' }, '강사 계정은 마스터가 만들어 줘요. 마스터 아이디는 admin')));
+  (un.value ? pw : un).focus();
 }
 
 // ---------------- 홈: 행사 목록 ----------------
 async function home() {
   app.innerHTML = '';
+  try { await loadMe(); } catch { return; }
   const list = h('div', { class: 'evlist' }, h('p', { class: 'muted' }, '불러오는 중…'));
-  app.append(h('header', { class: 'ah' }, h('div', { class: 'brand' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실'), h('span', { class: 'muted' }, ' 진행자')),
-    h('button', { class: 'btn small ghost', onclick: settingsModal }, '⚙️ 설정'), h('button', { class: 'btn small ghost', onclick: questionsModal }, '⭕ OX 문제'),
+  app.append(h('header', { class: 'ah' }, h('div', { class: 'brand' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실'), h('span', { class: 'muted' }, ` 👤 ${me.name}${isMaster() ? ' (마스터)' : ''}`)),
+    isMaster() ? h('button', { class: 'btn small blue', onclick: usersModal }, '👥 강사 계정') : null,
+    h('button', { class: 'btn small ghost', onclick: settingsModal }, '⚙️ 설정'), isMaster() ? h('button', { class: 'btn small ghost', onclick: questionsModal }, '⭕ OX 문제') : null,
     h('button', { class: 'btn small ghost', onclick: async () => { await A('/api/logout', {}).catch(() => {}); store('ikiki:admin', null); token = null; route(); } }, '로그아웃')),
   h('main', { class: 'amain' }, newEventCard(), h('h2', {}, '행사 목록'), list));
   try {
@@ -51,7 +62,7 @@ async function home() {
     list.innerHTML = '';
     if (!events.length) list.append(h('p', { class: 'muted' }, '아직 행사가 없어요. 위에서 새 행사를 만들어 보세요!'));
     for (const e of events) {
-      list.append(h('div', { class: 'evrow card' }, h('div', { class: 'evi' }, h('b', {}, e.name), h('div', { class: 'muted' }, `${MODE[e.mode]} · 코드 ${e.code} · 참가 ${e.players}명 · ${fmtDate(e.created_at)}${e.ended_at ? ' · 종료됨' : ''}`)),
+      list.append(h('div', { class: 'evrow card' }, h('div', { class: 'evi' }, h('b', {}, e.name), h('div', { class: 'muted' }, `${isMaster() && e.owner ? `👤 ${e.owner} · ` : ''}${MODE[e.mode]} · 코드 ${e.code} · 참가 ${e.players}명 · ${fmtDate(e.created_at)}${e.ended_at ? ' · 종료됨' : ''}`)),
         h('div', { class: 'evb' }, h('a', { class: 'btn small', href: `#e=${e.id}` }, '열기'),
           h('button', { class: 'btn small ghost', onclick: async () => { const r = await A(`/api/events/${e.id}/clone`, {}); toast('복제했어요'); location.hash = `e=${r.id}`; } }, '복제'),
           h('button', { class: 'btn small red', onclick: async () => { if (!confirm(`"${e.name}" 행사를 삭제할까요? 참가자 정보와 점수가 모두 지워져요.`)) return; await A(`/api/events/${e.id}/delete`, {}); toast('삭제했어요'); home(); } }, '삭제'))));
@@ -90,10 +101,46 @@ async function settingsModal() {
   const pw = h('input', { class: 'inp', type: 'password', placeholder: '새 비밀번호 (6자 이상)' });
   const info = await api('/api/info').catch(() => ({ lan: [] }));
   modal('⚙️ 설정', h('div', { class: 'stack' },
-    h('h3', {}, '관리자 비밀번호 바꾸기'), pw, h('button', { class: 'btn', onclick: async () => { try { await A('/api/password', { password: pw.value }); toast('비밀번호를 바꿨어요'); pw.value = ''; } catch (e) { toast(e.message); } } }, '바꾸기'),
+    h('p', {}, `로그인: ${me?.name} (아이디 ${me?.username})`),
+    h('h3', {}, '내 비밀번호 바꾸기'), pw,
+    isMaster() ? h('p', { class: 'muted small' }, 'Render에 ADMIN_PASSWORD를 넣어 두었다면, 서버가 다시 켜질 때 마스터 비밀번호는 그 값으로 돌아가요.') : null, h('button', { class: 'btn', onclick: async () => { try { await A('/api/password', { password: pw.value }); toast('비밀번호를 바꿨어요'); pw.value = ''; } catch (e) { toast(e.message); } } }, '바꾸기'),
     h('h3', {}, '이 컴퓨터의 와이파이 주소'), info.lan.length ? info.lan.map((u) => h('code', {}, u)) : h('p', { class: 'muted' }, '찾을 수 없어요'),
     h('p', { class: 'muted small' }, '노트북에서 직접 서버를 켰다면, 행사의 "참가 주소"에 위 주소를 넣어야 폰에서 QR로 들어올 수 있어요 (폰과 노트북이 같은 와이파이).')));
 }
+// ---------------- 강사 계정 관리 (마스터 전용) ----------------
+function usersModal() {
+  const box = h('div', { class: 'stack' });
+  modal('👥 강사 계정', box);
+  const load = async () => {
+    const { users } = await A('/api/users');
+    box.innerHTML = '';
+    const un = h('input', { class: 'inp', placeholder: '아이디 (영어 소문자·숫자, 예: kim01)', maxlength: 20, autocapitalize: 'off' });
+    const nm = h('input', { class: 'inp', placeholder: '강사 이름 (예: 김민수 쌤)', maxlength: 20 });
+    const pw = h('input', { class: 'inp', placeholder: '처음 비밀번호 (6자 이상)', maxlength: 40 });
+    const out = h('div', {});
+    const add = async () => {
+      try {
+        await A('/api/users/add', { username: un.value.trim(), name: nm.value.trim(), password: pw.value });
+        const msg = `⚡ 아이키키 팀 대항 오락실\n진행자 화면: ${location.origin}/admin.html\n아이디: ${un.value.trim().toLowerCase()}\n비밀번호: ${pw.value}\n(로그인 후 ⚙️ 설정에서 비밀번호를 바꿔 주세요)`;
+        await load();
+        box.prepend(h('div', { class: 'card stack' }, h('b', {}, '✅ 계정을 만들었어요. 아래 내용을 강사에게 보내 주세요'), h('pre', { class: 'sendmsg' }, msg),
+          h('button', { class: 'btn', onclick: () => navigator.clipboard?.writeText(msg).then(() => toast('복사했어요. 카톡에 붙여 넣으세요')) }, '📋 안내 문구 복사')));
+      } catch (e) { out.textContent = e.message; out.className = 'err'; }
+    };
+    box.append(h('h3', {}, '＋ 새 강사 추가'), un, nm, pw, out, h('button', { class: 'btn', onclick: add }, '계정 만들기'),
+      h('p', { class: 'muted small' }, '강사는 자기가 만든 행사만 보여요. 마스터(나)는 모든 행사를 볼 수 있어요.'),
+      h('h3', {}, `계정 ${users.length}개`));
+    for (const u of users) {
+      const isM = u.role === 'master';
+      box.append(h('div', { class: `qrow ${u.active ? '' : 'off'}` }, h('span', {}, isM ? '👑' : '👤'), h('span', { class: 'qt' }, h('b', {}, u.name), ` · ${u.username} · 행사 ${u.events}개${u.active ? '' : ' · 사용 중지'}`),
+        isM ? h('span', { class: 'muted small' }, '마스터') : null,
+        isM ? null : h('button', { class: 'btn small ghost', onclick: async () => { const np = prompt(`${u.name}의 새 비밀번호 (6자 이상)`); if (!np) return; try { await A(`/api/users/${u.id}/password`, { password: np }); toast('비밀번호를 바꿨어요. 강사에게 알려 주세요'); } catch (e) { toast(e.message); } } }, '비번 초기화'),
+        isM ? null : h('button', { class: `btn small ${u.active ? 'red' : 'ghost'}`, onclick: async () => { if (u.active && !confirm(`${u.name} 계정을 사용 중지할까요? 바로 로그아웃되고 로그인할 수 없어요. (행사 기록은 남아요)`)) return; await A(`/api/users/${u.id}/active`, { active: !u.active }); load(); } }, u.active ? '사용 중지' : '다시 허용')));
+    }
+  };
+  load().catch((e) => toast(e.message));
+}
+
 async function questionsModal() {
   const box = h('div', { class: 'stack' });
   const m = modal('⭕ 스피드 OX 문제 관리', box);
@@ -120,11 +167,13 @@ async function consoleView() {
   app.innerHTML = '';
   app.append(h('div', { class: 'muted pad' }, '불러오는 중…'));
   try { full = (await A(`/api/events/${eid}`)).full; } catch (e) { app.innerHTML = ''; app.append(h('p', { class: 'err pad' }, e.message), h('a', { class: 'btn', href: '#' }, '← 목록')); return; }
-  live = new Live({ t: 'hello', role: 'admin', token, eid }, (m) => {
+  let lv = null;
+  lv = new Live({ t: 'hello', role: 'admin', token, eid }, (m) => {
     if (m.t === 'state') { S = m; draw(); refreshFull(); }
     if (m.t === 'live') { liveMini(m); }
     if (m.t === 'err') { toast(m.msg); if (m.code === 401) { store('ikiki:admin', null); token = null; route(); } }
-  }, (st) => document.body.classList.toggle('offline', st === 'offline'));
+  }, (st) => { if (!lv || live === lv) document.body.classList.toggle('offline', st === 'offline'); }); // 목록으로 나간 뒤엔 '연결 끊김' 표시 안 함
+  live = lv;
   setInterval(clock, 250);
   addEventListener('keydown', hotkeys);
 }
