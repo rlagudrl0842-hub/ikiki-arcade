@@ -1,0 +1,19 @@
+{
+  "name": "ikiki-arcade",
+  "version": "1.0.0",
+  "description": "아이키키 팀 대항 오락실",
+  "scripts": {
+    "start": "node --no-warnings server/server.js",
+    "test": "node --no-warnings --test --test-concurrency=1 test/unit/*.test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.1"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  }
+}
