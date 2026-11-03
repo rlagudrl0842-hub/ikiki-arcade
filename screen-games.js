@@ -1,7 +1,7 @@
 // 대형 화면: 게임별 전용 시각화 (1920×1080 기준)
-import { h } from './shared/client.js';
+import { h } from './client.js';
 import { wheelEl, spinTo } from './play-games.js';
-import { COLORS6 } from './shared/gen.js';
+import { COLORS6 } from './gen.js';
 
 const RPS = ['✌️', '✊', '✋'];
 export const V = {};

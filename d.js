@@ -1,6 +1,6 @@
 // GAME 16~20: 타이밍 탑 쌓기 / 운명의 상자 / 팀 빙고 / 역전 룰렛 / 최후의 왕좌
 import crypto from 'node:crypto';
-import { rng, rint, shuffle, hashSeed, towerX, towerSpeed } from '../../public/shared/gen.js';
+import { rng, rint, shuffle, hashSeed, towerX, towerSpeed } from './gen.js';
 import { LV, TapLimiter, norm, round1, clamp, intIn, numIn } from './common.js';
 import { mash, tug } from './a.js';
 import { mole, reaction } from './b.js';

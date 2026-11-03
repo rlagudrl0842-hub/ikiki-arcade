@@ -1,5 +1,5 @@
 // GAME 11~15: 가위바위보 서바이벌 / 숫자 사냥 / 기억력 배틀 / 색깔 함정 / 스피드 OX
-import { rng, rint, hashSeed, numHuntLayout, memorySeq, colorRound } from '../../public/shared/gen.js';
+import { rng, rint, hashSeed, numHuntLayout, memorySeq, colorRound } from './gen.js';
 import { LV, norm, round1, clamp, intIn } from './common.js';
 
 // ---------------------------------------------------------------- 11 가위바위보 서바이벌

@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "description": "아이키키 팀 대항 오락실",
   "scripts": {
-    "start": "node --no-warnings server/server.js",
-    "test": "node --no-warnings --test --test-concurrency=1 test/unit/*.test.js"
+    "start": "node --no-warnings server.js"
   },
   "author": "",
   "license": "ISC",

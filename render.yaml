@@ -1,13 +1,12 @@
-# Render.com 배포 설정 (Blueprint)
-# 1) 이 폴더를 GitHub 저장소에 올리고  2) Render → New → Blueprint → 저장소 선택
+# Render 배포 설정 — 모든 파일이 저장소 최상위에 있는 구조
 services:
   - type: web
     name: ikiki-arcade
     runtime: node
-    plan: starter            # 점수 저장 디스크를 쓰려면 유료(Starter) 필요
-    region: singapore        # 한국에서 가장 가까운 지역
+    plan: starter
+    region: singapore
     buildCommand: npm ci --omit=dev
-    startCommand: npm start
+    startCommand: node --no-warnings server.js
     healthCheckPath: /api/games
     envVars:
       - key: NODE_VERSION
@@ -15,7 +14,7 @@ services:
       - key: DB_FILE
         value: /var/data/arcade.db
       - key: ADMIN_PASSWORD
-        sync: false          # 배포할 때 Render 화면에서 직접 입력
+        sync: false
     disk:
       name: arcade-data
       mountPath: /var/data

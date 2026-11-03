@@ -1,5 +1,5 @@
 // 참가자 폰 화면
-import { $, h, Live, api, store, sfx, say, vibrate, audioUnlock, AGE, teamOf, confetti } from './shared/client.js';
+import { $, h, Live, api, store, sfx, say, vibrate, audioUnlock, AGE, teamOf, confetti } from './client.js';
 import { G } from './play-games.js';
 
 const app = $('#app');

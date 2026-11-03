@@ -1,6 +1,6 @@
 // 참가자 폰 화면: 게임별 조작 UI
-import { h, sfx, vibrate } from './shared/client.js';
-import { numHuntLayout, colorRound, COLORS6, towerX } from './shared/gen.js';
+import { h, sfx, vibrate } from './client.js';
+import { numHuntLayout, colorRound, COLORS6, towerX } from './gen.js';
 
 const RPS = [{ e: '✌️', n: '가위' }, { e: '✊', n: '바위' }, { e: '✋', n: '보' }];
 const MEM_KID = ['🐶', '🐱', '🐰', '🐻'];

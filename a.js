@@ -1,5 +1,5 @@
 // GAME 01~05: 미친 연타왕 / 100m 단체 달리기 / 줄다리기 대전 / 폭탄 돌리기 / 눈치게임
-import { rng, rint, shuffle } from '../../public/shared/gen.js';
+import { rng, rint, shuffle } from './gen.js';
 import { LV, TapLimiter, norm, round1, clamp, intIn } from './common.js';
 
 const byTeamAvg = (players, val, teams) => {

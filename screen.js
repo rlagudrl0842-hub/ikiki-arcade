@@ -1,5 +1,5 @@
 // 대형 화면 (프로젝터·TV)
-import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE } from './shared/client.js';
+import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE } from './client.js';
 import { V, leaderOf } from './screen-games.js';
 
 const params = new URLSearchParams(location.search);

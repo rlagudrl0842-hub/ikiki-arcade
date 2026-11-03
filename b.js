@@ -1,5 +1,5 @@
 // GAME 06~10: 10초의 신 / 최후의 생존자 / 팀 협동 금고 / 두더지 사냥 / 반응속도 챔피언
-import { rng, rint, shuffle, moleSchedule } from '../../public/shared/gen.js';
+import { rng, rint, shuffle, moleSchedule } from './gen.js';
 import { LV, norm, normLow, round1, clamp, intIn, numIn } from './common.js';
 
 // ---------------------------------------------------------------- 06 10초의 신

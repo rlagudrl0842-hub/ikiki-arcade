@@ -1,5 +1,5 @@
 // 진행자(관리자) 화면
-import { $, h, Live, api, store, AGE, MODE, teamOf } from './shared/client.js';
+import { $, h, Live, api, store, AGE, MODE, teamOf } from './client.js';
 
 const app = $('#app');
 let token = store('ikiki:admin');

@@ -1,7 +1,7 @@
 // 행사 진행 엔진: 상태머신, 참가자, 점수·순위, 저장·복구
 import crypto from 'node:crypto';
-import { GAMES } from './games/index.js';
-import { AGE_LABEL } from './games/common.js';
+import { GAMES } from './games.js';
+import { AGE_LABEL } from './common.js';
 
 export const TEAM_COLORS = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#b06bff', '#ff922b', '#22d3ee', '#f472b6',
   '#a3e635', '#94a3b8', '#fb7185', '#60a5fa', '#facc15', '#34d399', '#c084fc', '#fdba74'];

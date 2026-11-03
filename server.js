@@ -9,11 +9,15 @@ import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { openDb } from './db.js';
 import { Event, Err, sanitizeSettings, TEAM_COLORS, TEAM_ICONS, defaultPlaylist } from './engine.js';
-import { GAME_LIST } from './games/index.js';
-import { DEFAULT_QUESTIONS } from './games/c.js';
+import { GAME_LIST } from './games.js';
+import { DEFAULT_QUESTIONS } from './c.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PUB = path.join(ROOT, 'public');
+// 모든 파일이 저장소 최상위에 있는 구조 (Render: node server.js)
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const PUB = ROOT;
+// 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
+const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg',
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js']);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 
 export function createServer(opts = {}) {
@@ -85,8 +89,9 @@ export function createServer(opts = {}) {
     try { p = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
     if (/^\/(join|j)\/?$/.test(p)) p = '/play.html';
-    const file = path.normalize(path.join(PUB, p));
-    if (!file.startsWith(PUB + path.sep)) { res.writeHead(403); return res.end(); }
+    const name = p.replace(/^\/+/, '');
+    if (!PUBLIC_FILES.has(name)) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
+    const file = path.join(PUB, name);
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
       const ext = path.extname(file);
