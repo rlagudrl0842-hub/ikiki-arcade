@@ -43,8 +43,33 @@ function login() {
   un.addEventListener('keydown', (e) => e.key === 'Enter' && pw.focus());
   pw.addEventListener('keydown', (e) => e.key === 'Enter' && go());
   app.append(h('main', { class: 'login card' }, h('div', { class: 'brand big' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실')), h('h2', {}, '진행자 로그인'), un, pw, err, h('button', { class: 'btn', onclick: go }, '로그인'),
-    h('p', { class: 'muted small' }, '강사 계정은 마스터가 만들어 줘요. 마스터 아이디는 admin')));
+    h('p', { class: 'muted small' }, '마스터 아이디는 admin')));
   (un.value ? pw : un).focus();
+  api('/api/signup').then((r) => { if (r.open) $('.login').append(h('button', { class: 'btn ghost', onclick: signup }, '🙋 처음이세요? 강사 가입하기')); }).catch(() => {});
+}
+
+function signup() {
+  app.innerHTML = '';
+  const un = h('input', { class: 'inp', placeholder: '아이디 (영어 소문자·숫자 3~20자, 예: kim01)', autocomplete: 'username', autocapitalize: 'off', maxlength: 20 });
+  const nm = h('input', { class: 'inp', placeholder: '이름 (예: 김민수 쌤)', maxlength: 20 });
+  const pw = h('input', { class: 'inp', type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'new-password' });
+  const pw2 = h('input', { class: 'inp', type: 'password', placeholder: '비밀번호 한 번 더', autocomplete: 'new-password' });
+  const err = h('div', { class: 'err' });
+  const btn = h('button', { class: 'btn' }, '가입하고 시작하기');
+  btn.onclick = async () => {
+    err.textContent = '';
+    if (pw.value !== pw2.value) { err.textContent = '비밀번호 두 개가 달라요'; return; }
+    btn.disabled = true;
+    try {
+      const r = await api('/api/signup', { username: un.value.trim(), name: nm.value.trim(), password: pw.value });
+      token = r.token; me = r.user; store('ikiki:admin', token); store('ikiki:lastuser', r.user.username); toast(`환영해요, ${r.user.name}!`); route();
+    } catch (e) { err.textContent = e.message; btn.disabled = false; }
+  };
+  pw2.addEventListener('keydown', (e) => e.key === 'Enter' && btn.click());
+  app.append(h('main', { class: 'login card' }, h('div', { class: 'brand big' }, '⚡ 아이키키 ', h('b', {}, '팀 대항 오락실')), h('h2', {}, '🙋 강사 가입'), un, nm, pw, pw2, err, btn,
+    h('button', { class: 'btn ghost', onclick: login }, '← 로그인으로'),
+    h('p', { class: 'muted small' }, '아이디와 비밀번호는 꼭 기억해 두세요. 내 행사는 나만 볼 수 있어요.')));
+  un.focus();
 }
 
 // ---------------- 홈: 행사 목록 ----------------
@@ -112,8 +137,13 @@ function usersModal() {
   const box = h('div', { class: 'stack' });
   modal('👥 강사 계정', box);
   const load = async () => {
-    const { users } = await A('/api/users');
+    const { users, signupOpen } = await A('/api/users');
     box.innerHTML = '';
+    const sw = h('input', { type: 'checkbox', checked: signupOpen, onchange: async (e) => { await A('/api/users/signup', { open: e.target.checked }).catch((er) => toast(er.message)); toast(e.target.checked ? '선생님들이 직접 가입할 수 있어요' : '가입을 닫았어요'); } });
+    const link = `${location.origin}/admin.html`;
+    box.append(h('div', { class: 'card stack' }, h('label', { class: 'chk' }, sw, ' 🙋 선생님들이 직접 가입할 수 있게 하기'),
+      h('p', { class: 'muted small' }, '켜 두면 아래 주소만 보내면 돼요. 선생님이 [강사 가입하기]로 직접 계정을 만들어요. 다 가입했으면 꺼 두는 게 안전해요.'),
+      h('code', {}, link), h('button', { class: 'btn ghost', onclick: () => navigator.clipboard?.writeText(`⚡ 아이키키 팀 대항 오락실\n${link}\n들어가서 [🙋 처음이세요? 강사 가입하기] 눌러서 가입하세요!`).then(() => toast('복사했어요. 카톡에 붙여 넣으세요')) }, '📋 가입 안내 문구 복사')));
     const un = h('input', { class: 'inp', placeholder: '아이디 (영어 소문자·숫자, 예: kim01)', maxlength: 20, autocapitalize: 'off' });
     const nm = h('input', { class: 'inp', placeholder: '강사 이름 (예: 김민수 쌤)', maxlength: 20 });
     const pw = h('input', { class: 'inp', placeholder: '처음 비밀번호 (6자 이상)', maxlength: 40 });

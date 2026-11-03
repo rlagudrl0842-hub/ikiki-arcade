@@ -159,6 +159,17 @@ export function createServer(opts = {}) {
       const p = ev.join(body);
       return json(res, 200, { eventId: ev.id, pid: p.id, secret: p.secret, name: p.name, team: p.team });
     }
+    // ---- 강사 직접 가입 (마스터가 '가입 받기'를 켰을 때) ----
+    const signupOpen = () => db.getKV('signup_open') !== '0';
+    if (a === 'signup' && method === 'GET') return json(res, 200, { open: signupOpen() });
+    if (a === 'signup' && method === 'POST') {
+      if (!signupOpen()) throw new Err('지금은 가입을 받지 않아요. 번개쌤에게 문의해 주세요', 403);
+      if (limited('signup:' + ip, 5, 10 * 60000)) throw new Err('가입 시도가 너무 많아요. 10분 뒤에 다시 해 주세요', 429);
+      const u = addTeacher(body);
+      const t = crypto.randomBytes(24).toString('base64url');
+      db.run('INSERT INTO sessions(token,created_at,expires_at,user_id) VALUES(?,?,?,?)', t, Date.now(), Date.now() + 7 * 864e5, u.id);
+      return json(res, 200, { token: t, user: { username: u.username, name: u.name, role: u.role } });
+    }
     if (a === 'login' && method === 'POST') {
       if (limited('login:' + ip, loginLimit, 60000)) throw new Err('로그인 시도가 너무 많아요. 1분 뒤에 다시 해 주세요', 429);
       // 아이디를 비우면 마스터(admin) — 예전 로그인 방식 그대로 쓸 수 있게
@@ -188,20 +199,11 @@ export function createServer(opts = {}) {
     // ---- 강사 계정 관리 (마스터 전용) ----
     if (a === 'users') {
       needMaster();
+      if (b === 'signup' && method === 'POST') { db.setKV('signup_open', body.open ? '1' : '0'); return json(res, 200, { ok: true }); }
       if (!b && method === 'GET') {
-        return json(res, 200, { users: db.all("SELECT u.id, u.username, u.name, u.role, u.active, u.created_at, (SELECT COUNT(*) FROM events e WHERE e.owner_id=u.id AND e.deleted=0) events FROM users u ORDER BY u.role='master' DESC, u.id") });
+        return json(res, 200, { signupOpen: signupOpen(), users: db.all("SELECT u.id, u.username, u.name, u.role, u.active, u.created_at, (SELECT COUNT(*) FROM events e WHERE e.owner_id=u.id AND e.deleted=0) events FROM users u ORDER BY u.role='master' DESC, u.id") });
       }
-      if (b === 'add' && method === 'POST') {
-        const uname = String(body.username || '').trim().toLowerCase();
-        const nm = String(body.name || '').trim().slice(0, 20);
-        const pw = String(body.password || '');
-        if (!/^[a-z0-9_]{3,20}$/.test(uname)) throw new Err('아이디는 영어 소문자·숫자 3~20자로 해 주세요');
-        if (!nm) throw new Err('강사 이름을 넣어 주세요');
-        if (pw.length < 6) throw new Err('비밀번호는 6자 이상으로 해 주세요');
-        if (db.get('SELECT 1 FROM users WHERE username=?', uname)) throw new Err('이미 있는 아이디예요');
-        db.run("INSERT INTO users(username,name,hash,role,active,created_at) VALUES(?,?,?,'teacher',1,?)", uname, nm, hashPw(pw), Date.now());
-        return json(res, 200, { ok: true });
-      }
+      if (b === 'add' && method === 'POST') { addTeacher(body); return json(res, 200, { ok: true }); }
       const target = db.get('SELECT * FROM users WHERE id=?', Number(b));
       if (!target) throw new Err('계정을 찾을 수 없어요', 404);
       if (target.role === 'master') throw new Err('마스터 계정은 여기서 바꿀 수 없어요');
@@ -284,6 +286,18 @@ export function createServer(opts = {}) {
       }
     }
     throw new Err('잘못된 요청', 404);
+  }
+
+  function addTeacher(body) {
+    const uname = String(body.username || '').trim().toLowerCase();
+    const nm = String(body.name || '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 20);
+    const pw = String(body.password || '');
+    if (!/^[a-z0-9_]{3,20}$/.test(uname)) throw new Err('아이디는 영어 소문자·숫자 3~20자로 해 주세요');
+    if (!nm) throw new Err('강사 이름을 넣어 주세요');
+    if (pw.length < 6) throw new Err('비밀번호는 6자 이상으로 해 주세요');
+    if (db.get('SELECT 1 FROM users WHERE username=?', uname)) throw new Err('이미 있는 아이디예요. 다른 아이디를 써 주세요');
+    db.run("INSERT INTO users(username,name,hash,role,active,created_at) VALUES(?,?,?,'teacher',1,?)", uname, nm, hashPw(pw), Date.now());
+    return db.get('SELECT id, username, name, role FROM users WHERE username=?', uname);
   }
 
   function updateEvent(ev, body) {
