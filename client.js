@@ -151,3 +151,25 @@ export async function api(path, body, token) {
   return j;
 }
 export function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { return null; } }
+
+// 참가 QR 그림: 서버에서 받아 화면에 직접 넣음 (서버가 잠깐 재시작 중이어도 자동으로 다시 시도)
+export function qrImg(url, cls) {
+  const img = h('img', { class: cls, alt: '참가 QR' });
+  const src = `/api/qr?text=${encodeURIComponent(url)}`;
+  let tries = 0;
+  const load = async () => {
+    tries++;
+    try {
+      const r = await fetch(src + `&t=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      const svg = await r.text();
+      if (!svg.includes('<svg')) throw new Error('svg');
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    } catch {
+      if (tries < 6) setTimeout(load, 1500 * tries);
+      else img.src = src;
+    }
+  };
+  load();
+  return img;
+}

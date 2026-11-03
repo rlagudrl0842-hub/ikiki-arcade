@@ -1,5 +1,5 @@
 // 진행자(관리자) 화면
-import { $, h, Live, api, store, AGE, MODE, teamOf } from './client.js';
+import { $, h, Live, api, store, AGE, MODE, teamOf, qrImg } from './client.js';
 
 const app = $('#app');
 let token = store('ikiki:admin');
@@ -204,7 +204,7 @@ async function save(body) { try { await A(`/api/events/${eid}/update`, body); } 
 
 function qrModal() {
   const url = joinUrl();
-  modal('📱 참가 QR', h('div', { class: 'stack center' }, h('img', { class: 'qrimg', src: `/api/qr?text=${encodeURIComponent(url)}` }), h('code', {}, url), h('div', { class: 'big' }, `참가 코드 ${S.event.code}`),
+  modal('📱 참가 QR', h('div', { class: 'stack center' }, qrImg(url, 'qrimg'), h('code', {}, url), h('div', { class: 'big' }, `참가 코드 ${S.event.code}`),
     h('div', { class: 'row' }, h('a', { class: 'btn', href: `/api/qr/png?text=${encodeURIComponent(url)}`, download: 'ikiki-qr.png' }, '⬇ QR 이미지 저장'), h('button', { class: 'btn ghost', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('링크 복사됨')) }, '🔗 링크 복사')),
     /localhost|127\.0\.0\.1/.test(url) ? h('p', { class: 'err' }, '⚠️ 참가 주소가 localhost예요. 폰에서는 열리지 않아요! [설정] 탭의 "참가 주소"를 와이파이 주소나 배포 주소로 바꿔 주세요.') : null));
 }

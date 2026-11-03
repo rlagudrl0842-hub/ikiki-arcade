@@ -1,5 +1,5 @@
 // 대형 화면 (프로젝터·TV)
-import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE } from './client.js';
+import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg } from './client.js';
 import { V, leaderOf } from './screen-games.js';
 
 const params = new URLSearchParams(location.search);
@@ -76,7 +76,7 @@ function topbar(extra) {
 
 // ---------------- 대기 ----------------
 function lobby() {
-  const qr = h('img', { class: 'qr', src: `/api/qr?text=${encodeURIComponent(joinUrl)}`, alt: '참가 QR' });
+  const qr = qrImg(joinUrl, 'qr');
   const left = h('div', { class: 'lleft' }, h('div', { class: 'lt' }, '📱 QR을 찍고 참가하세요!'), qr, h('div', { class: 'lurl' }, joinUrl.replace(/^https?:\/\//, '')), h('div', { class: 'lcode' }, '참가 코드 ', h('b', {}, S.event.code)));
   const right = h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }));
   stage.append(topbar(h('div', { class: 'mode' }, MODE[S.settings.mode])), h('div', { class: 'lobbyv' }, left, right));

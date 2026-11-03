@@ -119,7 +119,7 @@ export function createServer(opts = {}) {
       const text = String(url.searchParams.get('text') || '').slice(0, 300);
       if (!/^https?:\/\//.test(text)) throw new Err('주소 오류');
       if (b === 'png') { const buf = await QRCode.toBuffer(text, { width: 1024, margin: 2, errorCorrectionLevel: 'M' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="ikiki-qr.png"' }); return res.end(buf); }
-      const svg = await QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0e24', light: '#ffffff' } });
+      const svg = await QRCode.toString(text, { type: 'svg', width: 600, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0e24', light: '#ffffff' } });
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=300' }); return res.end(svg);
     }
     if (a === 'info' && method === 'GET') return json(res, 200, { lan: lanAddrs().map((h) => `http://${h}:${server.address().port}`) });
