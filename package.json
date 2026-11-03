@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "아이키키 팀 대항 오락실",
   "scripts": {
-    "start": "node --no-warnings server.js"
+    "start": "node --no-warnings --experimental-sqlite server.js"
   },
   "author": "",
   "license": "ISC",
@@ -13,6 +13,6 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.13"
   }
 }
