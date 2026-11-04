@@ -76,6 +76,11 @@ export function audioUnlock() {
   } catch { return false; }
 }
 export function audioReady() { return !!actx && actx.state === 'running'; }
+export function audioCtx() { return actx; }
+// 효과음 전용 음량 (배경음악과 따로 조절)
+let sfxBus = null; let sfxLevel = 0.8;
+function sfxOut() { if (!sfxBus || sfxBus.context !== actx) { sfxBus = actx.createGain(); sfxBus.gain.value = sfxLevel; sfxBus.connect(actx.destination); } return sfxBus; }
+export function setSfxVolume(v) { sfxLevel = Math.max(0, Math.min(1, v)); if (sfxBus) sfxBus.gain.setTargetAtTime(sfxLevel, actx.currentTime, 0.05); }
 function tone(freq, dur, type = 'sine', vol = 0.2, when = 0, slide) {
   if (!actx || actx.state !== 'running') return;
   const t = actx.currentTime + when;
@@ -83,14 +88,14 @@ function tone(freq, dur, type = 'sine', vol = 0.2, when = 0, slide) {
   o.type = type; o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  o.connect(g).connect(sfxOut()); o.start(t); o.stop(t + dur + 0.05);
 }
 function noise(dur, vol = 0.3, when = 0) {
   if (!actx || actx.state !== 'running') return;
   const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
   const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
   const s = actx.createBufferSource(); s.buffer = buf; const g = actx.createGain(); g.gain.value = vol;
-  s.connect(g).connect(actx.destination); s.start(actx.currentTime + when);
+  s.connect(g).connect(sfxOut()); s.start(actx.currentTime + when);
 }
 export const SFX = {
   tap: () => tone(660, 0.05, 'square', 0.05),
@@ -106,6 +111,10 @@ export const SFX = {
   win: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.3, 'triangle', 0.2, i * 0.12)); tone(1046, 0.8, 'triangle', 0.18, 0.5); },
   drum: () => { for (let i = 0; i < 16; i++) tone(120 + i * 6, 0.07, 'square', 0.08, i * 0.09); },
   fanfare: () => { const n = [392, 523, 659, 784, 659, 784, 1046]; n.forEach((f, i) => tone(f, 0.25, 'square', 0.12, i * 0.16)); },
+  tick: () => { tone(1500, 0.04, 'square', 0.07); tone(750, 0.06, 'sine', 0.06, 0.01); },
+  tock: () => { tone(1800, 0.06, 'square', 0.12); tone(900, 0.12, 'sawtooth', 0.08, 0.02); tone(60, 0.18, 'sine', 0.3, 0, 40); },
+  lead: () => { noise(0.35, 0.18); tone(300, 0.35, 'sawtooth', 0.1, 0, 1200); tone(1200, 0.12, 'square', 0.12, 0.33); tone(1600, 0.25, 'square', 0.1, 0.42); },
+  whoosh: () => { noise(0.5, 0.15); tone(200, 0.5, 'sine', 0.12, 0, 900); },
   spin: () => { for (let i = 0; i < 20; i++) tone(800, 0.03, 'square', 0.06, i * (0.05 + i * 0.008)); },
 };
 export function sfx(name, on = true) { if (on && SFX[name]) try { SFX[name](); } catch { /* */ } }

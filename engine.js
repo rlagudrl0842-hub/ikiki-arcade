@@ -26,6 +26,11 @@ export const DEFAULT_SETTINGS = {
   rouletteCapPct: 10,     // 운 보너스 상한 (총점 대비 %)
   teamRename: 'rep',      // 참가자 팀 이름 바꾸기: off 끄기 | rep 팀 대표만 | all 팀원 누구나
   motion: 'auto',         // 몸 동작 모드: auto (초등 이상 켜짐, 영아·유아 터치) | on | off
+  bgm: {},                // 게임별 배경음악 { 게임id: 'auto' | 'none' | 곡id } (없으면 추천곡)
+  bgmVol: 70,             // 배경음악 음량 0~100
+  sfxVol: 80,             // 효과음 음량 0~100
+  fanfareSec: 12,         // 승리 빵빠레 길이(초)
+  duck: false,            // 선생님 말씀 중: 배경음악 잠깐 줄이기
   league: '',             // 반별 리그 이름 (같은 이름 행사끼리 팀 점수 누적)
   playlist: [],           // [{game, dur, weight}]
 };
@@ -126,7 +131,7 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, duck: !!this.settings.duck, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       idx: this.state.idx, total: this.settings.playlist.length,
       playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur })),
@@ -597,6 +602,11 @@ export function sanitizeSettings(s) {
   if (Number.isInteger(s.introSec) && s.introSec >= 3 && s.introSec <= 60) o.introSec = s.introSec;
   if (Number.isInteger(s.resultSec) && s.resultSec >= 3 && s.resultSec <= 60) o.resultSec = s.resultSec;
   if (['choose', 'auto'].includes(s.teamAssign)) o.teamAssign = s.teamAssign;
+  // 음악: 곡 id는 내장(g7 등) 또는 이 컴퓨터에 저장한 곡(u-로 시작)
+  if (s.bgm && typeof s.bgm === 'object' && !Array.isArray(s.bgm)) { o.bgm = {}; for (const [k, v] of Object.entries(s.bgm).slice(0, 300)) { const [g, age] = k.split('@'); if (GAMES[g] && (age === undefined || AGES6.includes(age)) && typeof v === 'string' && /^(auto|none|g(1|7|8|12)|u-[\w-]{4,40})$/.test(v)) o.bgm[k] = v; } }
+  for (const k of ['bgmVol', 'sfxVol']) if (Number.isInteger(s[k]) && s[k] >= 0 && s[k] <= 100) o[k] = s[k];
+  if (Number.isInteger(s.fanfareSec) && s.fanfareSec >= 3 && s.fanfareSec <= 60) o.fanfareSec = s.fanfareSec;
+  if (typeof s.duck === 'boolean') o.duck = s.duck;
   if (typeof s.league === 'string') o.league = s.league.replace(/[<>]/g, '').trim().slice(0, 30);
   if (typeof s.joinUrl === 'string' && s.joinUrl.length < 200 && (s.joinUrl === '' || /^https?:\/\/[^\s"'<>]+$/.test(s.joinUrl))) o.joinUrl = s.joinUrl.replace(/\/+$/, '');
   if (Number.isInteger(s.rouletteCapPct) && s.rouletteCapPct >= 0 && s.rouletteCapPct <= 30) o.rouletteCapPct = s.rouletteCapPct;

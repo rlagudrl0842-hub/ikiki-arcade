@@ -1,5 +1,6 @@
 // 대형 화면 (프로젝터·TV)
-import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg } from './client.js';
+import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg, setSfxVolume } from './client.js';
+import * as BGM from './bgm.js';
 import { V, leaderOf } from './screen-games.js';
 import './screen-n.js';
 import './screen-n2.js';
@@ -15,17 +16,21 @@ addEventListener('resize', fit); fit();
 const sfxOn = () => S?.settings?.sfx !== false;
 const voiceOn = () => S?.settings?.voice !== false;
 const team = (id) => teamOf(S, id);
-const ctx = { now: () => live.now(), get teams() { return S.teams; }, team, sfx: (n) => sfx(n, sfxOn()), say: (t, r) => say(t, voiceOn(), r) };
+const sayV = (t, r) => { if (voiceOn() && t) BGM.voice(Math.min(6, 0.9 + String(t).length * 0.13)); say(t, voiceOn(), r); };
+// 게임 화면에서 쓰는 음악 조작: hold(true) = 얼음!처럼 음악 뚝 멈춤, active() = 배경음악이 나오는 중인지
+const bgmApi = { hold: (on) => BGM.hold(on), active: () => !!(BGM.status().playing || BGM.status().held) };
+const ctx = { now: () => live.now(), get teams() { return S.teams; }, team, sfx: (n) => sfx(n, sfxOn()), say: sayV, bgm: bgmApi };
 
 // 소리 켜기 (브라우저 자동재생 제한 때문에 한 번 클릭 필요)
 const gate = $('#gate');
-gate.addEventListener('click', () => { audioUnlock(); gate.classList.add('hidden'); try { document.documentElement.requestFullscreen?.(); } catch { /* */ } say('아이키키 팀 대항 오락실을 시작합니다', voiceOn()); });
+gate.addEventListener('click', () => { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); gate.classList.add('hidden'); try { document.documentElement.requestFullscreen?.(); } catch { /* */ } say('아이키키 팀 대항 오락실을 시작합니다', voiceOn()); });
 addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
-  if (!gate.classList.contains('hidden')) { audioUnlock(); gate.classList.add('hidden'); }
+  if (!gate.classList.contains('hidden')) { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); gate.classList.add('hidden'); }
   // 진행자 단축키 (관리자 로그인 상태에서만)
   const tok = store('ikiki:admin');
   if (!tok || !S) return;
+  if (e.key === 'm' || e.key === 'M') { e.preventDefault(); api(`/api/events/${S.event.id}/update`, { settings: { duck: !S.settings.duck } }, tok).catch((err) => flash(err.message)); return; }
   const op = { ' ': 'next', p: 'pause', P: 'pause', e: 'endNow', E: 'endNow' }[e.key];
   if (!op) return;
   e.preventDefault();
@@ -57,7 +62,7 @@ function overtake(vals) {
   const t = team(l);
   const b = h('div', { class: 'overtake', style: { '--tc': t.color } }, `🔥 ${t.icon} ${t.name} 역전!`);
   stage.append(b); setTimeout(() => b.remove(), 1800);
-  sfx('overtake', sfxOn());
+  sfx('lead', sfxOn());
 }
 
 function render(prev) {
@@ -65,10 +70,56 @@ function render(prev) {
   const phaseChanged = key !== lastKey; lastKey = key;
   pauseLayer();
   cheerEventLayer();
+  audioLevels();
   if (!phaseChanged) { if (S.phase === 'lobby') updateLobby(); return; }
   unmount();
   stage.innerHTML = '';
   ({ lobby, intro, countdown, playing, results, ceremony, ended })[S.phase]?.(prev);
+  audioSync();
+}
+
+// ---------------- 배경음악 ----------------
+let customList = [];
+BGM.listCustom().then((l) => { customList = l; });
+const trackNow = () => { const g = S.run?.game || S.item?.game; return g ? BGM.pick(S.settings, g, customList) : null; };
+function audioLevels() {
+  BGM.setVolume((S.settings.bgmVol ?? 70) / 100); setSfxVolume((S.settings.sfxVol ?? 80) / 100);
+  BGM.duck(!!S.settings.duck);
+  let b = $('#duckb'); if (S.settings.duck && !b) document.body.append(h('div', { id: 'duckb' }, '🎤 선생님 말씀 중 · 음악 작게')); else if (!S.settings.duck && b) b.remove();
+}
+// 지금 단계에 맞는 음악 상태로 맞춤 (한 곳에서만 결정 → 겹침·누락 없음)
+function audioSync() {
+  if (!S || !audioReady()) return;
+  const ph = S.phase; const tr = trackNow();
+  stage.dataset.mood = ['intro', 'countdown', 'playing'].includes(ph) ? tr?.mood || 'none' : '';
+  if (ph === 'countdown') {
+    BGM.stopFanfare(0.4);
+    if (S.paused || !tr) { BGM.stop(0.3); return; }
+    // GO! 순간에 곡의 첫 박이 딱 떨어지도록 예약
+    const a = BGM.status(); const lead = Math.max(0, (S.phaseEnd - live.now()) / 1000);
+    if (a.track !== tr.id) BGM.play(tr, { at: (a.now ?? 0) + lead, offset: tr.cue || 0, fadeIn: 0.02, restart: true });
+    return;
+  }
+  if (ph === 'playing') {
+    BGM.stopFanfare(0.4);
+    if (S.paused) { BGM.pause(); return; }
+    if (!tr) { BGM.stop(0.5); return; }
+    const st = BGM.status();
+    if (st.track === tr.id || st.held) return;
+    if (st.paused?.id === tr.id && BGM.resume()) return;
+    const el = Math.max(0, (live.now() - (S.run?.startAt || live.now())) / 1000);
+    BGM.play(tr, { offset: (tr.cue || 0) + el, fadeIn: 0.6, restart: true }); // 화면을 새로 열었을 때: 진행 시간에 맞춰 이어서
+    return;
+  }
+  if (ph === 'results') { if (!S.paused) BGM.stop(1.4); return; }
+  if (ph === 'ceremony') { BGM.stop(0.8); return; }
+  BGM.stop(1.0); BGM.stopFanfare(1.0); // 대기·설명·종료
+}
+// 음악 박자에 맞춰 화면 테두리·배경이 번쩍
+(function beatLoop() { const v = BGM.level(); stage.style.setProperty('--beat', v.toFixed(3)); requestAnimationFrame(beatLoop); })();
+function trophy(color) {
+  const t = h('div', { class: 'trophy', style: { '--tc': color } }, h('div', { class: 'tray' }), h('div', { class: 'tcup' }, '🏆'));
+  document.body.append(t); setTimeout(() => t.remove(), 4200);
 }
 function unmount() { if (cur?.inst?.unmount) cur.inst.unmount(); cur = null; clearInterval(render.t); }
 
@@ -109,11 +160,15 @@ function intro() {
   const cnt = h('div', { class: 'icount' });
   stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv' },
     h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name), h('div', { class: 'ir' }, it.rule),
-    h('div', { class: 'ih' }, it.howto), h('div', { class: 'ichips' }, it.durSec ? h('span', { class: 'chip' }, `⏱ ${it.durSec}초`) : h('span', { class: 'chip' }, '🔁 라운드제'), it.weight !== 1 ? h('span', { class: 'chip hot' }, `🔥 점수 ${it.weight}배`) : null, it.team ? h('span', { class: 'chip' }, '🤝 팀 협동') : null), cnt));
-  say(`${it.name}! ${it.rule}`, voiceOn());
+    h('div', { class: 'ih' }, it.howto), h('div', { class: 'ichips' }, it.durSec ? h('span', { class: 'chip' }, `⏱ ${it.durSec}초`) : h('span', { class: 'chip' }, '🔁 라운드제'), it.weight !== 1 ? h('span', { class: 'chip hot' }, `🔥 점수 ${it.weight}배`) : null, it.team ? h('span', { class: 'chip' }, '🤝 팀 협동') : null, nowPlaying()), cnt));
+  sayV(`${it.name}! ${it.rule}`);
   render.t = setInterval(() => { cnt.textContent = S.phaseEnd && !S.paused ? `${Math.max(0, Math.ceil((S.phaseEnd - live.now()) / 1000))}초 뒤 시작` : '진행자가 시작 버튼을 누르면 시작해요'; }, 250);
 }
 
+function nowPlaying() {
+  const tr = trackNow(); const m = BGM.MOODS[tr?.mood || 'none'];
+  return h('span', { class: 'chip np', style: { '--mc': m.color } }, h('i', { class: 'eq' }, h('b'), h('b'), h('b')), tr ? `${tr.name} · ${m.label}` : m.label);
+}
 // ---------------- 카운트다운 ----------------
 function countdown() {
   const n = h('div', { class: 'bigcd' }, '3');
@@ -129,7 +184,7 @@ function countdown() {
 // ---------------- 게임 중 ----------------
 function playing() {
   const g = S.run?.game; const def = V[g];
-  const hud = h('div', { class: 'hud' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), h('div', { class: 'hg' }, `${S.item?.emoji || ''} ${S.item?.name || ''}`), h('div', { class: 'htime' }), h('div', { class: 'hbar' }, h('div', {})));
+  const hud = h('div', { class: 'hud' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), h('div', { class: 'hg' }, `${S.item?.emoji || ''} ${S.item?.name || ''}`), nowPlaying(), h('div', { class: 'htime' }), h('div', { class: 'hbar' }, h('div', {})));
   const body = h('div', { class: 'gbody' });
   const cheer = h('div', { class: 'cheerbar' });
   stage.append(hud, body, cheer);
@@ -141,9 +196,11 @@ function playing() {
     const left = S.run.endAt - live.now(); const total = S.run.endAt - S.run.startAt;
     const s = Math.max(0, Math.ceil(left / 1000));
     hud.querySelector('.htime').textContent = `${s}`;
-    hud.classList.toggle('hurry', s <= 5);
+    hud.classList.toggle('hurry', s <= 10);
+    stage.classList.toggle('last10', s <= 10 && s > 0);
     hud.querySelector('.hbar div').style.width = `${Math.max(0, (left / total) * 100)}%`;
-    if (s <= 5 && s > 0 && s !== lastS) { lastS = s; sfx('hurry', sfxOn()); if (s <= 3) say(String(s), voiceOn(), 1.4); }
+    // 마지막 10초 경고: 10~4초 째깍, 3·2·1은 강하게 + 음성
+    if (s <= 10 && s > 0 && s !== lastS) { lastS = s; sfx(s <= 3 ? 'tock' : 'tick', sfxOn()); stage.classList.remove('tickp'); void stage.offsetWidth; stage.classList.add('tickp'); if (s === 10) sayV('10초 남았어요!', 1.2); if (s <= 3) say(String(s), voiceOn(), 1.4); }
   }, 100);
 }
 function cheerGauge(c) {
@@ -156,7 +213,7 @@ function cheerGauge(c) {
 // ---------------- 결과 ----------------
 function results(prev) {
   const lr = S.lastResult; if (!lr) return;
-  sfx('end', sfxOn());
+  sfx('end', sfxOn()); stage.classList.remove('last10');
   const wrap = h('div', { class: 'resv' });
   stage.append(topbar(h('div', { class: 'mode' }, `${lr.label} 결과`)), wrap);
   if (lr.bonus) {
@@ -176,7 +233,13 @@ function results(prev) {
     });
     wrap.append(list);
     const w = lr.teams[0];
-    if (w) { const t = team(w.id); setTimeout(() => { sfx('win', sfxOn()); say(`${lr.label}, 1위는 ${t.name}!`, voiceOn()); fx([t.color, '#ffd43b', '#fff'], 160); }, lr.teams.length * 250 + 300); }
+    if (w) { const t = team(w.id); const run = S.run?.id ?? lr.runId; setTimeout(() => {
+      if (S.phase !== 'results' || (S.lastResult?.runId ?? run) !== lr.runId) return;
+      // 빵빠레 첫 타격 순간에 트로피·꽃가루가 함께 터짐
+      const boom = () => { trophy(t.color); fx([t.color, '#ffd43b', '#fff'], 200); };
+      if (audioReady()) BGM.fanfare(S.settings.fanfareSec ?? 12, boom); else { sfx('win', sfxOn()); boom(); }
+      sayV(`${lr.label}, 1위는 ${t.name}!`);
+    }, lr.teams.length * 250 + 900); }
   }
   if (lr.mvp) { const t = team(lr.mvp.team); wrap.append(h('div', { class: 'mvp' }, `⭐ MVP ${t.icon} ${lr.mvp.name}${lr.mvp.show ? ` · ${lr.mvp.show}` : ''}`)); }
   // 종합 순위 + 순위 변동
@@ -206,9 +269,13 @@ function ceremony() {
   };
   podium.append(slot(2, 'p2'), slot(1, 'p1'), slot(3, 'p3'));
   stage.append(h('div', { class: 'cerv' }, h('div', { class: 'ct' }, step >= 4 ? '🏆 우승을 축하합니다! 🏆' : '🏆 시상식'), podium));
-  if (step === 0) { sfx('drum', sfxOn()); say('지금부터 시상식을 시작합니다!', voiceOn()); }
-  if (step >= 1 && step <= 3) { const k = 4 - step; const rs = byRank(k); sfx(k === 1 ? 'fanfare' : 'win', sfxOn()); if (rs.length) say(`${k}위는 ${rs.map((r) => team(r.id).name).join(', ')}!`, voiceOn()); }
-  if (step === 3 || step === 4) { const w = byRank(1)[0]; if (w) fx([team(w.id).color, '#ffd43b', '#fff', '#ff4d6d'], 300); }
+  if (step === 0) { BGM.stopFanfare(0.5); sfx('drum', sfxOn()); sayV('지금부터 시상식을 시작합니다!'); }
+  if (step >= 1 && step <= 2) { const k = 4 - step; const rs = byRank(k); sfx('win', sfxOn()); if (rs.length) sayV(`${k}위는 ${rs.map((r) => team(r.id).name).join(', ')}!`); }
+  if (step === 3) { const w = byRank(1)[0]; const col = w ? team(w.id).color : '#ffd43b'; const boom = () => { trophy(col); fx([col, '#ffd43b', '#fff', '#ff4d6d'], 300); };
+    if (audioReady()) BGM.fanfare(Math.max(S.settings.fanfareSec ?? 12, 15), boom); else { sfx('fanfare', sfxOn()); boom(); }
+    const rs = byRank(1); if (rs.length) sayV(`1위는 ${rs.map((r) => team(r.id).name).join(', ')}!`); }
+  if (step === 4) { const w = byRank(1)[0]; if (w) fx([team(w.id).color, '#ffd43b', '#fff', '#ff4d6d'], 300); if (audioReady() && !BGM.status().fanfare) BGM.fanfare(S.settings.fanfareSec ?? 12); }
+  if (step >= 5) BGM.stopFanfare(1.5);
   if (step === 4) { const w = byRank(1)[0]; if (w) { const t = team(w.id); stage.append(h('div', { class: 'winner', style: { '--tc': t.color } }, h('div', { class: 'wi' }, t.icon), h('div', { class: 'wn' }, t.name), h('div', { class: 'ws' }, '최종 우승!'))); } }
   if (step >= 5) { stage.innerHTML = ''; ended(); }
 }
@@ -239,3 +306,5 @@ function cheerEventLayer() {
   draw(); clearInterval(cheerEventLayer.t); cheerEventLayer.t = setInterval(draw, 300);
 }
 void audioReady;
+// 점검용 (테스트에서 상태 확인)
+window.__screen = () => ({ phase: S?.phase, paused: !!S?.paused, game: S?.run?.game || S?.item?.game || null, phaseEnd: S?.phaseEnd, now: live?.now(), mood: stage.dataset.mood || '', step: S?.ceremonyStep });

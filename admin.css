@@ -73,3 +73,18 @@ body.remote .bigbtns > .btn { width: 100%; font-size: 20px; padding: 18px; }
 body.remote .hprow .btn { flex: 1; min-width: 0; font-size: 22px; padding: 16px 0; }
 body.remote .nowline { font-size: 18px; }
 body.remote .hprow b { font-size: 15px; word-break: keep-all; min-width: 70px; }
+/* 음악 탭 */
+.volrow { display: grid; grid-template-columns: 140px 1fr 48px; align-items: center; gap: 12px; font-weight: 800; }
+.rng { width: 100%; accent-color: #ffd43b; height: 28px; }
+.mlist, .gmlist { display: flex; flex-direction: column; gap: 8px; }
+.mrow, .gmrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; background: #ffffff0d; border-left: 6px solid var(--mc); }
+.mrow b { min-width: 170px; } .mrow small { flex: 1; min-width: 160px; }
+.mood { font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--mc); color: var(--mc); white-space: nowrap; }
+.gmrow .gn { min-width: 200px; font-weight: 800; } select.bgmsel { min-width: 210px; max-width: 260px; width: auto; }
+.notice2 { background: #ffd43b14; border: 1px solid #ffd43b55; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+.notice2 ul { margin: 6px 0 0 18px; padding: 0; display: grid; gap: 4px; }
+.btn.yellow { background: #ffd43b; color: #1b1440; }
+.agebox { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 2px; }
+.agesel { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; padding: 4px 8px; border-radius: 10px; background: #ffffff0a; }
+.agesel.on { outline: 2px solid var(--mc); }
+.agesel select.bgmsel { min-width: 150px; }

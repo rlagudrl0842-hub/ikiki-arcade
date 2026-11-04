@@ -1,6 +1,7 @@
 // 진행자(관리자) 화면
 import { $, h, Live, api, store, AGE, MODE, teamOf, qrImg } from './client.js';
 import { saveCard } from './card.js';
+import * as BGM from './bgm.js';
 
 const app = $('#app');
 let token = store('ikiki:admin');
@@ -233,7 +234,7 @@ function draw() {
     app.innerHTML = '';
     app.append(h('header', { class: 'ah' }, h('a', { class: 'btn small ghost', href: '#' }, '← 목록'), h('div', { class: 'evname' }), h('span', { class: 'phase' })),
       h('div', { class: 'con' }, h('section', { class: 'ctrl card' }), h('nav', { class: 'tabs' },
-        ...[['run', '🎮 진행'], ['playlist', '📋 게임 순서'], ['people', '👥 참가자·팀'], ['score', '🏆 점수'], ['quiz', '✏️ 문제·단어'], ['settings', '⚙️ 설정']].map(([k, l]) => h('button', { 'data-t': k, onclick: () => { tab = k; drawTab(); } }, l))),
+        ...[['run', '🎮 진행'], ['playlist', '📋 게임 순서'], ['people', '👥 참가자·팀'], ['score', '🏆 점수'], ['quiz', '✏️ 문제·단어'], ['music', '🎵 음악'], ['settings', '⚙️ 설정']].map(([k, l]) => h('button', { 'data-t': k, onclick: () => { tab = k; drawTab(); } }, l))),
       h('section', { class: 'tabbody' })));
   }
   $('.evname').textContent = `${S.event.name} · 코드 ${S.event.code}`;
@@ -269,6 +270,7 @@ function drawCtrl() {
     h('button', { class: 'btn blue', onclick: () => window.open(`/screen.html?e=${S.event.code}`, 'ikiki-screen', 'width=1280,height=720') }, '🖥 대형 화면 열기'),
     h('button', { class: 'btn ghost', onclick: () => qrModal() }, '📱 참가 QR'),
     document.body.classList.contains('remote') ? null : h('button', { class: 'btn ghost', onclick: () => remoteModal() }, '🎮 폰 리모컨'),
+    h('button', { class: `btn ${S.settings.duck ? 'yellow' : 'ghost'}`, onclick: () => save({ settings: { duck: !S.settings.duck } }) }, S.settings.duck ? '🎤 말씀 끝 · 음악 다시 크게' : '🎤 말할 때 음악 줄이기'),
     h('button', { class: 'btn ghost', onclick: () => cheerModal() }, '📣 응원 이벤트'),
     h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: S.settings.auto, onchange: (e) => save({ settings: { auto: e.target.checked } }) }), ' 자동 진행'));
   c.append(now, S.notice ? h('div', { class: 'notice' }, S.notice) : null, main, h('div', { class: 'livemini' }), tools, h('div', { class: 'muted small' }, '단축키: Space 다음 · P 일시정지 · E 지금 종료 (대형 화면 창에서도 동작)'));
@@ -324,7 +326,7 @@ function drawTab() {
   const body = $('.tabbody'); if (!body || !S) return;
   if (document.activeElement && body.contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return; // 입력 중엔 다시 그리지 않음
   body.innerHTML = '';
-  ({ run: tabRun, playlist: tabPlaylist, people: tabPeople, score: tabScore, quiz: tabQuiz, settings: tabSettings })[tab](body);
+  ({ run: tabRun, playlist: tabPlaylist, people: tabPeople, score: tabScore, quiz: tabQuiz, music: tabMusic, settings: tabSettings })[tab](body);
 }
 function tabRun(body) {
   const list = h('div', { class: 'plist' });
@@ -361,20 +363,83 @@ function tabPlaylist(body) {
       const g = games.find((x) => x.id === p.game);
       const w = select({ 0.5: '×0.5', 1: '×1', 1.5: '×1.5', 2: '×2', 3: '×3' }, p.weight); w.onchange = () => (p.weight = +w.value);
       const d = h('input', { class: 'inp sm', type: 'number', min: 5, max: 300, placeholder: g.untimed ? '라운드제' : `기본 ${g.dur[({ baby: 'kid', mid: 'adult', high: 'adult', mixed: 'elem' })[S.settings.mode] || S.settings.mode] ?? g.dur.elem}초`, value: p.dur ?? '', disabled: g.untimed }); d.onchange = () => (p.dur = d.value ? +d.value : undefined);
-      list.append(h('div', { class: `pitem ${i < S.idx ? 'done' : ''}` }, h('b', {}, i + 1), h('span', { class: 'gn' }, `${g.emoji} ${g.name}`), field('배점', w), field('시간(초)', d),
+      list.append(h('div', { class: `pitem ${i < S.idx ? 'done' : ''}` }, h('b', {}, i + 1), h('span', { class: 'gn' }, `${g.emoji} ${g.name}`), field('배점', w), field('시간(초)', d), field('🎵 BGM', bgmSelect(p.game)),
         h('button', { class: 'btn small ghost', onclick: () => { if (i > 0) { [pl[i - 1], pl[i]] = [pl[i], pl[i - 1]]; draw(); } } }, '▲'),
         h('button', { class: 'btn small ghost', onclick: () => { if (i < pl.length - 1) { [pl[i + 1], pl[i]] = [pl[i], pl[i + 1]]; draw(); } } }, '▼'),
         h('button', { class: 'btn small red', onclick: () => { pl.splice(i, 1); draw(); } }, '✕')));
     });
   };
   draw();
-  const add = select(Object.fromEntries(games.map((g) => [g.id, `${String(g.no).padStart(2, '0')}. ${g.emoji} ${g.name}${g.team ? ' (팀 협동)' : ''}${g.bonusOnly ? ' (보너스)' : ''}`])), 'mash');
+  const add = select(Object.fromEntries(games.map((g) => [g.id, `${String(g.no).padStart(2, '0')}. ${g.emoji} ${g.name}${g.team ? ' (팀 협동)' : ''}${g.bonusOnly ? ' (보너스)' : ''}`])), 'dodge');
   const presets = h('div', { class: 'row wrap' }, h('b', {}, '빠른 구성:'), ...PRESETS.map(([n, ids]) => h('button', { class: 'btn small ghost', onclick: () => { const ok = ids.filter((id) => games.some((g) => g.id === id)); if (!ok.length) return toast('이 구성은 아직 없어요'); pl.splice(0, pl.length, ...ok.map((g) => ({ game: g, weight: g === 'shout' ? 2 : 1 }))); draw(); toast(`${n} 구성을 넣었어요. 💾 저장을 눌러 주세요`); } }, n)));
   body.append(h('h3', {}, '게임 순서 편집'), presets, locked ? h('p', { class: 'err' }, '게임 중에는 순서를 바꿀 수 없어요') : null, list,
     h('div', { class: 'row' }, add, h('button', { class: 'btn ghost', onclick: () => { pl.push({ game: add.value, weight: add.value === 'throne' ? 2 : 1 }); draw(); } }, '＋ 추가')),
     h('div', { class: 'row' }, h('button', { class: 'btn', disabled: locked, onclick: async () => { await save({ settings: { playlist: pl } }); toast('게임 순서를 저장했어요'); } }, '💾 저장'),
-      h('button', { class: 'btn ghost', onclick: () => { pl.splice(0, pl.length, ...games.map((g) => ({ game: g.id, weight: g.id === 'throne' ? 2 : 1 }))); draw(); } }, '20종 전체 넣기')),
+      h('button', { class: 'btn ghost', onclick: () => { pl.splice(0, pl.length, ...games.map((g) => ({ game: g.id, weight: g.id === 'throne' ? 2 : 1 }))); draw(); } }, '전체 게임 넣기')),
     h('p', { class: 'muted small' }, '배점은 순위 포인트에 곱해져요 (1위 = 팀 수 × 10점 × 배점). 역전 룰렛은 순위 포인트 대신 보너스 점수를 줘요.'));
+}
+// ---------------- 🎵 음악 ----------------
+let myMusic = []; const loadMyMusic = () => BGM.listCustom().then((l) => { myMusic = l; });
+loadMyMusic();
+const prevAudio = new Audio(); let prevId = null;
+async function preview(id, btn) {
+  if (prevId === id && !prevAudio.paused) { prevAudio.pause(); prevId = null; btn.textContent = '▶ 미리듣기'; return; }
+  document.querySelectorAll('.pvbtn').forEach((b) => { b.textContent = '▶ 미리듣기'; });
+  const t = BGM.TRACKS.find((x) => x.id === id); const src = id === 'fanfare' ? BGM.FANFARE.file : t ? t.file : await BGM.customURL(id);
+  if (!src) return toast('이 컴퓨터에 없는 곡이에요');
+  prevAudio.src = src; prevAudio.volume = (S?.settings?.bgmVol ?? 70) / 100; prevId = id; btn.textContent = '⏸ 멈춤';
+  prevAudio.play().catch(() => toast('재생하지 못했어요'));
+  prevAudio.onended = () => { btn.textContent = '▶ 미리듣기'; prevId = null; };
+}
+function bgmOptions(gid) {
+  const rec = BGM.REC[gid] || 'g7'; const rn = rec === 'none' ? '음악 없음' : BGM.TRACKS.find((t) => t.id === rec).name;
+  return { auto: `⭐ 추천 (${rn})`, ...Object.fromEntries(BGM.TRACKS.map((t) => [t.id, `🎵 ${t.name}`])), ...Object.fromEntries(myMusic.map((t) => [t.id, `💾 ${t.name}`])), none: '🔇 음악 없음' };
+}
+function bgmSelect(gid) { const sel = select(bgmOptions(gid), S.settings.bgm?.[gid] || 'auto'); sel.classList.add('bgmsel'); sel.onchange = () => setBgm(gid, sel.value); return sel; }
+async function setBgm(gid, v) { const m = { ...(S.settings.bgm || {}) }; if (v === 'auto') delete m[gid]; else m[gid] = v; S.settings.bgm = m; await save({ settings: { bgm: m } }); toast('음악을 바꿨어요 · 다음 행사에도 이 설정을 기억해요'); }
+const mb = (n) => (n / 1048576).toFixed(1) + 'MB';
+async function tabMusic(body) {
+  const st = S.settings;
+  const vol = (k, label) => { const v = h('b', {}, `${st[k] ?? (k === 'bgmVol' ? 70 : 80)}`); const r = h('input', { type: 'range', min: 0, max: 100, step: 5, value: st[k] ?? (k === 'bgmVol' ? 70 : 80), class: 'rng' }); r.oninput = () => (v.textContent = r.value); r.onchange = () => save({ settings: { [k]: +r.value } }); return h('div', { class: 'volrow' }, h('span', {}, label), r, v); };
+  const fan = h('input', { class: 'inp sm', type: 'number', min: 3, max: 60, value: st.fanfareSec ?? 12 }); fan.onchange = () => { const v = Math.max(3, Math.min(60, Math.round(+fan.value || 12))); fan.value = v; save({ settings: { fanfareSec: v } }); };
+  body.append(h('h3', {}, '🔊 음량'), h('div', { class: 'card stack' }, vol('bgmVol', '🎵 배경음악'), vol('sfxVol', '🔔 효과음'),
+    h('div', { class: 'row wrap' }, field('🎺 승리 빵빠레 길이(초)', fan, '결과 발표·시상식 1위 때 나와요. 끝날 때 자연스럽게 작아져요'),
+      h('button', { class: `btn ${st.duck ? 'yellow' : 'ghost'}`, onclick: () => save({ settings: { duck: !st.duck } }).then(() => setTimeout(drawTab, 250)) }, st.duck ? '🎤 말씀 끝 · 음악 다시 크게' : '🎤 말할 때 음악 줄이기')),
+    h('p', { class: 'muted small' }, '대형 화면 창에서 M 키를 눌러도 음악을 바로 줄였다 키울 수 있어요. 음량은 대형 화면에 바로 적용돼요.')));
+  // 곡 목록
+  const list = h('div', { class: 'mlist' });
+  for (const t of BGM.TRACKS) { const m = BGM.MOODS[t.mood]; const b = h('button', { class: 'btn small ghost pvbtn', onclick: (e) => preview(t.id, e.currentTarget) }, '▶ 미리듣기'); list.append(h('div', { class: 'mrow', style: { '--mc': m.color } }, h('b', {}, `🎵 ${t.name}`), h('span', { class: 'mood' }, m.label), h('small', { class: 'muted' }, t.desc), b)); }
+  { const b = h('button', { class: 'btn small ghost pvbtn', onclick: (e) => preview('fanfare', e.currentTarget) }, '▶ 미리듣기'); list.append(h('div', { class: 'mrow', style: { '--mc': '#ffd43b' } }, h('b', {}, '🎺 빵빠레 (승리 발표 전용)'), h('span', { class: 'mood' }, '🏆 승리'), h('small', { class: 'muted' }, '첫 타격에 맞춰 트로피가 떨어져요'), b)); }
+  await loadMyMusic();
+  for (const t of myMusic) {
+    const m = BGM.MOODS[t.mood] || BGM.MOODS.battle; const b = h('button', { class: 'btn small ghost pvbtn', onclick: (e) => preview(t.id, e.currentTarget) }, '▶ 미리듣기');
+    list.append(h('div', { class: 'mrow', style: { '--mc': m.color } }, h('b', {}, `💾 ${t.name}`), h('span', { class: 'mood' }, m.label), h('small', { class: 'muted' }, `${Math.floor(t.dur / 60)}분 ${t.dur % 60}초 · ${mb(t.size)} · 이 컴퓨터에만 저장`), b,
+      h('button', { class: 'btn small red', onclick: async () => { if (!confirm(`'${t.name}' 곡을 이 컴퓨터에서 지울까요?`)) return; await BGM.removeCustom(t.id); const m2 = { ...(S.settings.bgm || {}) }; for (const [g, v] of Object.entries(m2)) if (v === t.id) delete m2[g]; await save({ settings: { bgm: m2 } }); toast('지웠어요'); drawTab(); } }, '삭제')));
+  }
+  // 곡 추가
+  const file = h('input', { type: 'file', accept: 'audio/*,.mp3', class: 'inp' }); const nm = h('input', { class: 'inp', placeholder: '곡 이름 (비우면 파일 이름)', maxlength: 30 });
+  const mood = select(Object.fromEntries(Object.entries(BGM.MOODS).filter(([k]) => k !== 'none').map(([k, v]) => [k, `${v.label} 분위기`])), 'battle');
+  const info = await BGM.storageInfo();
+  const addBtn = h('button', { class: 'btn', onclick: async () => { addBtn.disabled = true; addBtn.textContent = '넣는 중…'; try { const r = await BGM.addCustom(file.files[0], nm.value.trim(), mood.value); toast(`'${r.name}' 곡을 넣었어요`); drawTab(); } catch (e) { toast(e.message, 4000); addBtn.disabled = false; addBtn.textContent = '＋ 곡 넣기'; } } }, '＋ 곡 넣기');
+  body.append(h('h3', {}, '🎶 곡 목록'), list,
+    h('h3', {}, '＋ 내 MP3 넣기'), h('div', { class: 'card stack' }, h('div', { class: 'row wrap' }, file, nm, mood, addBtn),
+      h('div', { class: 'notice2' }, h('b', {}, '꼭 읽어 주세요'), h('ul', {},
+        h('li', {}, `넣은 곡은 서버가 아니라 '지금 이 컴퓨터의 이 브라우저'에 저장돼요 (곡당 ${BGM.MAX_MB}MB까지). 인터넷이 끊겨도 이 컴퓨터에서는 계속 나와요.`),
+        h('li', {}, '대형 화면도 같은 컴퓨터·같은 브라우저(예: 크롬)로 열어야 이 곡이 나와요. 다른 컴퓨터에서는 추천곡이 대신 나와요.'),
+        h('li', {}, "브라우저의 '인터넷 사용 기록·쿠키 및 사이트 데이터 삭제', 시크릿 창, 저장 공간 부족이면 넣은 곡이 사라질 수 있어요. 원본 MP3는 꼭 따로 보관하세요."),
+        h('li', {}, `지금 이 브라우저 사용량 ${mb(info.usage)}${info.quota ? ` / 사용 가능 약 ${mb(info.quota)}` : ''} · 자동 삭제 방지 ${info.persisted ? '✅ 켜짐' : '⚠️ 브라우저가 허용 안 함 (공간이 부족하면 지워질 수 있어요)'}`)))));
+  // 게임별 음악
+  const tbl = h('div', { class: 'gmlist' });
+  for (const g of games) {
+    const sel = bgmSelect(g.id); const tr = BGM.pick(S.settings, g.id, myMusic); const m = BGM.MOODS[tr?.mood || 'none'];
+    // 연령별로 다른 곡 (예: 초등·중등 댄스는 다른 노래)
+    const ages = Object.keys(BGM.AGE_LABEL); const has = ages.some((a) => S.settings.bgm?.[`${g.id}@${a}`]);
+    const box = h('div', { class: 'agebox', style: { display: has ? '' : 'none' } }, ...ages.map((a) => { const k = `${g.id}@${a}`; const o = bgmOptions(g.id); delete o.auto; const sa = select({ same: '기본과 같게', ...o }, S.settings.bgm?.[k] || 'same'); sa.classList.add('bgmsel'); sa.onchange = () => setBgm(k, sa.value === 'same' ? 'auto' : sa.value); return h('label', { class: `agesel ${S.settings.bgm?.[k] ? 'on' : ''}` }, h('span', {}, BGM.AGE_LABEL[a]), sa); }));
+    const tg = h('button', { class: 'btn small ghost', onclick: () => { box.style.display = box.style.display ? '' : 'none'; } }, has ? '👶🧑 연령별 ✓' : '👶🧑 연령별');
+    tbl.append(h('div', { class: 'gmrow', style: { '--mc': m.color } }, h('span', { class: 'gn' }, `${String(g.no).padStart(2, '0')} ${g.emoji} ${g.name}`), sel, h('span', { class: 'mood' }, m.label), tg, BGM.NO_MUSIC_WHY[g.id] && !tr ? h('small', { class: 'muted' }, `추천이 '없음'인 이유: ${BGM.NO_MUSIC_WHY[g.id]}`) : null, box));
+  }
+  body.append(h('h3', {}, '🎮 게임별 배경음악'), h('p', { class: 'muted small' }, '게임마다 곡을 고르면 바로 저장되고, 다음에 만드는 행사에도 그대로 적용돼요. 화면 분위기(색·조명 연출)도 곡에 맞춰 바뀌어요.'),
+    h('div', { class: 'row' }, h('button', { class: 'btn small ghost', onclick: async () => { if (!confirm('모든 게임을 추천 음악으로 되돌릴까요?')) return; await save({ settings: { bgm: {} } }); toast('추천 음악으로 되돌렸어요'); setTimeout(drawTab, 250); } }, '⭐ 모두 추천 음악으로')), tbl);
 }
 function tabPeople(body) {
   const ps = full?.players || [];

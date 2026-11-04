@@ -186,6 +186,7 @@ V.mugung = {
     if (s.ph !== this.lastPh) {
       this.lastPh = s.ph;
       this.who.className = `mgwho ${s.ph}`;
+      this.ctx.bgm?.hold(s.ph !== 'sing'); // 술래가 돌아보면 음악 뚝!
       if (s.ph === 'look') { this.ctx.sfx('bad'); }
       else if (s.ph === 'turn') { this.ctx.sfx('hurry'); }
       else { this.ctx.say('무궁화 꽃이 피었습니다', Math.min(2, 1.0 * (3.2 / Math.max(1.1, s.dur)))); }

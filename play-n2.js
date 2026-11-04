@@ -133,15 +133,16 @@ G.basket = throwGame('basket');
 
 // ---------------- 점프 러너
 G.runner = skillUI({
-  init(S) { S.y = 0; S.vy = 0; S.dist = 0; S.obs = []; S.next = 1.2; S.stun = 0; S.r2 = rng(S.v.seed + 99); },
+  init(S) { S.y = 0; S.vy = 0; S.dist = 0; S.obs = []; S.next = 1.2; S.stun = 0; S.buf = 0; S.bh = 0.2; S.r2 = rng(S.v.seed + 99); },
   motion(S, ev) { if (ev.type === 'flick' || ev.type === 'swing') this.down(S); },
-  down(S) { if (S.y <= 0.001 && S.stun <= 0) { S.vy = 1.55; vibrate(8); sfx('tap', S.api.sfxOn); } },
+  // 공중에서 미리 눌러도 착지하자마자 점프 (0.15초 선입력)
+  down(S) { if (S.stun > 0) return; if (S.y <= 0.001) { S.vy = 1.9; S.buf = 0; vibrate(8); sfx('tap', S.api.sfxOn); } else S.buf = 0.15; },
   step(S, dt) {
     const sp = [0.32, 0.36, 0.42, 0.46, 0.5, 0.52][S.lv] + S.t * 0.004;
     if (S.stun > 0) { S.stun -= dt; } else { S.dist += sp * dt * 40; }
-    S.vy -= 4.6 * dt; S.y = Math.max(0, S.y + S.vy * dt); if (S.y === 0) S.vy = 0;
-    S.next -= dt; if (S.next <= 0) { const big = S.r2() < 0.25 && S.lv >= 2; S.obs.push({ x: 1.1, w: big ? 0.09 : 0.06, h: big ? 0.22 : 0.15, fly: S.lv >= 3 && S.r2() < 0.15 }); S.next = (1.1 + S.r2() * 1.1) * [1.5, 1.3, 1, 0.95, 0.9, 0.88][S.lv]; }
-    for (const o of S.obs) { if (S.stun <= 0) o.x -= sp * dt * 2.2; if (!o.hit && o.x < 0.24 && o.x + o.w > 0.16) { const top = o.fly ? 0.3 : 0; const hy = o.fly ? 0.3 + o.h : o.h; const by = S.y * 0.55; if (o.fly ? by + 0.14 > top && by < hy : by < o.h * 0.9) { o.hit = true; S.stun = 0.9; vibrate(80); sfx('bad', S.api.sfxOn); S.say('쿵!'); } } }
+    S.vy -= 5.2 * dt; S.y = Math.max(0, S.y + S.vy * dt); if (S.y === 0) { S.vy = 0; if (S.buf > 0 && S.stun <= 0) { S.vy = 1.9; S.buf = 0; sfx('tap', S.api.sfxOn); } } S.buf = Math.max(0, S.buf - dt);
+    S.next -= dt; if (S.next <= 0) { const big = S.r2() < 0.25 && S.lv >= 2; S.obs.push({ x: 1.1, w: big ? 0.09 : 0.06, h: big ? 0.22 : S.lv <= 1 ? 0.12 : 0.15, fly: S.lv >= 3 && S.r2() < 0.15 }); S.next = (1.1 + S.r2() * 1.1) * [1.5, 1.3, 1, 0.95, 0.9, 0.88][S.lv]; }
+    for (const o of S.obs) { if (S.stun <= 0) o.x -= sp * dt * 2.2; if (!o.hit && o.x < 0.225 && o.x + o.w > 0.175) { if (o.fly ? S.y + S.bh > 0.3 + 0.01 && S.y < 0.3 + o.h : S.y < o.h - 0.01) { o.hit = true; S.stun = 0.9; vibrate(80); sfx('bad', S.api.sfxOn); S.say('쿵!'); } } }
     S.obs = S.obs.filter((o) => o.x > -0.2);
     const m = Math.floor(S.dist); if (m !== S.score) { if (Math.floor(m / 100) > Math.floor(S.score / 100)) S.add(0, 1, `${Math.floor(m / 100) * 100}m 돌파!`); S.score = m; }
   },
@@ -150,6 +151,7 @@ G.runner = skillUI({
     c.fillStyle = '#ffffff08'; for (let i = 0; i < 6; i++) { const x = ((i * 0.3 - S.dist * 0.004) % 1.8 + 1.8) % 1.8 - 0.3; c.beginPath(); c.arc(x * W, H * 0.3, 60 * d, 0, 7); c.fill(); }
     c.fillStyle = '#2fd27a'; c.fillRect(0, gy, W, 4 * d); c.fillStyle = '#ffffff12'; for (let i = 0; i < 20; i++) c.fillRect(((i * 0.08 - S.dist * 0.01) % 1.6 + 1.6) % 1.6 * W - 0.3 * W, gy + 14 * d, 18 * d, 3 * d);
     for (const o of S.obs) { c.fillStyle = o.hit ? '#ff4d6d55' : '#ff4d6d'; const top = o.fly ? gy - (0.3 + o.h) * H * 0.55 : gy - o.h * H * 0.55; rr(c, o.x * W, top, o.w * W, o.h * H * 0.55, 6 * d); c.fill(); }
+    S.bh = (59 * d) / (H * 0.55); // 러너 키(머리까지)를 장애물과 같은 단위로
     const px = 0.2 * W, py = gy - S.y * H * 0.55; const run = S.stun > 0 ? 0 : (S.t * 3) % 1;
     c.globalAlpha = S.stun > 0 && Math.floor(S.t * 10) % 2 ? 0.4 : 1;
     // 러너 실루엣
@@ -171,7 +173,7 @@ G.flappy = skillUI({
     if (S.stun > 0) { S.stun -= dt; if (S.stun <= 0) { S.y = 0.45; S.vy = 0; } return; }
     S.vy += 1.45 * dt; S.y += S.vy * dt;
     S.next -= dt; if (S.next <= 0) { S.pipes.push({ x: 1.1, c: 0.25 + S.r2() * 0.5, gap, pass: false }); S.next = 1.6; }
-    for (const p of S.pipes) { p.x -= sp * dt; if (!p.pass && p.x < 0.22) { p.pass = true; S.add(1); sfx('good', S.api.sfxOn); if (S.score % 10 === 0) S.add(0, 1, `${S.score}개 통과!`); } if (p.x < 0.3 && p.x > 0.14 && (S.y < p.c - p.gap / 2 || S.y > p.c + p.gap / 2)) { S.stun = 1; vibrate(80); sfx('bad', S.api.sfxOn); S.say('앗!'); p.x = -1; } }
+    for (const p of S.pipes) { p.x -= sp * dt; if (!p.pass && p.x < 0.22) { p.pass = true; S.add(1); sfx('good', S.api.sfxOn); if (S.score % 10 === 0) S.add(0, 1, `${S.score}개 통과!`); } if (p.x < 0.22 + 0.04 && p.x + 0.12 > 0.22 - 0.04 && (S.y < p.c - p.gap / 2 + 0.02 || S.y > p.c + p.gap / 2 - 0.02)) { S.stun = 1; vibrate(80); sfx('bad', S.api.sfxOn); S.say('앗!'); p.x = -1; } }
     if (S.y > 1 || S.y < 0) { S.stun = 1; S.say('앗!'); }
     S.pipes = S.pipes.filter((p) => p.x > -0.3);
   },

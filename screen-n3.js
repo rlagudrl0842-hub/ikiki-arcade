@@ -60,6 +60,7 @@ function peScreen(kind) {
       if (kind === 'pe_freeze') say = s.ph === 'freeze' ? '얼음!' : MOVES[s.move];
       if (kind === 'pe_simon' && s.cmd) say = `${s.cmd.say ? '가라사대, ' : ''}${MOVES[s.cmd.move]}`;
       if (kind === 'pe_mission') say = s.text;
+      if (kind === 'pe_freeze' && s.ph !== this.lastPh) { this.lastPh = s.ph; ctx.bgm?.hold(s.ph === 'freeze'); }
       const key = `${say}|${s.n ?? s.i}|${s.ph}`; if (say && key !== this.lastSay) { this.lastSay = key; ctx.say(say.replace(/!/g, ''), 1.05); if (say === '얼음!') ctx.sfx('boom'); }
       return s.pts;
     },
@@ -69,10 +70,10 @@ function peScreen(kind) {
       const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, freeze ? '#0d3a6b' : '#2a1458'); g.addColorStop(1, '#0b0e24'); c.fillStyle = g; c.fillRect(0, 0, W, H);
       // 비트 (댄스 중 120BPM)
       const beat = 500; const bk = (t % beat) / beat;
-      if (kind === 'pe_freeze' && !freeze) { const bi = Math.floor(t / beat); if (bi !== this.lastBeat) { this.lastBeat = bi; this.ctx.sfx(bi % 2 ? 'tap' : 'count'); } c.fillStyle = `rgba(255,80,200,${0.15 * (1 - bk)})`; c.fillRect(0, 0, W, H); for (let i = 0; i < 6; i++) { c.fillStyle = `hsla(${(t / 20 + i * 60) % 360},90%,60%,.18)`; c.beginPath(); c.arc(200 + i * 160, 700 - Math.sin(t / 300 + i) * 60, 60 + (1 - bk) * 30, 0, 7); c.fill(); } }
+      if (kind === 'pe_freeze' && !freeze) { const bi = Math.floor(t / beat); if (bi !== this.lastBeat) { this.lastBeat = bi; if (!this.ctx.bgm?.active()) this.ctx.sfx(bi % 2 ? 'tap' : 'count'); } c.fillStyle = `rgba(255,80,200,${0.15 * (1 - bk)})`; c.fillRect(0, 0, W, H); for (let i = 0; i < 6; i++) { c.fillStyle = `hsla(${(t / 20 + i * 60) % 360},90%,60%,.18)`; c.beginPath(); c.arc(200 + i * 160, 700 - Math.sin(t / 300 + i) * 60, 60 + (1 - bk) * 30, 0, 7); c.fill(); } }
       c.textAlign = 'center'; c.textBaseline = 'middle';
       let label = '', key = 'up', sub = '';
-      if (kind === 'pe_freeze') { label = freeze ? '얼음!' : MOVES[s.move]; key = KEYS[s.move]; sub = freeze ? '그대로 멈춰요! 움직이면 안 돼요' : '음악에 맞춰 따라 해요'; }
+      if (kind === 'pe_freeze') { label = freeze ? '얼음!' : MOVES[s.move]; key = KEYS[s.move]; sub = freeze ? '그대로 멈춰요! 움직이면 안 돼요' : '음악에 맞춰 따라 해요 · 음악이 멈추면 얼음!'; }
       if (kind === 'pe_simon') { if (s.cmd) { label = `${s.cmd.say ? '가라사대 ' : ''}${MOVES[s.cmd.move]}`; key = KEYS[s.cmd.move]; sub = s.cmd.say ? '따라 해요!' : '가라사대가 없어요… 속지 마세요!'; } else label = '준비!'; }
       if (kind !== 'pe_mission') {
         const k = freeze ? 0.25 : (t / 900) % 1;

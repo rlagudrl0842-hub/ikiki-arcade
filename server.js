@@ -17,8 +17,9 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js']);
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js',
+  'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 
 export function createServer(opts = {}) {
   const dbFile = opts.dbFile ?? process.env.DB_FILE ?? path.join(ROOT, 'data', 'arcade.db');
@@ -67,7 +68,12 @@ export function createServer(opts = {}) {
     if (!row) return null;
     const ev = new Event(hub, row); ev.ownerId = row.owner_id ?? MASTER_ID; events.set(eid, ev); return ev;
   };
+  // 강사별 음악 설정(게임별 BGM·음량·빵빠레 길이) 기억 → 새 행사에 자동 적용
+  const AUDIO_KEYS = ['bgm', 'bgmVol', 'sfxVol', 'fanfareSec'];
+  const audioPref = (uid) => { try { return JSON.parse(db.getKV('audio:' + uid) || '{}'); } catch { return {}; } };
+  const saveAudioPref = (uid, st) => { const o = {}; for (const k of AUDIO_KEYS) if (st[k] != null) o[k] = st[k]; db.setKV('audio:' + uid, JSON.stringify(o)); };
   const newEvent = (user, data) => {
+    data = { ...data, settings: { ...audioPref(user.id), ...(data.settings || {}) } };
     const id = Event.create(hub, data);
     db.run('UPDATE events SET owner_id=? WHERE id=?', user.id, id);
     const ev = events.get(id); if (ev) ev.ownerId = user.id;
@@ -121,7 +127,7 @@ export function createServer(opts = {}) {
       const ext = path.extname(file);
       res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
-        'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=60',
+        'Cache-Control': ext === '.html' ? 'no-cache' : ext === '.mp3' ? 'public, max-age=604800' : 'public, max-age=60', 'Content-Length': st.size,
         'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; media-src 'self' data: blob:; frame-ancestors 'none'",
       });
       fs.createReadStream(file).pipe(res);
@@ -287,7 +293,7 @@ export function createServer(opts = {}) {
     if (a === 'events' && b) {
       const ev = evOr404(b);
       if (!c && method === 'GET') return json(res, 200, { ...ev.publicState(), full: { settings: ev.settings, players: [...ev.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded, online: p.online })) } });
-      if (c === 'update' && method === 'POST') { updateEvent(ev, body); return json(res, 200, { ok: true }); }
+      if (c === 'update' && method === 'POST') { updateEvent(ev, body); if (body.settings && AUDIO_KEYS.some((k) => k in body.settings)) saveAudioPref(user.id, ev.settings); return json(res, 200, { ok: true }); }
       if (c === 'clone' && method === 'POST') {
         const id = newEvent(user, { name: `${ev.name} (복사)`, settings: { ...ev.settings, teamCount: ev.teams.length } });
         const ne = getEvent(id);
