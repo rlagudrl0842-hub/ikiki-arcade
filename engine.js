@@ -125,7 +125,8 @@ export class Event {
     return { rows, played: this.db.get("SELECT COUNT(*) c FROM runs WHERE event_id=? AND status='done'", this.id).c };
   }
 
-  publicState() {
+  // opts.full: 사회자 API 응답에만 개인 결과 전체 포함 (모두에게 보내는 상태에는 빼서 300명일 때 메시지 크기 ↓)
+  publicState(opts = {}) {
     const item = this.currentItem();
     const g = this.game;
     return {
@@ -141,7 +142,7 @@ export class Event {
       teams: this.teams, counts: this.teamCounts(),
       standings: this.standings(), prevRanks: this.prevRanks,
       cheer: Object.fromEntries(this.cheer), cheerEvent: this.cheerEvent,
-      lastResult: this.lastResult, ceremonyStep: this.state.ceremonyStep,
+      lastResult: this.lastResult && !opts.full ? { ...this.lastResult, players: undefined, nPlayers: Object.keys(this.lastResult.players || {}).length } : this.lastResult, ceremonyStep: this.state.ceremonyStep,
       teamMvp: ['ceremony', 'ended'].includes(this.state.phase) ? this.teamMvp() : null,
     };
   }
@@ -581,7 +582,7 @@ function compactPlayers(players = {}) {
 export function gameInfo(gid, ev) {
   const d = GAMES[gid]; if (!d) return {};
   const age = ev.dominantAge();
-  return { name: d.name, emoji: d.emoji, no: d.no, rule: (ev.settings.mode === 'baby' && d.rule.baby) || d.ruleFor(age, ev.settings), howto: d.howto, dur: undefined, durSec: d.untimed ? null : ev.durOf(ev.currentItem() || {}, d) / 1000, team: !!d.teamGame, host: !!d.hostScore };
+  return { name: d.name, emoji: d.emoji, no: d.no, rule: (ev.settings.mode === 'baby' && d.rule.baby) || d.ruleFor(age, ev.settings), howto: d.howto, dur: undefined, durSec: d.untimed ? null : ev.durOf(ev.currentItem() || {}, d) / 1000, team: !!d.teamGame, host: !!d.hostScore, pre: !!d.inputDuringCountdown };
 }
 
 export function defaultPlaylist(mode) {

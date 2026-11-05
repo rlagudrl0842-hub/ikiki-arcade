@@ -33,6 +33,13 @@ export class TapLimiter {
 
 // 정수 범위 검증
 export const intIn = (v, a, b) => Number.isInteger(v) && v >= a && v <= b;
+// 입력 도착 지연 추적: 최근 지연의 90%값 + 여유 → 팀 판정을 그만큼 늦춰서 늦게 온 입력도 반영
+export function lagTracker(min = 250, max = 1200) {
+  const a = []; let i = 0;
+  return { add(ms) { if (!(ms >= -500 && ms < 5000)) return; a[i++ % 64] = Math.max(0, ms); }, grace() { if (!a.length) return min; const s = a.slice().sort((x, y) => x - y); return Math.min(max, Math.max(min, s[Math.floor(s.length * 0.9)] + 150)); } };
+}
+// 누른 시각(ts)이 서버 시각 기준 이 범위 안이면 받음 (늦게 도착 2.5초까지)
+export const tsOk = (ts, now) => typeof ts === 'number' && Number.isFinite(ts) && ts >= now - 2500 && ts <= now + 1000;
 export const numIn = (v, a, b) => typeof v === 'number' && Number.isFinite(v) && v >= a && v <= b;
 
 export const pick = (r, arr) => arr[Math.floor(r() * arr.length)];

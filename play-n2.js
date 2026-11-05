@@ -416,11 +416,11 @@ function choiceUI(kind) {
     mount(root, v, api) { this.api = api; this.root = h('div', { class: 'gwrap bell2' }); root.append(this.root); this.update(v); this.t = setInterval(() => { const el = this.root.querySelector('.belltime'); if (el && this.v) el.textContent = this.v.ph === 'q' ? `${lf(this.api, this.v.until)}초` : ''; }, 250); },
     update(v) {
       const key = `${v.i}:${v.ph}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
-      const R = this.root; R.innerHTML = ''; const can = v.ph === 'q' && v.my == null && v.alive !== false;
+      const R = this.root; R.innerHTML = ''; const can = v.ph === 'q' && v.my == null; // 탈락해도 누를 수 있음 (소수가 산다: 부활 찬스)
       R.append(h('div', { class: 'bellh' }, h('span', {}, `${v.i + 1} / ${v.N}`), h('span', { class: 'belltime' })));
       let opts = [], title = '';
       if (kind === 'tele') { title = v.text; opts = v.opts; }
-      if (kind === 'mino') { title = v.alive === false ? '탈락 — 결과를 지켜봐요' : '더 적게 고를 것 같은 쪽은?'; opts = v.opts; }
+      if (kind === 'mino') { title = v.alive === false ? '😤 탈락 중 · 살아남을 쪽을 맞히면 부활!' : '더 적게 고를 것 같은 쪽은?'; opts = v.opts; }
       if (kind === 'hilo') { title = ''; opts = ['▲ 높다', '▼ 낮다']; R.append(h('div', { class: 'hlcards' }, h('div', { class: 'hlc' }, v.card), h('div', { class: `hlc back ${v.next ? 'open' : ''}` }, v.next || '?')), h('div', { class: 'muted' }, `연속 ${v.st} · ${v.pts}점`)); }
       if (title) R.append(h('div', { class: 'bellq' }, title));
       R.append(h('div', { class: `bellopts ${kind === 'tele' ? '' : 'n2'}` }, opts.map((o, j) => {

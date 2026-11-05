@@ -106,10 +106,7 @@ function arenaGame(kind) {
       }
       if (kind === 'gems') for (const [x, y, gv] of v.gems || []) { c.fillStyle = gv >= 5 ? '#ffd43b' : gv === 2 ? '#7cf3ff' : '#b06bff'; c.save(); c.translate(x * sx, y * sy); c.rotate(Math.PI / 4); const r = (gv >= 5 ? 10 : 6) * d; c.fillRect(-r, -r, r * 2, r * 2); c.restore(); }
       if (kind === 'crown' && v.z) { c.fillStyle = 'rgba(255,212,59,.22)'; c.beginPath(); c.arc(v.z[0] * sx, v.z[1] * sy, v.z[2] * sx, 0, 7); c.fill(); c.strokeStyle = '#ffd43b'; c.lineWidth = 3 * d; c.stroke(); }
-      if (kind === 'zombie') {
-        const n = v.near || [];
-        for (let i = 0; i < n.length; i += 3) { c.fillStyle = n[i + 2] ? '#56d364' : '#ffffffaa'; c.beginPath(); c.arc(n[i] * sx, n[i + 1] * sy, (n[i + 2] ? 9 : 6) * d, 0, 7); c.fill(); }
-      }
+      if (kind === 'zombie') return this.drawZombie(c, W, H, d, now);
       // 내 위치 (서버 위치 + 지금 방향으로 살짝 예측)
       const dt = Math.min(0.25, (now - this.at) / 1000);
       const still = v.dead || v.stun;
@@ -120,6 +117,35 @@ function arenaGame(kind) {
       c.font = `${18 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(v.dead ? '💀' : v.z ? '🧟' : '', mx, my);
       c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 26 * d);
+    },
+    // 좀비: 내 주변을 크게 보여 주는 카메라 화면 (전체 지도에선 내 주변만 받아서 멀리 있는 좀비가 깜빡 사라졌음)
+    drawZombie(c, W, H, d, now) {
+      const v = this.v; const VW = 800, VH = 430; const k = W / VW;
+      const dt = Math.min(0.25, (now - this.at) / 1000);
+      const px = v.x + this.vec[0] * 330 * dt * (v.stun ? 0 : 1), py = v.y + this.vec[1] * 330 * dt * (v.stun ? 0 : 1);
+      const cx = Math.max(VW / 2, Math.min(AW - VW / 2, px)), cy = Math.max(VH / 2, Math.min(AH - VH / 2, py));
+      const X = (x) => (x - cx + VW / 2) * k, Y = (y) => (y - cy + VH / 2) * k;
+      c.fillStyle = v.z ? '#0f2416' : '#121845'; c.fillRect(0, 0, W, H);
+      c.strokeStyle = '#ffffff12'; c.lineWidth = 1; c.beginPath(); for (let x = 0; x <= AW; x += 100) { c.moveTo(X(x), 0); c.lineTo(X(x), H); } for (let y = 0; y <= AH; y += 100) { c.moveTo(0, Y(y)); c.lineTo(W, Y(y)); } c.stroke();
+      c.strokeStyle = '#ff4d6d'; c.lineWidth = 4 * d; c.strokeRect(X(0), Y(0), AW * k, AH * k); // 경기장 끝 벽
+      const n = v.near || []; const arrows = [];
+      for (let i = 0; i < n.length; i += 3) {
+        const sx2 = X(n[i]), sy2 = Y(n[i + 1]); const z = n[i + 2];
+        if (sx2 < -10 || sx2 > W + 10 || sy2 < -10 || sy2 > H + 10) { if (z !== (v.z ? 1 : 0)) arrows.push([sx2, sy2, z]); continue; }
+        if (z) { c.fillStyle = '#56d364'; c.beginPath(); c.arc(sx2, sy2, 13 * d, 0, 7); c.fill(); c.font = `${16 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🧟', sx2, sy2); }
+        else { c.fillStyle = '#ffffffcc'; c.beginPath(); c.arc(sx2, sy2, 9 * d, 0, 7); c.fill(); }
+      }
+      // 화면 밖에서 다가오는 상대: 가장자리 화살표
+      for (const [ax, ay, z] of arrows) {
+        const mx0 = X(px), my0 = Y(py); const a = Math.atan2(ay - my0, ax - mx0);
+        const ex = Math.max(16 * d, Math.min(W - 16 * d, ax)), ey = Math.max(16 * d, Math.min(H - 16 * d, ay));
+        c.save(); c.translate(ex, ey); c.rotate(a); c.fillStyle = z ? '#56d364' : '#ffffff'; c.beginPath(); c.moveTo(12 * d, 0); c.lineTo(-8 * d, -8 * d); c.lineTo(-8 * d, 8 * d); c.closePath(); c.fill(); c.restore();
+      }
+      const mx = X(px), my = Y(py); const pulse = 1 + 0.25 * Math.sin(now / 160);
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(mx, my, 17 * d * pulse, 0, 7); c.fill();
+      c.fillStyle = v.z ? '#2fbf4a' : this.api.team.color; c.beginPath(); c.arc(mx, my, 13 * d, 0, 7); c.fill();
+      c.font = `${18 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; if (v.z) c.fillText('🧟', mx, my);
+      c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 28 * d);
     },
     unmount() { stopLoop(this); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); },
   };
@@ -306,13 +332,13 @@ G.fruit = {
       const t = Math.max(0, Math.min(1, ((x - a[0]) * vx + (y - a[1]) * vy) / L));
       const dx = a[0] + vx * t - x, dy = a[1] + vy * t - y;
       if (dx * dx + dy * dy <= rr * rr) {
-        this.cut.add(f.id); this.pending.push(f.id);
+        this.cut.add(f.id); if (!this.pending.length) this.pendT = Math.round(this.api.now()); this.pending.push(f.id);
         this.halves.push({ f, x, y, at: performance.now(), ang: Math.atan2(vy, vx) });
         if (f.type === 'b') { vibrate([150, 50, 150]); sfx('boom', this.api.sfxOn); } else { vibrate(8); sfx('tap', this.api.sfxOn); }
       }
     }
   },
-  flush() { if (!this.pending.length) return; this.api.send({ a: 'cut', ids: this.pending.slice(0, 8), ts: Math.round(this.api.now()) }); this.pending = this.pending.slice(8); },
+  flush() { if (!this.pending.length) return; this.api.send({ a: 'cut', ids: this.pending.slice(0, 8), ts: this.pendT ?? Math.round(this.api.now()) }); this.pending = this.pending.slice(8); this.pendT = this.pending.length ? Math.round(this.api.now()) : null; },
   reply(r) {
     this.score = r.score; this.sc.textContent = `${r.score}점`;
     if (r.combo >= 3) { this.pop(`🔥 ${r.combo}콤보! +${r.combo - 2}`); sfx('good', this.api.sfxOn); }
@@ -355,8 +381,8 @@ G.bell = {
     const key = `${v.qi}:${v.ph}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
     const R = this.root; R.innerHTML = '';
     const head = h('div', { class: 'bellh' }, h('span', {}, `🔔 ${v.qi + 1} / ${v.N}`), v.revive ? h('span', { class: 'chip hot' }, '🔥 패자부활전') : null, h('span', { class: 'belltime' }));
-    const status = v.kid ? null : h('div', { class: `bellst ${v.alive ? 'ok' : 'out'}` }, v.alive ? `✅ 생존 중 · ${v.ok}개 정답` : (v.revive ? '😤 지금 맞히면 부활!' : '😵 탈락 — 패자부활전을 기다려요'));
-    const can = v.ph === 'q' && v.my == null && (v.alive || v.revive || v.kid);
+    const status = v.kid ? null : h('div', { class: `bellst ${v.alive ? 'ok' : 'out'}` }, v.alive ? `✅ 생존 중 · ${v.ok}개 정답` : '😤 탈락 중 · 이번 문제 맞히면 바로 부활!');
+    const can = v.ph === 'q' && v.my == null; // 탈락해도 매 문제 누를 수 있음
     const opts = h('div', { class: `bellopts n${v.opts.length}` }, v.opts.map((o, i) => {
       const cls = v.ph === 'reveal' ? (i === v.ans ? 'right' : i === v.my ? 'wrong' : 'dim') : i === v.my ? 'mine' : '';
       return onPress(h('button', { class: `bopt ${cls}`, disabled: !can }, h('b', {}, '①②③④'[i]), o), () => { if (!can) return; this.api.send({ a: 'ans', q: v.qi, c: i }); vibrate(15); this.v.my = i; this.key = ''; this.update(this.v); });
@@ -382,7 +408,7 @@ G.draw = {
   mount(root, v, api) { this.api = api; this.root = h('div', { class: 'gwrap draw2' }); root.append(this.root); this.update(v); this.t = setInterval(() => this.tick(), 250); },
   update(v) {
     const key = `${v.round}:${v.ph}:${v.me}:${v.got}`; const prev = this.v; this.v = v;
-    if (key === this.key) { if (v.me === 'guess' && v.sk && (!prev || v.seq !== prev.seq)) this.redraw(v.sk); if (v.me === 'draw') this.sv.textContent = `팀원 ${v.solved}/${v.n} 맞힘`; return; }
+    if (key === this.key) { if (v.me === 'guess' && v.sk) { this.redraw(v.sk); this.seq = v.seq; } else if (v.me === 'guess' && v.seq !== this.seq && performance.now() - (this.syncAt || 0) > 1500) { this.syncAt = performance.now(); this.api.send({ a: 'sync' }); } if (v.me === 'draw') this.sv.textContent = `팀원 ${v.solved}/${v.n} 맞힘`; return; }
     this.key = key; const R = this.root; R.innerHTML = '';
     const head = h('div', { class: 'bellh' }, h('span', {}, `🖍 ${v.round + 1} / ${v.R}판`), h('span', { class: 'belltime' }));
     if (v.wait || v.ph === 'gap') { R.append(head, h('div', { class: 'center' }, h('div', { class: 'cic' }, '🖍'), h('div', { class: 'ct' }, '곧 시작해요!'))); return; }
@@ -399,7 +425,8 @@ G.draw = {
       const can = v.ph === 'draw' && !v.got;
       R.append(head, h('div', { class: 'dword' }, v.answer ? h('span', {}, '정답: ', h('b', {}, v.answer)) : v.got ? '🎉 정답! 다른 팀을 기다려요' : `🎨 ${v.drawer} 님이 그리는 중`), cv,
         h('div', { class: 'dopts' }, (v.opts || []).map((o, i) => onPress(h('button', { class: `dopt ${v.answer && o === v.answer ? 'right' : ''}`, disabled: !can }, o), () => { if (can) { this.api.send({ a: 'g', w: i }); vibrate(10); } }))));
-      requestAnimationFrame(() => this.redraw(v.sk || []));
+      const keep = !v.sk && this.seq === v.seq ? (this.sk || []) : null; this.seq = v.sk ? v.seq : keep ? v.seq : -1; const sk0 = v.sk || keep || []; requestAnimationFrame(() => this.redraw(sk0));
+      if (v.me === 'guess' && this.seq !== v.seq) { this.syncAt = performance.now(); this.api.send({ a: 'sync' }); }
     }
     this.tick();
   },
@@ -421,6 +448,7 @@ G.draw = {
   },
   redraw(sk) { if (!this.cv) return; this.sk = sk.slice(); const { W, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d'); c.clearRect(0, 0, this.cv.width, this.cv.height); for (const s of this.sk) paintSeg(c, W, s, d); },
   reply(r) {
+    if (r.seq != null) this.seq = r.seq;
     if (r.sk && this.cv && this.v.me === 'guess') { const { W, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d'); for (const s of r.sk) { this.sk?.push(s); paintSeg(c, W, s, d); } }
     if (r.clr && this.cv) { this.sk = []; const c = this.cv.getContext('2d'); c.clearRect(0, 0, this.cv.width, this.cv.height); }
     if (r.right === true) { sfx('win', this.api.sfxOn); vibrate([60, 40, 60]); }
@@ -440,7 +468,8 @@ G.shout = {
     this.micBtn = h('button', { class: 'btn wide' }, '🎤 마이크 켜기');
     this.micBtn.onclick = () => this.startMic();
     this.tapBtn = onPress(h('button', { class: 'shtap', style: { '--tc': api.team.color } }, '👏 응원 연타 (마이크 대신)'), () => { this.taps++; vibrate(6); });
-    root.append(h('div', { class: 'gwrap shout2' }, this.ph, this.meter, this.team, this.micBtn, motionChip(api, '폰을 흔들어 응원'), this.tapBtn, h('div', { class: 'muted small' }, '소리는 녹음되지 않고 크기만 재요')));
+    // 작은 폰(360×640)에서도 연타 버튼이 화면 안에 보이도록: 연타 버튼을 먼저, 마이크·몸동작 버튼은 그 아래
+    root.append(h('div', { class: 'gwrap shout2' }, this.ph, this.meter, this.team, this.tapBtn, this.micBtn, motionChip(api, '폰을 흔들어 응원'), h('div', { class: 'muted small' }, '소리는 녹음되지 않고 크기만 재요')));
     this.unsub = M.sub((ev) => { if (M.on && ev.type === 'shake' && !this.an) this.taps++; });
     this.iv = setInterval(() => this.send(), 200);
     this.update(v);

@@ -292,7 +292,7 @@ export function createServer(opts = {}) {
     }
     if (a === 'events' && b) {
       const ev = evOr404(b);
-      if (!c && method === 'GET') return json(res, 200, { ...ev.publicState(), full: { settings: ev.settings, players: [...ev.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded, online: p.online })) } });
+      if (!c && method === 'GET') return json(res, 200, { ...ev.publicState({ full: true }), full: { settings: ev.settings, players: [...ev.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded, online: p.online })) } });
       if (c === 'update' && method === 'POST') { updateEvent(ev, body); if (body.settings && AUDIO_KEYS.some((k) => k in body.settings)) saveAudioPref(user.id, ev.settings); return json(res, 200, { ok: true }); }
       if (c === 'clone' && method === 'POST') {
         const id = newEvent(user, { name: `${ev.name} (복사)`, settings: { ...ev.settings, teamCount: ev.teams.length } });

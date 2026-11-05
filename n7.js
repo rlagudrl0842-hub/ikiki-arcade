@@ -1,6 +1,6 @@
 // 팀 협동 게임: 한마음 박자 · 팀 릴레이 — 혼자 잘해선 못 이기고 팀이 맞춰야 이기는 게임
 import { rng, shuffle } from './gen.js';
-import { clamp, round1, numIn, intIn } from './common.js';
+import { clamp, round1, numIn, intIn, lagTracker } from './common.js';
 
 function clock() { const c = { T: 0, last: null }; c.dt = (now) => { const d = c.last == null ? 0.1 : clamp((now - c.last) / 1000, 0, 0.25); c.last = now; c.T += d; return d; }; c.shift = (ms) => { if (c.last != null) c.last += ms; }; return c; }
 const lvOf = (ctx) => ctx.settings.lv ?? 2;
@@ -22,15 +22,15 @@ export const sync = {
     ctx.players.forEach(add);
     const per = beats.map(() => new Map()); // beat → Map(pid → dt)
     const teamStat = Object.fromEntries(ctx.teams.map((t) => [t, { sum: 0, n: 0, full: 0, combo: 0, best: 0 }]));
-    let judged = 0; let E0 = 0; const recent = [];
+    let judged = 0; let E0 = 0; const recent = []; const lagT = lagTracker(150, 1000);
     const nearest = (T) => { let lo = 0, hi = beats.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (beats[m].T < T) lo = m + 1; else hi = m; } const a = beats[lo], b = beats[lo - 1]; return b && Math.abs(b.T - T) < Math.abs(a.T - T) ? lo - 1 : lo; };
     const actTeam = (t) => [...P.values()].filter((p) => p.team === t && p.act);
     return {
       addPlayer(p) { if (!P.has(p.id)) add(p); }, shift: C.shift,
       input(pid, m, now) {
         const p = P.get(pid); if (!p || m.a !== 'hit' || !numIn(m.ts, now - 3000, now + 3000)) return;
-        p.act = true;
-        const T = (m.ts - E0) / 1000; const i = nearest(T); const b = beats[i]; if (!b || i < judged - 1) return;
+        p.act = true; lagT.add(now - m.ts);
+        const T = (m.ts - E0) / 1000; const i = nearest(T); const b = beats[i]; if (!b || i < judged) return; // 이미 판정 끝난 박자
         const dt = T - b.T; if (Math.abs(dt) > win || p.last === i) return;
         p.last = i;
         if (b.rest) { p.bad++; ctx.sendTo(pid, { run: ctx.runId, r: { k: 'rest' } }); return; }
@@ -39,7 +39,7 @@ export const sync = {
       },
       tick(now) {
         C.dt(now); E0 = now - C.T * 1000;
-        while (judged < beats.length && C.T > beats[judged].T + win + 0.05) {
+        while (judged < beats.length && C.T > beats[judged].T + win + lagT.grace() / 1000) {
           const b = beats[judged]; const hit = per[judged];
           if (!b.rest) for (const t of ctx.teams) {
             const act = actTeam(t); if (!act.length) { teamStat[t].n++; teamStat[t].combo = 0; continue; }

@@ -18,6 +18,15 @@ export function token(color, R) {
   SPR.set(k, cv); return cv;
 }
 const drawToken = (c, color, R, x, y) => { const t = token(color, R); c.drawImage(t, x - t.width / 2, y - t.height / 2); };
+// 이모지도 미리 그려 둔 그림으로 (fillText로 수백 개 그리면 대형 화면이 버벅임)
+const EMO = new Map();
+export function emo(e, px) {
+  const k = e + px; if (EMO.has(k)) return EMO.get(k);
+  const S = Math.ceil(px * 1.35); const cv = document.createElement('canvas'); cv.width = cv.height = S; const c = cv.getContext('2d');
+  c.font = `${px}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(e, S / 2, S / 2 + px * 0.05);
+  EMO.set(k, cv); return cv;
+}
+export const drawEmo = (c, e, px, x, y) => { const im = emo(e, Math.round(px)); c.drawImage(im, x - im.width / 2, y - im.height / 2); };
 // 사람 실루엣 (팀 색 운동복). ph: 달리기 동작 0~1, air: 점프 높이 0~1
 export function figure(c, x, y, s, color, { ph = 0, air = 0, arms = 0 } = {}) {
   const yy = y - air * s * 0.9; const sw = Math.sin(ph * Math.PI * 2);
@@ -101,12 +110,16 @@ function arenaScreen(kind) {
       const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, kind === 'zombie' ? '#10261a' : '#151c4f'); g.addColorStop(1, kind === 'zombie' ? '#0a140d' : '#0c1030');
       c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40);
       if (kind === 'paint' && s.grid) {
-        const cw = W / s.GC, ch = H / s.GR;
-        for (let i = 0; i < s.grid.length; i++) { const ch0 = s.grid[i]; if (ch0 === '.') continue; c.fillStyle = ctx.team(parseInt(ch0, 36)).color; c.globalAlpha = 0.78; c.fillRect((i % s.GC) * cw, Math.floor(i / s.GC) * ch, cw + 0.6, ch + 0.6); }
-        c.globalAlpha = 1;
+        // 칠한 땅은 바뀔 때만 따로 그려 두고 매 프레임엔 붙여 넣기만
+        if (this.gridKey !== s.grid) {
+          this.gridKey = s.grid; const gc = (this.gridCv ||= document.createElement('canvas')); gc.width = W; gc.height = H; const g2 = gc.getContext('2d');
+          const cw = W / s.GC, ch = H / s.GR; g2.globalAlpha = 0.78;
+          for (let i = 0; i < s.grid.length; i++) { const ch0 = s.grid[i]; if (ch0 === '.') continue; g2.fillStyle = ctx.team(parseInt(ch0, 36)).color; g2.fillRect((i % s.GC) * cw, Math.floor(i / s.GC) * ch, cw + 0.6, ch + 0.6); }
+        }
+        c.drawImage(this.gridCv, 0, 0);
       }
-      c.strokeStyle = '#ffffff0d'; c.lineWidth = 1; for (let x = 0; x <= AW; x += 80) { c.beginPath(); c.moveTo(x * sx, 0); c.lineTo(x * sx, H); c.stroke(); } for (let y = 0; y <= AH; y += 80) { c.beginPath(); c.moveTo(0, y * sy); c.lineTo(W, y * sy); c.stroke(); }
-      if (kind === 'gems') for (const [x, y, v] of s.gems || []) { const X = x * sx, Y = y * sy; const r = v >= 5 ? 16 : v === 2 ? 10 : 8; const col = v >= 5 ? '#ffd43b' : v === 2 ? '#7cf3ff' : '#c08bff'; c.save(); c.translate(X, Y); c.rotate(Math.PI / 4 + Math.sin(t / 400 + x) * 0.2); c.shadowColor = col; c.shadowBlur = 18; c.fillStyle = col; c.fillRect(-r, -r, r * 2, r * 2); c.fillStyle = '#ffffff99'; c.fillRect(-r, -r, r, r * 0.6); c.restore(); }
+      c.strokeStyle = '#ffffff0d'; c.lineWidth = 1; c.beginPath(); for (let x = 0; x <= AW; x += 80) { c.moveTo(x * sx, 0); c.lineTo(x * sx, H); } for (let y = 0; y <= AH; y += 80) { c.moveTo(0, y * sy); c.lineTo(W, y * sy); } c.stroke();
+      if (kind === 'gems') for (const [x, y, v] of s.gems || []) { const X = x * sx, Y = y * sy; const r = v >= 5 ? 16 : v === 2 ? 10 : 8; const col = v >= 5 ? '#ffd43b' : v === 2 ? '#7cf3ff' : '#c08bff'; c.save(); c.translate(X, Y); c.rotate(Math.PI / 4 + Math.sin(t / 400 + x) * 0.2); c.fillStyle = col + '40'; c.fillRect(-r * 1.8, -r * 1.8, r * 3.6, r * 3.6); c.fillStyle = col + '66'; c.fillRect(-r * 1.35, -r * 1.35, r * 2.7, r * 2.7); /* 빛 번짐(shadowBlur)은 보석마다 매 프레임 계산이라 느림 → 반투명 사각형 2겹으로 대신 */ c.fillStyle = col; c.fillRect(-r, -r, r * 2, r * 2); c.fillStyle = '#ffffff99'; c.fillRect(-r, -r, r, r * 0.6); c.restore(); }
       if (kind === 'crown' && s.z) { const [x, y, r, tx, ty] = s.z; c.strokeStyle = '#ffd43b44'; c.setLineDash([10, 12]); c.lineWidth = 3; c.beginPath(); c.moveTo(x * sx, y * sy); c.lineTo(tx * sx, ty * sy); c.stroke(); c.setLineDash([]); const g = c.createRadialGradient(x * sx, y * sy, 10, x * sx, y * sy, r * sx); g.addColorStop(0, 'rgba(255,212,59,.45)'); g.addColorStop(1, 'rgba(255,212,59,.08)'); c.fillStyle = g; c.beginPath(); c.arc(x * sx, y * sy, r * sx, 0, 7); c.fill(); c.strokeStyle = '#ffd43b'; c.lineWidth = 5; c.stroke(); c.font = '48px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('👑', x * sx, y * sy - r * sx - 24); }
       if (kind === 'dodge') {
         const age = (performance.now() - this.cur.at) / 1000;
@@ -119,15 +132,28 @@ function arenaScreen(kind) {
       }
       // 사람들
       const ps = s.ps; const R = ps.length / 4 > 150 ? 8 : 11;
+      // 1) 움직임 꼬리: 팀 색별로 모아서 한 번에 그림 (300명이면 선 300번 → 팀 수만큼)
+      const pv = this.prev?.s.ps; const tails = new Map();
+      if (pv && pv.length === ps.length) {
+        for (let i = 0; i < ps.length; i += 4) {
+          if ((kind === 'dodge' && ps[i + 3] === 2) || (kind === 'zombie' && ps[i + 3] === 1)) continue;
+          const [x, y] = this.pos(i); const X = x * sx, Y = y * sy; const dx = X - pv[i] * sx, dy = Y - pv[i + 1] * sy;
+          if (dx * dx + dy * dy > 16) { const col = ctx.team(ps[i + 2]).color; let a = tails.get(col); if (!a) tails.set(col, (a = [])); a.push(X - dx * 0.9, Y - dy * 0.9, X, Y); }
+        }
+        c.lineWidth = R * 1.2; c.lineCap = 'round';
+        for (const [col, a] of tails) { c.strokeStyle = col + '55'; c.beginPath(); for (let k = 0; k < a.length; k += 4) { c.moveTo(a[k], a[k + 1]); c.lineTo(a[k + 2], a[k + 3]); } c.stroke(); }
+      }
+      // 2) 사람 토큰·이름
+      const rings = new Map();
       for (let i = 0; i < ps.length; i += 4) {
         const [x, y] = this.pos(i); const tm = ctx.team(ps[i + 2]); const st = ps[i + 3];
         const X = x * sx, Y = y * sy;
-        if (kind === 'dodge' && st === 2) { c.fillStyle = '#ffffff40'; c.font = `${R * 1.6}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('💀', X, Y); continue; }
-        if (kind === 'zombie' && st === 1) { c.font = `${R * 2.4}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🧟', X, Y); c.strokeStyle = tm.color; c.lineWidth = 3; c.beginPath(); c.arc(X, Y, R * 1.35, 0, 7); c.stroke(); this.label(c, i / 4, X, Y - R * 1.4 - 4, ps.length / 4); continue; }
-        const pv = this.prev?.s.ps; if (pv && pv.length === ps.length) { const dx = X - pv[i] * sx, dy = Y - pv[i + 1] * sy; if (dx * dx + dy * dy > 16) { c.strokeStyle = tm.color + '55'; c.lineWidth = R * 1.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(X - dx * 0.9, Y - dy * 0.9); c.lineTo(X, Y); c.stroke(); } }
+        if (kind === 'dodge' && st === 2) { c.globalAlpha = 0.3; drawEmo(c, '💀', R * 1.6, X, Y); c.globalAlpha = 1; continue; }
+        if (kind === 'zombie' && st === 1) { drawToken(c, '#2fbf4a', R * 1.25, X, Y); drawEmo(c, '🧟', R * 2.6, X, Y); let ra = rings.get(tm.color); if (!ra) rings.set(tm.color, (ra = [])); ra.push(X, Y); /* 팀 색 테두리는 아래에서 팀별로 한 번에 */ /* 잡힌 사람이 작아져 사라진 것처럼 보이지 않게 초록 빛 + 크게 */ this.label(c, i / 4, X, Y - R * 1.4 - 4, ps.length / 4); continue; }
         drawToken(c, (kind === 'dodge' && st === 1 && Math.floor(t / 90) % 2) ? '#ffffff' : tm.color, R, X, Y);
         this.label(c, i / 4, X, Y - R - 6, ps.length / 4);
       }
+      if (rings.size) { c.lineWidth = 3; for (const [col, a] of rings) { c.strokeStyle = col; c.beginPath(); for (let k = 0; k < a.length; k += 2) { c.moveTo(a[k] + R * 1.6, a[k + 1]); c.arc(a[k], a[k + 1], R * 1.6, 0, 7); } c.stroke(); } }
       // 번개·물림 효과
       const now = performance.now();
       this.bolts = this.bolts.filter((b) => now - b.at < 600);
@@ -355,7 +381,7 @@ V.fruit = {
   update(s) {
     this.s = s; this.max = Math.max(this.max, ...Object.values(s.avg)) ;
     const teams = this.ctx.teams; const n = teams.length; const w = 1440 / n;
-    for (const [tid, k] of Object.entries(s.cuts || {})) { const i = teams.findIndex((x) => x.id === +tid); for (let j = 0; j < Math.min(k, 6); j++) this.fly.push({ x: w * i + w / 2 + (Math.random() - 0.5) * w * 0.5, y: -40, vy: 500 + Math.random() * 300, e: FRUITS[Math.floor(Math.random() * FRUITS.length)], at: performance.now(), r: Math.random() * 6 }); }
+    for (const [tid, k] of Object.entries(s.cuts || {})) { const i = teams.findIndex((x) => x.id === +tid); for (let j = 0; j < Math.min(k, 6) && this.fly.length < 70; j++) this.fly.push({ x: w * i + w / 2 + (Math.random() - 0.5) * w * 0.5, y: -40, vy: 500 + Math.random() * 300, e: FRUITS[Math.floor(Math.random() * FRUITS.length)], at: performance.now(), r: Math.random() * 6 }); }
     for (const [name, team, n2] of s.combos || []) { this.feed.push(h('div', { class: 'nfi' }, `🔥 ${n2}콤보! `, h('b', { style: { color: this.ctx.team(team).color } }, name))); }
     return s.avg;
   },
@@ -374,8 +400,7 @@ V.fruit = {
       c.font = '700 26px sans-serif'; c.textBaseline = 'top'; c.fillText(`${tm.icon} ${tm.name}`, x + jw / 2, bot + 14);
     });
     const t = performance.now(); this.fly = this.fly.filter((f) => t - f.at < 1600);
-    c.font = '46px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    for (const f of this.fly) { const k = (t - f.at) / 1000; const y = f.y + f.vy * k; if (y > bot - 20) continue; c.save(); c.translate(f.x, y); c.rotate(k * f.r); c.fillText(f.e, 0, 0); c.restore(); }
+    for (const f of this.fly) { const k = (t - f.at) / 1000; const y = f.y + f.vy * k; if (y > bot - 20) continue; const im = emo(f.e, 46); c.save(); c.translate(f.x, y); c.rotate(k * f.r); c.drawImage(im, -im.width / 2, -im.height / 2); c.restore(); }
   },
   unmount() { this.dead = true; cancelAnimationFrame(this.raf); },
 };

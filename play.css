@@ -353,3 +353,13 @@ body.shake #app { animation: shake .4s; }
 .rlbtn{width:100%;height:46vh;border:none;border-radius:28px;background:var(--tc);color:#fff;font-size:34px;font-weight:900;box-shadow:0 10px 0 #0006;touch-action:manipulation;user-select:none}
 .rlbtn:active{transform:translateY(6px);box-shadow:0 4px 0 #0006}
 .rlwait{font-size:20px;font-weight:800;color:#c9cff5}.rlwait.soon{color:#ffd43b;font-size:26px;animation:peBob .5s infinite}
+
+#precd{position:fixed;left:0;right:0;top:64px;margin:0 auto;width:fit-content;z-index:50;background:#ffd43b;color:#1b1440;font-weight:900;font-size:22px;padding:10px 18px;border-radius:999px;box-shadow:0 6px 20px #0008;pointer-events:none;animation:bounce .8s infinite}
+
+/* 게임 중 폰을 가로로 돌리면 버튼이 화면 밖으로 밀려나므로 세로로 돌리라고 안내 (태블릿·큰 화면은 그대로) */
+body.ingame::after{content:'📱 폰을 세로로 돌려 주세요';display:none;position:fixed;inset:0;z-index:200;background:#0b0e24f2;color:#fff;font-size:26px;font-weight:900;align-items:center;justify-content:center;text-align:center}
+@media (orientation: landscape) and (max-height: 500px){body.ingame::after{display:flex}}
+/* 게임 버튼 위에서 손가락이 미끄러져도 페이지가 스크롤·확대되지 않게 (스크롤이 터치를 가로채면 입력이 취소됨) */
+.jumpbtn,.shtap,.rlbtn,.rhk,.bgk,.spc,.bopt,.dopt,.firew,.hdbtn,.pc,.pw,.pclr{touch-action:none}
+body.ingame{overscroll-behavior:none}
+.shmeter{height:clamp(110px,28vh,260px)}

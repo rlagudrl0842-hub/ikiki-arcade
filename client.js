@@ -133,7 +133,7 @@ export function say(text, on = true, rate = 1.05) {
 }
 
 // ---------------- 기타 ----------------
-export function vibrate(ms) { try { navigator.vibrate?.(ms); } catch { /* */ } }
+export function vibrate(ms) { try { if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; navigator.vibrate?.(ms); } catch { /* */ } } // 화면을 한 번도 안 눌렀으면 진동 안 함(브라우저 경고 방지)
 export const AGE = { baby: '영아', kid: '유아', elem: '초등', mid: '중등', high: '고등', adult: '성인' };
 export const MODE = { baby: '영아 모드', kid: '유아 모드', elem: '초등 모드', mid: '중등 모드', high: '고등 모드', adult: '성인 모드', mixed: '전 연령 혼합' };
 export function teamOf(state, id) { return state?.teams?.find((t) => t.id === id) || { id, name: '?', color: '#888', icon: '❔' }; }

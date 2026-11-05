@@ -75,7 +75,7 @@ const MINO = [['짜장면', '짬뽕'], ['부먹', '찍먹'], ['여름', '겨울'
 export const mino = {
   id: 'mino', no: 25, name: '소수가 산다', emoji: '🙈', untimed: true,
   dur: { kid: 80, elem: 90, adult: 90 },
-  rule: { all: '둘 중 하나를 고르세요. 더 적은 사람이 고른 쪽만 살아남아요!', baby: '둘 중 마음에 드는 쪽을 골라요' },
+  rule: { all: '둘 중 하나를 고르세요. 더 적은 사람이 고른 쪽만 살아남아요! 탈락해도 살아남는 쪽을 맞히면 부활', baby: '둘 중 마음에 드는 쪽을 골라요' },
   howto: '살아남은 라운드 수 · 마지막까지 남으면 보너스 (영아·유아는 탈락 없음)',
   lateJoin: true,
   create(ctx) {
@@ -86,13 +86,14 @@ export const mino = {
       const cand = [...P.values()].filter((p) => p.alive && (p.active || p.a[i] != null)); const cnt = [0, 0]; for (const p of cand) if (p.a[i] != null) cnt[p.a[i]]++;
       const win = cnt[0] === cnt[1] ? -1 : cnt[0] < cnt[1] ? 0 : 1; const out = [];
       for (const p of cand) { const ok = win === -1 ? p.a[i] != null : p.a[i] === win; if (ok) p.ok++; else if (canLose) { p.alive = false; out.push([p.name, p.team]); } }
-      res = { cnt, win, out: out.slice(0, 16), outN: out.length };
+      const rev = []; if (win !== -1) for (const p of P.values()) if (!p.alive && !cand.includes(p) && p.a[i] === win) { p.alive = true; rev.push([p.name, p.team]); } // 탈락자가 살아남는 쪽을 맞히면 부활
+      res = { cnt, win, out: out.slice(0, 16), outN: out.length, revN: rev.length };
       if (canLose && [...P.values()].filter((p) => p.alive && p.active).length <= 1 && i < N - 1) R.st.n = i + 1;
     } });
     const aliveBy = () => { const o = Object.fromEntries(ctx.teams.map((t) => [t, 0])); for (const p of P.values()) if (p.alive && p.active && o[p.team] != null) o[p.team]++; return o; };
     return {
       addPlayer(p) { if (!P.has(p.id)) add(p); }, shift: R.C.shift,
-      input(pid, m) { const p = P.get(pid); if (!p || m.a !== 'pick' || R.st.ph !== 'q' || m.q !== R.st.i || !intIn(m.c, 0, 1) || p.a[R.st.i] != null || !p.alive) return; p.a[R.st.i] = m.c; p.active = true; return { c: m.c }; },
+      input(pid, m) { const p = P.get(pid); if (!p || m.a !== 'pick' || R.st.ph !== 'q' || m.q !== R.st.i || !intIn(m.c, 0, 1) || p.a[R.st.i] != null) return; p.a[R.st.i] = m.c; p.active = true; return { c: m.c }; }, // 탈락자도 고를 수 있음 (부활 찬스)
       tick(now) { R.tick(now, () => [...P.values()].filter((p) => p.alive && p.active).every((p) => p.a[R.st.i] != null)); },
       view(pid, now) { const p = P.get(pid); if (!p) return { g: 'mino', spectator: true }; const q = Q[Math.min(R.st.i, N - 1)]; return { g: 'mino', i: R.st.i, N: R.st.n, ph: R.st.ph, until: now + Math.round(R.left() * 1000), opts: q, my: p.a[R.st.i] ?? null, alive: p.alive, res: R.st.ph === 'rev' ? res : null, canLose }; },
       screen() { const q = Q[Math.min(R.st.i, N - 1)]; const al = aliveBy(); return { i: R.st.i, N: R.st.n, ph: R.st.ph, left: round1(R.left()), opts: q, res: R.st.ph === 'rev' ? res : null, alive: al, aliveN: Object.values(al).reduce((a, b) => a + b, 0), answered: [...P.values()].filter((p) => p.a[R.st.i] != null).length, canLose }; },

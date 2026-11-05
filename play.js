@@ -274,17 +274,28 @@ function ended() {
 }
 
 // ---------------- 게임 ----------------
-function unmount() { if (mounted) { try { mounted.inst.unmount?.(); } catch { /* */ } mounted = null; } }
+function unmount() { document.body.classList.remove('ingame'); if (mounted) { try { mounted.inst.unmount?.(); } catch { /* */ } mounted = null; } }
+// 카운트다운 중 미리 누르는 게임: 위에 '3·2·1 지금 꾹!' 표시
+function preBadge(main, on) {
+  let b = document.getElementById('precd');
+  if (!on) { b?.remove(); clearInterval(preBadge.t); return; }
+  if (!b) { b = h('div', { id: 'precd' }); document.body.append(b); }
+  const upd = () => { if (S?.phase !== 'countdown') { b.remove(); clearInterval(preBadge.t); return; } b.textContent = `${Math.max(1, Math.ceil((S.phaseEnd - live.now()) / 1000))} · 시작 전에 지금 꾹 눌러요!`; };
+  upd(); clearInterval(preBadge.t); preBadge.t = setInterval(upd, 200);
+}
 function renderGame() {
   const main = $('#main'); if (!main || !S) return;
   const p = active(); const v = VIEW[p.pid];
-  if (S.phase === 'countdown' || !v) {
+  // 시작 전에 미리 눌러야 하는 게임(손 떼면 탈락)은 카운트다운 동안에도 게임 화면을 띄움
+  const preOk = S.phase === 'countdown' && S.item?.pre && v && !v.spectator;
+  if ((S.phase === 'countdown' && !preOk) || !v) {
     if (S.phase === 'countdown') { unmount(); if (!main.querySelector('.cd')) { main.innerHTML = ''; main.append(h('div', { class: 'cd' }, h('div', { class: 'cdn' }, '3'), h('div', { class: 'muted' }, S.item ? `${S.item.emoji} ${S.item.name}` : ''))); } }
     else if (!mounted) { main.innerHTML = ''; main.append(center('⏳', '게임 화면을 불러오는 중…')); }
     return;
   }
   if (v.spectator) { unmount(); main.innerHTML = ''; main.append(center('👀', '이번 게임은 관전해요', '게임 중간에 들어와서 다음 게임부터 참여해요')); return; }
   const key = `${RUN[p.pid]}:${v.g}:${p.pid}`;
+  preBadge(main, preOk);
   if (mounted?.key === key) { mounted.inst.update?.(v); return; }
   unmount();
   main.innerHTML = '';
@@ -301,7 +312,8 @@ function renderGame() {
   const box = h('div', { class: 'game', style: { '--tc': t.color } });
   main.append(timerBar(), box);
   inst.mount(box, v, gapi);
-  mounted = { key, inst, pid: p.pid };
+  mounted = { key, inst, pid: p.pid }; window.__game = inst; // 점검용
+  document.body.classList.add('ingame'); // 게임 중: 폰을 가로로 돌리면 '세로로 돌려 주세요' 안내
 }
 function timerBar() { return h('div', { class: `gtimer ${S.run?.endAt ? '' : 'hidden'}` }, h('div', { class: 'gbar' }), h('span', { class: 'gsec' })); }
 

@@ -174,8 +174,11 @@ export const zombie = {
       },
       view(pid) {
         const p = A.P.get(pid); if (!p) return { g: 'zombie', spectator: true };
-        const near = [];
-        for (const q of A.P.values()) { if (q === p || !q.active) continue; const dx = q.x - p.x, dy = q.y - p.y; if (Math.abs(dx) < 420 && Math.abs(dy) < 420) near.push(Math.round(q.x), Math.round(q.y), q.z ? 1 : 0); if (near.length > 120) break; }
+        // 폰 화면(내 주변 800×430)보다 넓게(±560×±330) 가까운 순으로 최대 70명 — 화면 밖 좀비는 가장자리 화살표로 표시
+        const cand = [];
+        for (const q of A.P.values()) { if (q === p || !q.active) continue; const dx = q.x - p.x, dy = q.y - p.y; if (Math.abs(dx) < 560 && Math.abs(dy) < 330) cand.push([dx * dx + dy * dy - (q.z !== p.z ? 40000 : 0), q]); }
+        cand.sort((a, b) => a[0] - b[0]);
+        const near = []; for (const [, q] of cand.slice(0, 70)) near.push(Math.round(q.x), Math.round(q.y), q.z ? 1 : 0);
         let humans = 0, zs = 0; for (const q of A.P.values()) { if (!q.active && !q.z) continue; if (q.z) zs++; else humans++; }
         return { g: 'zombie', x: Math.round(p.x), y: Math.round(p.y), z: p.z, tags: p.tags, near, humans, zs };
       },

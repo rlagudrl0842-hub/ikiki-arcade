@@ -1,6 +1,6 @@
 // 새 게임 ④ 2·3차: 아레나 2종 + 손맛 게임(폰에서 플레이, 서버가 속도 상한 검증) + 서버 판정 게임
 import { rng, shuffle } from './gen.js';
-import { clamp, round1, numIn, intIn, by6 } from './common.js';
+import { clamp, round1, numIn, intIn, by6, tsOk } from './common.js';
 import { arena, teamCount, AW, AH } from './n1.js';
 import { rhythmChart, BURGER } from './gen2.js';
 
@@ -227,7 +227,7 @@ export const rhythm = {
       start(now) { t0 = now + 1500; for (const k of Object.keys(charts)) delete charts[k]; ctx.dirtyAll(); },
       shift(ms) { t0 += ms; for (const k of Object.keys(charts)) delete charts[k]; },
       input(pid, m, now) {
-        const p = P.get(pid); if (!p || m.a !== 'hit' || !intIn(m.i, 0, 5000) || !intIn(m.l, 0, 2) || !numIn(m.ts, now - 800, now + 800)) return;
+        const p = P.get(pid); if (!p || m.a !== 'hit' || !intIn(m.i, 0, 5000) || !intIn(m.l, 0, 2) || !tsOk(m.ts, now)) return;
         const n = chart(p.lv).notes[m.i]; if (!n || n.l !== m.l || p.hit.has(m.i)) return;
         const err = Math.abs(m.ts - n.t); const win = by6(p.lv, [220, 180, 140, 125, 115, 110]);
         if (err > win) { p.combo = 0; return { i: m.i, j: 'miss' }; }

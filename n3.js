@@ -16,14 +16,14 @@ const qAge = (mode) => (mode === 'kid' ? 'kid' : mode === 'adult' ? 'adult' : 'e
 export const bell = {
   id: 'bell', no: 23, name: '골든벨 서바이벌', emoji: '🔔',
   dur: { kid: 120, elem: 150, adult: 150 }, untimed: true,
-  rule: { all: '문제를 보고 정답을 골라요! 틀리면 탈락, 중간에 패자부활전이 있어요', kid: '정답 그림을 콕! 눌러요 (탈락 없어요)' },
+  rule: { all: '문제를 보고 정답을 골라요! 틀리면 탈락, 탈락해도 다음 문제를 맞히면 바로 부활!', kid: '정답 그림을 콕! 눌러요 (탈락 없어요)' },
   howto: '맞힌 문제 수로 점수 · 끝까지 살아남으면 보너스',
   lateJoin: true,
   create(ctx) {
     const r = rng(ctx.seed);
     const age = qAge(ctx.settings.mode);
     const N = age === 'kid' ? 7 : 10;
-    const revive = age === 'kid' ? -1 : 5; // 6번째 문제 = 패자부활전
+    const revive = -1; // (예전 '6번째 문제 패자부활전' → 이제 매 문제 부활 기회)
     const bank = ctx.settings.mode6 === 'mid' ? [...BELL.elem.slice(8), ...BELL.adult] : BELL[age];
     // 진행자가 직접 넣은 문제를 먼저, 모자라면 기본 문제로 채움
     const own = (ctx.settings.bellCustom || []).filter((q) => Array.isArray(q) && q.length >= 3);
@@ -42,7 +42,7 @@ export const bell = {
         if (a != null) counts[a]++;
         const right = a === q.ans;
         if (right) p.ok++;
-        if (qi === revive) { if (!p.alive && right) { p.alive = true; revNow.push([p.name, p.team]); } continue; }
+        if (!p.alive) { if (right) { p.alive = true; revNow.push([p.name, p.team]); } continue; } // 탈락 중이어도 맞히면 바로 부활
         if (canLose && p.alive && !right && (p.active || a != null)) { p.alive = false; p.outAt = qi; outNow.push([p.name, p.team]); }
       }
       ph = 'reveal'; phEnd = C.T + 4.5; ctx.dirtyAll();
@@ -54,14 +54,13 @@ export const bell = {
       input(pid, m) {
         const p = P.get(pid); if (!p || m.a !== 'ans' || ph !== 'q' || m.q !== qi) return;
         const q = qs[qi]; if (!intIn(m.c, 0, q.opts.length - 1) || p.ans[qi] != null) return;
-        if (!p.alive && qi !== revive) return; // 탈락자는 패자부활전에만
         p.ans[qi] = m.c; p.active = true;
         return { locked: m.c };
       },
       tick(now) {
         C.dt(now);
         if (ph === 'q') {
-          const can = [...P.values()].filter((p) => (p.alive || qi === revive) && p.active);
+          const can = [...P.values()].filter((p) => p.active);
           if (C.T >= phEnd || (can.length && can.every((p) => p.ans[qi] != null) && C.T > 3)) reveal();
         } else if (C.T >= phEnd) {
           qi++;
@@ -128,7 +127,7 @@ export const draw = {
         const opts = shuffle(r, [word, ...shuffle(r, pool.filter((w) => w !== word)).slice(0, 5)]);
         TM[t] = { drawer, word, opts, sk: [], seq: 0, newSk: [], clr: false };
       }
-      for (const p of P.values()) { p.got = null; p.lock = 0; }
+      for (const p of P.values()) { p.got = null; p.lock = 0; p.syncSeq = -1; }
       ctx.dirtyAll();
     };
     const guessers = (t) => [...P.values()].filter((p) => p.team === +t && TM[t] && TM[t].drawer !== p.id);
@@ -153,14 +152,16 @@ export const draw = {
           if (tm.sk.length > 2500) return;
           const seg = [intIn(m.c, 0, 7) ? m.c : 0, intIn(m.w, 1, 3) ? m.w : 2, ...m.p];
           tm.sk.push(seg); tm.newSk.push(seg); tm.seq++; p.active = true;
-          for (const g of guessers(p.team)) ctx.sendTo(g.id, { run: ctx.runId, r: { sk: [seg], seq: tm.seq } });
+          // 새 획만 보냄 (전체 그림은 처음·재접속 때만) — 300명일 때 메시지 폭주 방지
+          for (const g of guessers(p.team)) { ctx.sendTo(g.id, { run: ctx.runId, r: { sk: [seg], seq: tm.seq } }); if (g.syncSeq === tm.seq - 1) g.syncSeq = tm.seq; }
           return;
         }
         if (m.a === 'clr' && tm.drawer === pid) {
           tm.sk = []; tm.newSk = []; tm.clr = true; tm.seq++;
-          for (const g of guessers(p.team)) ctx.sendTo(g.id, { run: ctx.runId, r: { clr: true, seq: tm.seq } });
+          for (const g of guessers(p.team)) { ctx.sendTo(g.id, { run: ctx.runId, r: { clr: true, seq: tm.seq } }); g.syncSeq = tm.seq; }
           return;
         }
+        if (m.a === 'sync') { p.syncSeq = -1; ctx.dirty(pid); return; } // 폰이 그림을 놓쳤을 때 전체 다시 받기
         if (m.a === 'g' && tm.drawer !== pid && p.got == null && intIn(m.w, 0, tm.opts.length - 1)) {
           p.active = true;
           if (C.T < p.lock) return { wait: true };
@@ -188,14 +189,14 @@ export const draw = {
         if (!tm) return { ...base, wait: true };
         const drawerName = P.get(tm.drawer)?.name || '';
         if (tm.drawer === pid) return { ...base, me: 'draw', word: tm.word, solved: guessers(p.team).filter((g) => g.got != null).length, n: guessers(p.team).length };
-        return { ...base, me: 'guess', drawer: drawerName, opts: tm.opts, got: p.got != null, answer: ph === 'reveal' ? tm.word : null, sk: tm.sk, seq: tm.seq };
+        return { ...base, me: 'guess', drawer: drawerName, opts: tm.opts, got: p.got != null, answer: ph === 'reveal' ? tm.word : null, seq: tm.seq, ...(p.syncSeq !== tm.seq ? (p.syncSeq = tm.seq, { sk: tm.sk }) : {}) };
       },
       screen() {
         const teams = {};
         for (const [t, tm] of Object.entries(TM)) {
           const gs = guessers(t);
           teams[t] = { d: P.get(tm.drawer)?.name || '', add: tm.newSk, clr: tm.clr, seq: tm.seq, ok: gs.filter((g) => g.got != null).length, n: gs.length, word: ph === 'reveal' ? tm.word : null };
-          if (Math.floor(C.T) % 4 === 0 && tm.sk.length < 1500) teams[t].full = tm.sk;
+          if (C.T - (tm.fullAt ?? -9) >= 4 && tm.sk.length < 1500) { tm.fullAt = C.T; teams[t].full = tm.sk; } // 대형 화면 보정용 전체 그림: 4초에 한 번
           tm.newSk = []; tm.clr = false;
         }
         return { ph, round, R, left: round1(Math.max(0, phEnd - C.T)), teams };

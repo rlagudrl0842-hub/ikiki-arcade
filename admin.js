@@ -201,7 +201,7 @@ async function questionsModal() {
 async function consoleView() {
   app.innerHTML = '';
   app.append(h('div', { class: 'muted pad' }, '불러오는 중…'));
-  try { full = (await A(`/api/events/${eid}`)).full; } catch (e) { app.innerHTML = ''; app.append(h('p', { class: 'err pad' }, e.message), h('a', { class: 'btn', href: '#' }, '← 목록')); return; }
+  try { full = (await A(`/api/events/${eid}`)).full; fullKey = JSON.stringify(full.players); fullSKey = JSON.stringify(full.settings); } catch (e) { app.innerHTML = ''; app.append(h('p', { class: 'err pad' }, e.message), h('a', { class: 'btn', href: '#' }, '← 목록')); return; }
   let lv = null;
   lv = new Live({ t: 'hello', role: 'admin', token, eid }, (m) => {
     if (m.t === 'state') { S = m; draw(); refreshFull(); }
@@ -209,21 +209,30 @@ async function consoleView() {
     if (m.t === 'err') { toast(m.msg); if (m.code === 401) { store('ikiki:admin', null); token = null; route(); } }
   }, (st) => { if (!lv || live === lv) document.body.classList.toggle('offline', st === 'offline'); }); // 목록으로 나간 뒤엔 '연결 끊김' 표시 안 함
   live = lv;
-  setInterval(clock, 250);
-  addEventListener('keydown', hotkeys);
+  // 행사를 여러 번 열고 닫아도 타이머·단축키가 겹쳐 등록되지 않게 한 번만
+  if (!consoleView.once) { consoleView.once = true; setInterval(clock, 250); addEventListener('keydown', hotkeys); }
 }
 let rfT = null;
-function refreshFull() { clearTimeout(rfT); rfT = setTimeout(async () => { try { full = (await A(`/api/events/${eid}`)).full; if (tab === 'people' || tab === 'settings' || tab === 'playlist') drawTab(); } catch { /* */ } }, 600); }
+let fullKey = '', fullSKey = '', formDirty = false;
+// 설정·게임 순서 탭에서 고치는 중이면(저장 전) 다른 사람이 들어와도 화면을 다시 그리지 않음 → 고친 내용이 사라지지 않음
+document.addEventListener('input', (e) => { if (e.target.closest?.('.tabbody')) formDirty = true; }, true);
+document.addEventListener('change', (e) => { if (e.target.closest?.('.tabbody')) formDirty = true; }, true);
+// 참가자 목록은 바뀌었을 때만 다시 그림 (300명일 때 화면 버벅임 방지)
+function refreshFull() { clearTimeout(rfT); const at = eid; rfT = setTimeout(async () => { try { const f = (await A(`/api/events/${at}`)).full; if (at !== eid) return; const kp = JSON.stringify(f.players), ks = JSON.stringify(f.settings); const chP = kp !== fullKey, chS = ks !== fullSKey; fullKey = kp; fullSKey = ks; full = f; if ((chP && tab === 'people') || (chS && !formDirty && (tab === 'settings' || tab === 'playlist'))) drawTab(); } catch { /* */ } }, 800); }
 
 function hotkeys(e) {
-  if (!S || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (e.repeat) return; // 키를 누르고 있으면 자동 반복되는 것 무시
+  if (!S || !eid || !live || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
   if (e.key === ' ') { e.preventDefault(); cmd('next'); }
   if (e.key === 'p' || e.key === 'P') cmd(S.paused ? 'resume' : 'pause');
   if (e.key === 'e' || e.key === 'E') cmd('endNow');
 }
 async function cmd(op, arg, confirmMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return;
-  if (busy) return; busy = true;
+  if (busy) return;
+  // 같은 버튼·단축키를 0.7초 안에 또 누르면 한 번으로 침 (결과에서 Space 두 번 → 다음 게임 설명까지 넘어가던 문제)
+  if (cmd.last && cmd.last.op === op && Date.now() - cmd.last.at < 700) return;
+  busy = true; cmd.last = { op, at: Date.now() };
   try { await A(`/api/events/${eid}/command`, { op, arg, seq: S.seq }); } catch (e) { toast(e.message); } finally { busy = false; }
 }
 const joinUrl = () => (S.settings.joinUrl || location.origin) + '/play.html?e=' + S.event.code;
@@ -240,9 +249,19 @@ function draw() {
   $('.evname').textContent = `${S.event.name} · 코드 ${S.event.code}`;
   $('.phase').textContent = `${S.paused ? '⏸ 일시정지 · ' : ''}${PHASE[S.phase]}`;
   $('.phase').className = `phase p-${S.phase}`;
-  drawCtrl();
-  if (tab === 'run') drawTab();
-  else document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
+  // 참가자가 들어오고 나갈 때마다 오는 상태 메시지로 버튼을 다시 만들면 누르던 버튼이 사라져 클릭이 씹힘
+  // → 진행에 영향 있는 값이 바뀔 때만 다시 그리고, 인원수는 글자만 바꿈
+  const ck = ctrlKey();
+  if (ck !== draw.ck || !$('.ctrl .bigbtns')) { draw.ck = ck; drawCtrl(); } else updateCounts();
+  if (tab === 'run') { const rk = runKey(); if (rk !== draw.rk || !$('.tabbody .plist')) { draw.rk = rk; drawTab(); } }
+  else { draw.rk = null; document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab)); }
+}
+const ctrlKey = () => JSON.stringify([S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league]);
+const runKey = () => JSON.stringify([S.phase, S.idx, S.playlist, S.standings.rows, S.teams.map((t) => [t.id, t.name, t.icon, t.color])]);
+function updateCounts() {
+  const el = $('.ctrl .nowline .muted'); if (!el) return;
+  const total = Object.values(S.counts).reduce((s, x) => s + x.total, 0); const online = Object.values(S.counts).reduce((s, x) => s + x.online, 0);
+  el.textContent = `참가 ${total}명 (접속 ${online})`;
 }
 
 function drawCtrl() {
@@ -325,6 +344,7 @@ function drawTab() {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
   const body = $('.tabbody'); if (!body || !S) return;
   if (document.activeElement && body.contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return; // 입력 중엔 다시 그리지 않음
+  formDirty = false;
   body.innerHTML = '';
   ({ run: tabRun, playlist: tabPlaylist, people: tabPeople, score: tabScore, quiz: tabQuiz, music: tabMusic, settings: tabSettings })[tab](body);
 }

@@ -34,6 +34,8 @@ addEventListener('keydown', (e) => {
   const op = { ' ': 'next', p: 'pause', P: 'pause', e: 'endNow', E: 'endNow' }[e.key];
   if (!op) return;
   e.preventDefault();
+  if (e.repeat || (window.__lastKey && window.__lastKey.op === op && Date.now() - window.__lastKey.at < 700)) return; // 연타·누르고 있기 = 한 번
+  window.__lastKey = { op, at: Date.now() };
   const real = op === 'pause' && S.paused ? 'resume' : op;
   api(`/api/events/${S.event.id}/command`, { op: real, seq: S.seq }, tok).catch((err) => flash(err.message));
 });
@@ -66,16 +68,24 @@ function overtake(vals) {
 }
 
 function render(prev) {
-  const key = `${S.phase}:${S.seq}:${S.ceremonyStep}`;
+  // 일시정지·재개는 화면을 새로 만들지 않음 (게임 화면이 깜빡이며 처음부터 다시 그려지던 문제)
+  const key = `${S.phase}:${S.idx}:${S.ceremonyStep}:${S.run?.id ?? ''}:${S.phaseAt ?? ''}`;
   const phaseChanged = key !== lastKey; lastKey = key;
+  const pauseChanged = !!S.paused !== render.wasPaused; render.wasPaused = !!S.paused;
+  audioLevels();
+  if (phaseChanged) {
+    unmount();
+    stage.innerHTML = '';
+    ({ lobby, intro, countdown, playing, results, ceremony, ended })[S.phase]?.(prev);
+  } else if (S.phase === 'lobby') {
+    // 대기 화면에서 설정(연령 모드·행사 이름·참가 주소)이 바뀌면 바로 다시 그림
+    const lk = `${S.settings.mode}|${S.event.name}|${joinUrl}`;
+    if (lk !== render.lobbyKey) { stage.innerHTML = ''; lobby(); } else updateLobby();
+  }
+  // 화면을 새로 그린 뒤에 덮개를 올려야 지워지지 않음 (전에는 일시정지 표시가 바로 지워졌음)
   pauseLayer();
   cheerEventLayer();
-  audioLevels();
-  if (!phaseChanged) { if (S.phase === 'lobby') updateLobby(); return; }
-  unmount();
-  stage.innerHTML = '';
-  ({ lobby, intro, countdown, playing, results, ceremony, ended })[S.phase]?.(prev);
-  audioSync();
+  if (phaseChanged || pauseChanged) audioSync();
 }
 
 // ---------------- 배경음악 ----------------
@@ -116,7 +126,13 @@ function audioSync() {
   BGM.stop(1.0); BGM.stopFanfare(1.0); // 대기·설명·종료
 }
 // 음악 박자에 맞춰 화면 테두리·배경이 번쩍
-(function beatLoop() { const v = BGM.level(); stage.style.setProperty('--beat', v.toFixed(3)); requestAnimationFrame(beatLoop); })();
+// (성능) 테두리 빛은 opacity만 바꿈 + 값이 거의 같으면 건드리지 않음 + 초당 30번까지
+const beatEl = document.createElement('div'); beatEl.id = 'beatfx'; stage.append(beatEl);
+let beatLast = -1, beatAt = 0;
+(function beatLoop(t) {
+  if (t - beatAt >= 33) { beatAt = t; const v = Math.round(BGM.level() * 20) / 20; if (v !== beatLast) { beatLast = v; beatEl.style.opacity = String(v * 0.9); } if (!beatEl.isConnected) stage.append(beatEl); }
+  requestAnimationFrame(beatLoop);
+})(0);
 function trophy(color) {
   const t = h('div', { class: 'trophy', style: { '--tc': color } }, h('div', { class: 'tray' }), h('div', { class: 'tcup' }, '🏆'));
   document.body.append(t); setTimeout(() => t.remove(), 4200);
@@ -130,6 +146,7 @@ function topbar(extra) {
 
 // ---------------- 대기 ----------------
 function lobby() {
+  render.lobbyKey = `${S.settings.mode}|${S.event.name}|${joinUrl}`;
   const qr = qrImg(joinUrl, 'qr');
   const left = h('div', { class: 'lleft' }, h('div', { class: 'lt' }, '📱 QR을 찍고 참가하세요!'), qr, h('div', { class: 'lurl' }, joinUrl.replace(/^https?:\/\//, '')), h('div', { class: 'lcode' }, '참가 코드 ', h('b', {}, S.event.code)));
   const right = h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }));

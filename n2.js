@@ -1,7 +1,7 @@
 // 새 게임 ② 우리 놀이 · 타이밍
 // 무궁화 꽃이 피었습니다 / 단체 줄넘기 / 불꽃놀이 / 과일 베기
 import { rng } from './gen.js';
-import { clamp, round1, numIn, intIn, LV, by6 } from './common.js';
+import { clamp, round1, numIn, intIn, LV, by6, tsOk, lagTracker } from './common.js';
 import { fruitSchedule, fruitLife, ropeBeats, fireRounds } from './gen2.js';
 
 const avgBy = (P, val, teams) => {
@@ -124,7 +124,7 @@ export const rope = {
     const add = (p) => P.set(p.id, { ...p, hit: new Set(), press: new Map(), active: false, firstK: null });
     ctx.players.forEach(add);
     const T = Object.fromEntries(ctx.teams.map((t) => [t, { combo: 0, best: 0, tot: 0, restK: -1, last: null, lastK: -1, rate: 0 }]));
-    let evalK = 0;
+    let evalK = 0; const lagT = lagTracker(280, 1200);
     const nearest = (t) => { let lo = 0, hi = beats.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (beats[m] < t) lo = m + 1; else hi = m; } if (lo > 0 && Math.abs(beats[lo - 1] - t) < Math.abs(beats[lo] - t)) lo--; return lo; };
     return {
       addPlayer(p) { if (!P.has(p.id)) add(p); },
@@ -132,7 +132,8 @@ export const rope = {
       shift(ms) { prm.t0 += ms; beats = beats.map((b) => b + ms); },
       input(pid, m, now) {
         const p = P.get(pid); if (!p || m.a !== 'j' || !beats.length) return;
-        if (!numIn(m.ts, now - 800, now + 800)) return;
+        if (!tsOk(m.ts, now)) return;
+        lagT.add(now - m.ts);
         const k = nearest(m.ts); const diff = m.ts - beats[k];
         const c = (p.press.get(k) || 0) + 1; p.press.set(k, c);
         if (!p.active) { p.active = true; p.firstK = k; }
@@ -142,7 +143,7 @@ export const rope = {
       },
       tick(now) {
         // 박자마다 팀 성공 판정 (지연 고려해 조금 뒤에)
-        while (evalK < beats.length && now >= beats[evalK] + win + 280) {
+        while (evalK < beats.length && now >= beats[evalK] + win + lagT.grace()) {
           const k = evalK++;
           for (const tid of ctx.teams) {
             const t = T[tid];
@@ -207,7 +208,7 @@ export const fire = {
       input(pid, m, now) {
         const p = P.get(pid); if (!p || m.a !== 'pop' || !intIn(m.i, 0, n - 1)) return;
         const rd = R[m.i]; if (!rd || p.sc[m.i] != null) return;
-        if (!numIn(m.ts, now - 700, now + 700) || m.ts < rd.L || m.ts > rd.A + 900) return;
+        if (!tsOk(m.ts, now) || m.ts < rd.L || m.ts > rd.A + 900) return;
         const err = Math.abs(m.ts - rd.A);
         const s = Math.round(clamp(100 - err / by6(p.lv, [10, 8, 6, 5.5, 5, 5]), 0, 100));
         p.sc[m.i] = s; p.active = true; if (err <= 45) p.perf++;
@@ -258,7 +259,7 @@ export const fruit = {
       shift(ms) { t0 += ms; },
       input(pid, m, now) {
         const p = P.get(pid); if (!p || m.a !== 'cut' || !Array.isArray(m.ids) || !t0) return;
-        if (!numIn(m.ts, now - 900, now + 300)) return;
+        if (!tsOk(m.ts, now)) return;
         p.tok = Math.min(16, p.tok + ((now - (p.tAt || now)) / 1000) * 12); p.tAt = now;
         const sec = (m.ts - t0) / 1000; const map = M[p.age];
         let got = 0, gold = 0, bomb = 0;
