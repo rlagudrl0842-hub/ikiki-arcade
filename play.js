@@ -268,7 +268,7 @@ function rankTexts() {
   const p = active(); const me = ME[p?.pid]; const tr = teamRank(me?.me?.team ?? p?.team); const pr = me?.prank;
   const short = (x) => (x.rank === 1 ? (x.tie ? '동점' : '선두') : `1위와 −${x.gap}`); // 폰 위 줄은 짧게 (카드에는 자세히)
   const team = !tr ? null : !tr.started ? '아직 점수 없음' : `${tr.tie ? '공동 ' : ''}${tr.rank}위/${tr.n}팀 · ${short(tr)}`;
-  const mine = !pr ? null : pr.none ? '개인 점수 게임 전' : pr.rank == null ? '아직 개인 기록 없음' : `${pr.tie ? '공동 ' : ''}${pr.rank}위/${pr.n}명 · ${short(pr)}`;
+  const mine = !pr ? null : pr.none ? '개인 점수 게임 전' : pr.few ? `${pr.games}/${pr.need}판 · 순위 전` : pr.rank == null ? '아직 개인 기록 없음' : `${pr.tie ? '공동 ' : ''}${pr.rank}위/${pr.n}명 · ${short(pr)}`;
   return { tr, pr, team, mine };
 }
 function rankStrip() {
@@ -280,10 +280,10 @@ function rankStrip() {
 function rankCard() {
   const { tr, pr } = rankTexts(); const p = active(); const t = teamOf(S, ME[p?.pid]?.me?.team ?? p?.team);
   const box = (label, x, unit, empty) => h('div', { class: `rkbox ${x?.rank === 1 ? 'first' : ''}` }, h('div', { class: 'rkl' }, label),
-    x && x.rank != null && !empty ? [h('div', { class: 'rkn' }, x.tie ? h('small', {}, '공동 ') : null, `${x.rank}`, h('small', {}, `위 / ${x.n}${unit}`)), h('div', { class: 'rkg' }, `${x.total}점 · ${gapTxt(x)}`)] : h('div', { class: 'rke' }, empty || '아직 기록 없음'));
+    x && x.rank != null && !empty ? [h('div', { class: 'rkn' }, x.tie ? h('small', {}, '공동 ') : null, `${x.rank}`, h('small', {}, `위 / ${x.n}${unit}`)), h('div', { class: 'rkg' }, `${x.games != null ? `평균 ${x.total}점 · ${x.games}판` : `${x.total}점`} · ${gapTxt(x)}`)] : h('div', { class: 'rke' }, empty || '아직 기록 없음'));
   return h('div', { class: 'rkcard', style: { '--tc': t.color } },
     box(`${t.icon} 우리 팀 순위`, tr, '팀', tr && !tr.started ? '아직 점수 없음' : null),
-    box('🙋 내 개인 순위', pr, '명', !pr ? null : pr.none ? '개인 점수가 집계되는 게임 전이에요' : pr.rank == null ? '아직 개인 기록이 없어요' : null));
+    box('🙋 내 개인 순위 (게임 평균)', pr, '명', !pr ? null : pr.none ? '개인 점수가 집계되는 게임 전이에요' : pr.few ? `${pr.need}판 이상 하면 순위에 들어가요 (지금 ${pr.games}판)` : pr.rank == null ? '아직 개인 기록이 없어요' : null));
 }
 const recTxt = (r) => (r ? `${r.label} · ${r.holder}${r.kind === 'player' && r.team ? ` (${r.team})` : ''} · ${new Date(r.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : null);
 function mini() {

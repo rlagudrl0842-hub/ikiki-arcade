@@ -331,7 +331,7 @@ function paintBoard() {
     tb.append(h('div', { class: 'tsc', style: { '--tc': t.color } }, h('span', {}, `${t.icon} ${t.name}`), h('b', {}, r.total), started ? h('small', {}, `${tie ? '공동 ' : ''}${r.rank}위${r.rank > 1 ? ` · −${Math.round((top - r.total) * 10) / 10}` : ''}`) : null)); }
   pb.innerHTML = '';
   if (!P.runs) { pb.append(h('span', { class: 'muted small' }, '🙋 개인 순위: 개인 점수가 집계되는 게임을 하면 표시돼요 (체육·진행자 판정 게임은 팀 점수만)')); return; }
-  pb.append(h('b', { class: 'small' }, `🙋 개인 TOP 5 (${P.n}명)`), ...(P.list || []).map((x) => { const t = S.teams.find((y) => y.id === x.team); return h('span', { class: 'pitem', style: { '--tc': t?.color || '#888' } }, `${x.tie ? '공동 ' : ''}${x.rank}위 ${t?.icon || ''}${x.name} ${x.total}`); }));
+  pb.append(h('b', { class: 'small' }, `🙋 개인 TOP 5 · 게임 평균 (${P.n}명${P.need > 1 ? ` · ${P.need}판 이상` : ''})`), ...(P.list || []).map((x) => { const t = S.teams.find((y) => y.id === x.team); return h('span', { class: 'pitem', style: { '--tc': t?.color || '#888' } }, `${x.tie ? '공동 ' : ''}${x.rank}위 ${t?.icon || ''}${x.name} 평균 ${x.total}점 · ${x.games}판`); }));
 }
 const ctrlKey = () => JSON.stringify([S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
 const runKey = () => JSON.stringify([S.phase, S.idx, S.playlist, S.standings.rows, S.replayLog, S.teams.map((t) => [t.id, t.name, t.icon, t.color])]);

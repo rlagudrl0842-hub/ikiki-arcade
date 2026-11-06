@@ -147,20 +147,24 @@ export class Event {
     for (const x of this.db.all("SELECT ps.player_id pid, ps.norm, r.game, r.id rid FROM player_scores ps JOIN runs r ON r.id=ps.run_id WHERE r.event_id=? AND r.status='done'", this.id)) {
       if (!this.personalGame(x.game)) continue; runs.add(x.rid);
       const p = this.players.get(x.pid); if (!p || p.excluded) continue;
-      tot.set(x.pid, (tot.get(x.pid) || 0) + x.norm);
+      const o = tot.get(x.pid) || { sum: 0, n: 0 }; o.sum += x.norm; o.n++; tot.set(x.pid, o);
     }
-    const list = [...tot].map(([pid, t]) => ({ pid, total: Math.round(t * 10) / 10 })).sort((a, b) => b.total - a.total);
+    // 개인 점수 = 게임마다 0~100점으로 바꾼 기록의 평균 (정수) · 판 수가 너무 적으면(3판, 행사 초반엔 지금까지 한 판 수) 순위에서 빼고 '판 수 부족'
+    const need = Math.min(3, runs.size); const few = new Map();
+    const list = [];
+    for (const [pid, o] of tot) { if (o.n < need) { few.set(pid, { games: o.n, need }); continue; } list.push({ pid, total: Math.round(o.sum / o.n), games: o.n }); }
+    list.sort((a, b) => b.total - a.total || b.games - a.games);
     list.forEach((r, i) => { const p = list[i - 1]; r.rank = p && p.total === r.total ? p.rank : i + 1; }); // 점수가 정말 같을 때만 같은 순위
     const cnt = new Map(); for (const r of list) cnt.set(r.total, (cnt.get(r.total) || 0) + 1);
     for (const r of list) r.tie = cnt.get(r.total) > 1;
-    this._pers = { key, list, by: new Map(list.map((r) => [r.pid, r])), top: list[0]?.total ?? 0, n: list.length, runs: runs.size };
+    this._pers = { key, list, by: new Map(list.map((r) => [r.pid, r])), few, need, top: list[0]?.total ?? 0, n: list.length, runs: runs.size };
     return this._pers;
   }
   myPersonal(pid) {
     const P = this.personal();
     if (!P.runs) return { none: true }; // 개인 점수가 집계되는 게임을 아직 안 함
-    const r = P.by.get(pid); if (!r) return { rank: null, n: P.n, top: P.top };
-    return { rank: r.rank, total: r.total, gap: Math.round((P.top - r.total) * 10) / 10, n: P.n, tie: r.tie, top: P.top };
+    const r = P.by.get(pid); if (!r) { const f = P.few.get(pid); return f ? { rank: null, few: true, games: f.games, need: f.need, n: P.n } : { rank: null, n: P.n, top: P.top }; }
+    return { rank: r.rank, total: r.total, games: r.games, gap: P.top - r.total, n: P.n, tie: r.tie, top: P.top };
   }
   // ---------- 게임별 최고 기록 (점수형=높을수록 · 시간형(recordLow)=낮을수록) ----------
   getRecord(gid) { if (!gid) return null; const r = this.db.get('SELECT * FROM records WHERE game=? AND mode=?', gid, this.settings.mode || 'elem'); return r ? { value: r.value, label: r.label, holder: r.holder, team: r.team, kind: r.kind, at: r.at, event: r.event_name } : null; }
@@ -215,7 +219,7 @@ export class Event {
       phaseAt: this.phaseAt, phaseEnd: this.phaseEnd,
       teams: this.teams, counts: this.teamCounts(),
       standings: this.standings(), prevRanks: this.prevRanks,
-      personal: (() => { const P = this.personal(); return { runs: P.runs, n: P.n, top: P.top, list: P.list.slice(0, 5).map((r) => { const p = this.players.get(r.pid); return { name: p?.name, team: p?.team, total: r.total, rank: r.rank, tie: r.tie }; }) }; })(),
+      personal: (() => { const P = this.personal(); return { runs: P.runs, n: P.n, top: P.top, list: P.list.slice(0, 5).map((r) => { const p = this.players.get(r.pid); return { name: p?.name, team: p?.team, total: r.total, games: r.games, rank: r.rank, tie: r.tie }; }), need: P.need }; })(),
       record: item ? this.getRecord(item.game) : null,
       cheer: Object.fromEntries(this.cheer), cheerEvent: this.cheerEvent,
       lastResult: this.lastResult && !opts.full ? { ...this.lastResult, players: undefined, nPlayers: Object.keys(this.lastResult.players || {}).length } : this.lastResult, ceremonyStep: this.state.ceremonyStep,
