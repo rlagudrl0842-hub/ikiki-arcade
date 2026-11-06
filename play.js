@@ -117,7 +117,7 @@ async function renderJoin(addMode = false) {
 function connect() {
   unmount(); // 화면을 새로 만들면 이전 게임 인스턴스도 정리 (안 그러면 떨어진 화면에 계속 그리고 새 화면엔 게임이 안 뜸)
   app.innerHTML = '';
-  app.append(h('div', { class: 'top' }), h('main', { id: 'main' }), h('div', { id: 'bar' }));
+  app.append(h('div', { class: 'top' }), h('div', { id: 'rk' }), h('main', { id: 'main' }), h('div', { id: 'bar' }));
   if (live) live.stop();
   live = new Live(() => ({ t: 'hello', role: 'player', eid: sess.eventId, players: sess.players.map((p) => ({ pid: p.pid, secret: p.secret })) }), onMsg, onStatus);
   clearInterval(connect.clock); connect.clock = setInterval(tickClock, 200); // 참가자 추가·취소로 다시 연결해도 시계 타이머가 겹겹이 쌓이지 않게
@@ -173,6 +173,7 @@ function header() {
   top.append(h('div', { class: 'tm' }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name)), h('div', { class: 'nm' }, me?.name || p?.name || '', me?.rep ? h('span', { class: 'rep' }, '👑대표') : null),
     (['playing', 'countdown'].includes(S.phase) && DEMO_OK(VIEW[p?.pid]?.g)) ? h('button', { class: 'helpbtn', 'aria-label': '하는 방법 다시 보기', onclick: () => helpSheet(VIEW[active().pid]?.g, t.color) }, '❓') : null,
     h('button', { class: 'menu', onclick: openMenu }, '☰'));
+  rankStrip();
   const bar = $('#bar'); bar.innerHTML = '';
   if (sess.players.length > 1) {
     bar.append(...sess.players.map((x) => h('button', { class: `pch ${x.pid === p.pid ? 'on' : ''}`, style: { '--tc': teamOf(S, ME[x.pid]?.me?.team ?? x.team).color }, onclick: () => { sess.active = x.pid; store(KEY, sess); unmount(); render(); } }, x.name)));
@@ -218,7 +219,7 @@ function lobby() {
     h('div', { class: 'badge', style: { '--tc': t.color } }, h('div', { class: 'bi' }, t.icon), h('div', { class: 'bt' }, t.name), h('div', { class: 'muted' }, `우리 팀 ${S.counts[t.id]?.total || 0}명`)),
     h('div', { class: 'ct' }, S.notice && /시상식/.test(S.notice) ? '🏆 곧 시상식이에요!' : '게임을 기다리는 중…'),
     S.item ? h('div', { class: 'muted' }, `다음 게임: ${S.item.emoji} ${S.item.name}`) : null,
-    renameBtn(me, t), cheerBtn(t), mini());
+    rankCard(), renameBtn(me, t), cheerBtn(t), mini());
   return el;
 }
 // ---- 우리 팀 이름 바꾸기 (진행자가 허용했을 때) ----
@@ -255,6 +256,36 @@ function cheerBtn(t) {
   if (S.cheerEvent && !S.cheerEvent.done) wrap.prepend(h('div', { class: 'ce' }, `🔥 응원 이벤트! 1인당 응원 1위 팀 +${S.cheerEvent.bonus}점`));
   return wrap;
 }
+// ---------------- 팀·개인 순위 (큰 화면 순위 발표와 같은 점수·같은 계산) ----------------
+// 팀: 종합 점수(standings) · 개인: 개인 점수가 실제로 기록되는 게임의 점수 합 (서버 계산) · 점수가 정말 같을 때만 공동 순위
+function teamRank(tid) {
+  const rows = S?.standings?.rows || []; const r = rows.find((x) => x.id === tid); if (!r) return null;
+  const top = rows[0]?.total ?? 0; const tie = rows.filter((x) => x.rank === r.rank).length > 1;
+  return { rank: r.rank, total: r.total, gap: Math.round((top - r.total) * 10) / 10, n: rows.length, tie, started: S.standings.played > 0 || rows.some((x) => x.total !== 0) };
+}
+const gapTxt = (x) => (x.rank === 1 ? (x.tie ? '1위와 동점' : '1위!') : `1위와 ${x.gap}점 차`);
+function rankTexts() {
+  const p = active(); const me = ME[p?.pid]; const tr = teamRank(me?.me?.team ?? p?.team); const pr = me?.prank;
+  const short = (x) => (x.rank === 1 ? (x.tie ? '동점' : '선두') : `1위와 −${x.gap}`); // 폰 위 줄은 짧게 (카드에는 자세히)
+  const team = !tr ? null : !tr.started ? '아직 점수 없음' : `${tr.tie ? '공동 ' : ''}${tr.rank}위/${tr.n}팀 · ${short(tr)}`;
+  const mine = !pr ? null : pr.none ? '개인 점수 게임 전' : pr.rank == null ? '아직 개인 기록 없음' : `${pr.tie ? '공동 ' : ''}${pr.rank}위/${pr.n}명 · ${short(pr)}`;
+  return { tr, pr, team, mine };
+}
+function rankStrip() {
+  const el = $('#rk'); if (!el || !S) return;
+  const { team, mine } = rankTexts(); const key = `${team}|${mine}`; if (el.dataset.k === key) return; el.dataset.k = key; el.innerHTML = '';
+  if (team) el.append(h('span', {}, h('i', {}, '팀'), team));
+  if (mine) el.append(h('span', {}, h('i', {}, '나'), mine));
+}
+function rankCard() {
+  const { tr, pr } = rankTexts(); const p = active(); const t = teamOf(S, ME[p?.pid]?.me?.team ?? p?.team);
+  const box = (label, x, unit, empty) => h('div', { class: `rkbox ${x?.rank === 1 ? 'first' : ''}` }, h('div', { class: 'rkl' }, label),
+    x && x.rank != null && !empty ? [h('div', { class: 'rkn' }, x.tie ? h('small', {}, '공동 ') : null, `${x.rank}`, h('small', {}, `위 / ${x.n}${unit}`)), h('div', { class: 'rkg' }, `${x.total}점 · ${gapTxt(x)}`)] : h('div', { class: 'rke' }, empty || '아직 기록 없음'));
+  return h('div', { class: 'rkcard', style: { '--tc': t.color } },
+    box(`${t.icon} 우리 팀 순위`, tr, '팀', tr && !tr.started ? '아직 점수 없음' : null),
+    box('🙋 내 개인 순위', pr, '명', !pr ? null : pr.none ? '개인 점수가 집계되는 게임 전이에요' : pr.rank == null ? '아직 개인 기록이 없어요' : null));
+}
+const recTxt = (r) => (r ? `${r.label} · ${r.holder}${r.kind === 'player' && r.team ? ` (${r.team})` : ''} · ${new Date(r.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : null);
 function mini() {
   const rows = S.standings.rows;
   const me = ME[active().pid]?.me;
@@ -272,6 +303,7 @@ function intro() {
   if (S.settings.preview !== false && tx) introDemo = mountDemo(dbox, it.game, { mode: S.settings.mode, color: teamOf(S, me?.team).color, sec: S.settings.previewSec || 6, h, t0: (demoT0[S.seq] ||= performance.now()) });
   return h('div', { class: 'intro' }, h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name),
     tx ? h('div', { class: 'igoal' }, `🏆 ${tx.goal}`) : null, dbox,
+    S.record ? h('div', { class: 'irec' }, '🏅 이 게임 최고 기록 ', h('b', {}, recTxt(S.record))) : h('div', { class: 'irec' }, '🏅 아직 최고 기록이 없어요 — 첫 기록에 도전!'),
     h('div', { class: 'ir' }, it.rule), it.weight > 1 ? h('div', { class: 'chip big' }, `🔥 점수 ${it.weight}배!`) : null, it.durSec ? h('div', { class: 'muted' }, `⏱ ${it.durSec}초`) : null,
     h('div', { class: 'ready' }, me?.rep && it.team ? '👑 당신은 팀 대표예요!' : '준비하세요! 곧 시작합니다'), cheerBtn(teamOf(S, me?.team)));
 }
@@ -288,7 +320,10 @@ function results() {
     el.append(h('div', { class: `rank r${tr.rank}`, style: { '--tc': t.color } }, h('div', { class: 'rn' }, `${tr.rank}위`), h('div', {}, `${t.icon} ${t.name} · +${tr.points}점`)));
     if (tr.rank === 1) { sfx('win', sfxOn); setTimeout(() => { const c = h('canvas', { class: 'fx' }); document.body.append(c); confetti(c, [t.color, '#ffd43b', '#fff'], 120); setTimeout(() => c.remove(), 5000); }, 50); }
   }
-  if (my) el.append(h('div', { class: 'mine' }, '내 기록: ', h('b', {}, my.show ?? my.raw)));
+  if (my && lr.personal !== false) el.append(h('div', { class: 'mine' }, '내 기록: ', h('b', {}, my.show ?? my.raw)));
+  if (lr.record?.isNew) el.append(h('div', { class: 'newrec' }, '🎉 신기록! ', h('b', {}, recTxt(lr.record.rec))));
+  else if (lr.record?.rec) el.append(h('div', { class: 'irec' }, '🏅 최고 기록 ', h('b', {}, recTxt(lr.record.rec))));
+  el.append(rankCard());
   const ace = lr.aces?.[t.id];
   if (ace) el.append(h('div', { class: 'mvp' }, `🏅 우리 팀 에이스 ${ace.name}${ace.show ? ` (${ace.show})` : ''}${ace.id === active().pid ? ' · 바로 나!' : ''}`));
   if (lr.mvp) { const mt = teamOf(S, lr.mvp.team); el.append(h('div', { class: 'mvp' }, `⭐ MVP ${mt.icon} ${lr.mvp.name}${lr.mvp.show ? ` (${lr.mvp.show})` : ''}`)); }

@@ -47,7 +47,7 @@ function skillUI(g, opts = {}) {
       this.iv = setInterval(() => { if (S.score !== S.sent || S.hi) { api.send({ a: 'sc', v: S.score, ...(S.hi ? { x: S.hi } : {}) }); S.sent = S.score; S.hi = 0; } }, 300);
       this.update(v);
     },
-    update(v) { this.S.v = v; this.rk.textContent = v.rank ? `우리 팀 ${v.rank}위 / ${v.n}` : ''; },
+    update(v) { this.S.v = v; this.rk.textContent = v.rank ? `우리 팀 ${v.tie ? '공동 ' : ''}${v.rank}위 / ${v.n}` : ''; },
     resync() { this.S.sent = NaN; }, // 재개·재연결 뒤: 멈춘 사이 서버가 버린 점수를 다시 보냄
     reply() {},
     unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); clearInterval(this.iv); if (this.S.score !== this.S.sent) this.S.api.send({ a: 'sc', v: this.S.score }); },

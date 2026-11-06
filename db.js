@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS questions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, age TEXT NOT NULL, text TEXT NOT NULL, emoji TEXT, answer INTEGER NOT NULL, active INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+-- 게임별 최고 기록: 행사와 따로 저장 (행사를 지우거나 게임을 순서에서 뺐다 넣어도 남음) · 게임 ID + 연령 모드별
+CREATE TABLE IF NOT EXISTS records (
+  game TEXT NOT NULL, mode TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, label TEXT, holder TEXT, team TEXT, event_name TEXT, at INTEGER NOT NULL,
+  PRIMARY KEY (game, mode)
+);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'teacher', active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL

@@ -246,3 +246,10 @@ body.remote .ctrlmore .chk { display: none; }
 .gpick.on::after { right: 52px !important; }
 .ggrid.cards { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); max-height: 520px; overflow: auto; padding-right: 4px; }
 .reclist { margin: 4px 0; padding-left: 22px; } .reclist li { padding: 3px 0; font-weight: 800; }
+
+/* 개인 순위 TOP 5 (진행 화면) */
+.pboard { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
+.pboard .pitem { background: #ffffff10; border-left: 4px solid var(--tc); border-radius: 8px; padding: 4px 8px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.tsc small { white-space: nowrap; }
+.recrow { background: #ffffff0a; border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; }
+.recrow button { justify-self: start; margin-top: 4px; }

@@ -401,3 +401,9 @@ canvas.fx { z-index: 60; }
 .introv2:has(.idemo.pe) { grid-template-columns: 1.25fr 1fr; gap: 28px; padding: 16px 36px; }
 .idemo.pe { height: auto; aspect-ratio: 16 / 10; width: 100%; border-radius: 22px; overflow: hidden; box-shadow: 0 20px 60px #0008; }
 .idemo.pe canvas { display: block; width: 100%; height: 100%; }
+
+/* 게임 최고 기록 */
+.srec { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: #000000aa; color: #fff; font-size: 26px; font-weight: 800; padding: 10px 22px; border-radius: 999px; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; z-index: 5; }
+.srec b { color: #ffd43b; }
+.snewrec { margin: 10px auto 0; width: fit-content; max-width: 94%; font-size: 34px; font-weight: 900; color: #1b1440; background: linear-gradient(90deg, #ffd43b, #ffb703); border-radius: 18px; padding: 12px 26px; animation: npop .5s; box-shadow: 0 10px 40px #ffd43b66; }
+.snewrec small { font-size: 22px; font-weight: 700; }

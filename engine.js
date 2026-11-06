@@ -136,6 +136,55 @@ export class Event {
   }
   currentItem() { return this.settings.playlist[this.state.idx] || null; }
 
+  // ---------- 개인 순위: 참가자에게 실제로 기록된 점수만 (진행자 판정·팀 점수만 있는 게임은 빼고) ----------
+  personalGame(gid) { const d = GAMES[gid]; return !!d && !d.meta && !d.teamOnly && !this.isHost(d); }
+  personal() {
+    const k = this.db.get("SELECT COUNT(*) c, COALESCE(SUM(id),0) s FROM runs WHERE event_id=? AND status='done'", this.id);
+    const ex = [...this.players.values()].filter((p) => p.excluded).length;
+    const key = `${k.c}:${k.s}:${this.players.size}:${ex}`;
+    if (this._pers?.key === key) return this._pers;
+    const tot = new Map(); const runs = new Set();
+    for (const x of this.db.all("SELECT ps.player_id pid, ps.norm, r.game, r.id rid FROM player_scores ps JOIN runs r ON r.id=ps.run_id WHERE r.event_id=? AND r.status='done'", this.id)) {
+      if (!this.personalGame(x.game)) continue; runs.add(x.rid);
+      const p = this.players.get(x.pid); if (!p || p.excluded) continue;
+      tot.set(x.pid, (tot.get(x.pid) || 0) + x.norm);
+    }
+    const list = [...tot].map(([pid, t]) => ({ pid, total: Math.round(t * 10) / 10 })).sort((a, b) => b.total - a.total);
+    list.forEach((r, i) => { const p = list[i - 1]; r.rank = p && p.total === r.total ? p.rank : i + 1; }); // 점수가 정말 같을 때만 같은 순위
+    const cnt = new Map(); for (const r of list) cnt.set(r.total, (cnt.get(r.total) || 0) + 1);
+    for (const r of list) r.tie = cnt.get(r.total) > 1;
+    this._pers = { key, list, by: new Map(list.map((r) => [r.pid, r])), top: list[0]?.total ?? 0, n: list.length, runs: runs.size };
+    return this._pers;
+  }
+  myPersonal(pid) {
+    const P = this.personal();
+    if (!P.runs) return { none: true }; // 개인 점수가 집계되는 게임을 아직 안 함
+    const r = P.by.get(pid); if (!r) return { rank: null, n: P.n, top: P.top };
+    return { rank: r.rank, total: r.total, gap: Math.round((P.top - r.total) * 10) / 10, n: P.n, tie: r.tie, top: P.top };
+  }
+  // ---------- 게임별 최고 기록 (점수형=높을수록 · 시간형(recordLow)=낮을수록) ----------
+  getRecord(gid) { if (!gid) return null; const r = this.db.get('SELECT * FROM records WHERE game=? AND mode=?', gid, this.settings.mode || 'elem'); return r ? { value: r.value, label: r.label, holder: r.holder, team: r.team, kind: r.kind, at: r.at, event: r.event_name } : null; }
+  recordRun(def, res, out) {
+    const low = !!def.recordLow; const tname = (id) => { const t = this.teams.find((x) => x.id === id); return t ? `${t.icon} ${t.name}` : ''; };
+    let cand = null;
+    if (this.personalGame(def.id)) {
+      for (const [pid, s] of Object.entries(res.players || {})) {
+        const p = this.players.get(pid); if (!p || p.excluded || !Number.isFinite(s.raw)) continue;
+        if (!low && s.raw <= 0) continue;
+        if (!cand || (low ? s.raw < cand.value : s.raw > cand.value)) cand = { kind: 'player', value: s.raw, label: s.show ?? String(s.raw), holder: p.name, team: tname(p.team) };
+      }
+    } else {
+      for (const t of out.teams) { if (t.n === 0 && !(res.teams && res.teams[t.id] != null)) continue; if (t.metric > 0 && (!cand || t.metric > cand.value)) cand = { kind: 'team', value: t.metric, label: t.label || `${t.metric}점`, holder: tname(t.id), team: tname(t.id) }; }
+    }
+    const cur = this.getRecord(def.id);
+    if (!cand) return { rec: cur, isNew: false };
+    const better = !cur || (low ? cand.value < cur.value : cand.value > cur.value);
+    if (!better) return { rec: cur, isNew: false };
+    const now = Date.now();
+    this.db.run('INSERT OR REPLACE INTO records(game,mode,kind,value,label,holder,team,event_name,at) VALUES(?,?,?,?,?,?,?,?,?)', def.id, this.settings.mode || 'elem', cand.kind, cand.value, cand.label, cand.holder, cand.team, this.name, now);
+    return { rec: { ...cand, at: now, event: this.name }, isNew: true, prev: cur };
+  }
+
   standings() {
     const rows = this.teams.map((t) => ({ id: t.id, games: 0, bonus: 0, wins: 0, metricSum: 0 }));
     const by = Object.fromEntries(rows.map((r) => [r.id, r]));
@@ -166,6 +215,8 @@ export class Event {
       phaseAt: this.phaseAt, phaseEnd: this.phaseEnd,
       teams: this.teams, counts: this.teamCounts(),
       standings: this.standings(), prevRanks: this.prevRanks,
+      personal: (() => { const P = this.personal(); return { runs: P.runs, n: P.n, top: P.top, list: P.list.slice(0, 5).map((r) => { const p = this.players.get(r.pid); return { name: p?.name, team: p?.team, total: r.total, rank: r.rank, tie: r.tie }; }) }; })(),
+      record: item ? this.getRecord(item.game) : null,
       cheer: Object.fromEntries(this.cheer), cheerEvent: this.cheerEvent,
       lastResult: this.lastResult && !opts.full ? { ...this.lastResult, players: undefined, nPlayers: Object.keys(this.lastResult.players || {}).length } : this.lastResult, ceremonyStep: this.state.ceremonyStep,
       teamMvp: ['ceremony', 'ended'].includes(this.state.phase) ? this.teamMvp() : null,
@@ -176,7 +227,11 @@ export class Event {
   }
 
   // ---------- 브로드캐스트 ----------
-  broadcastState() { if (this.hub.closed) return; this.hub.broadcast(this.id, this.publicState()); }
+  broadcastState() {
+    if (this.hub.closed) return; this.hub.broadcast(this.id, this.publicState());
+    // 개인 순위가 바뀌었으면(게임 끝·재경기·제외) 참가자마다 내 순위를 다시 보냄
+    const pk = this.personal().key; if (pk !== this._persSent) { this._persSent = pk; for (const pid of this.conns.keys()) { const p = this.players.get(pid); if (p && !(this.game && ['countdown', 'playing'].includes(this.state.phase))) this.sendPlayer(pid, this.playerView(p)); } }
+  }
   sendPlayer(pid, msg) { const s = this.conns.get(pid); if (!s) return; const str = JSON.stringify({ ...msg, pid }); for (const ws of s) this.hub.send(ws, str); }
 
   // ---------- 참가 ----------
@@ -230,7 +285,7 @@ export class Event {
   ctxPlayer(p) { const a = AGES6.includes(this.ageOf(p)) ? this.ageOf(p) : 'elem'; return { id: p.id, team: p.team, age: BASE3[a], age6: a, lv: LV6[a], name: p.name, rep: p.rep, ai: p.ai || (/^ai:/.test(p.device || '') && this.settings.test ? p.device.split(':')[1] : null) }; }
 
   playerView(p) {
-    const base = { t: 'me', me: { id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded } };
+    const base = { t: 'me', me: { id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded }, prank: this.myPersonal(p.id) };
     if (this.game && ['countdown', 'playing'].includes(this.state.phase) && !p.excluded) { base.game = this.game.view(p.id, Date.now()); base.run = this.game.runId; }
     if (this.state.phase === 'results' && this.lastResult) base.my = this.lastResult.players?.[p.id] ?? null;
     return base;
@@ -416,7 +471,8 @@ export class Event {
       this.db.run("UPDATE runs SET status='done', ended_at=? WHERE id=?", now, g.runId);
       for (const b of res.bonus || []) this.db.run('INSERT INTO adjustments(event_id,team_id,delta,kind,reason,at) VALUES(?,?,?,?,?,?)', this.id, b.team, b.delta, 'luck', b.reason, now);
     });
-    this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, aces: out.aces, extra: res.extra || null, bonus: res.bonus || null, reason };
+    let record = null; try { if (!this.settings.test && !res.noPoints && !res.bonus) record = this.recordRun(g.def, res, out); } catch (e) { console.error('record', e); }
+    this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, aces: out.aces, extra: res.extra || null, bonus: res.bonus || null, reason, record, personal: this.personalGame(g.def.id) };
     this.game = null;
     this.state.runId = null;
     // 반복 횟수(rep): 같은 게임을 정한 판 수만큼 한 뒤 다음 게임으로

@@ -4,7 +4,7 @@ import { LV, norm, normLow, round1, clamp, intIn, numIn } from './common.js';
 
 // ---------------------------------------------------------------- 06 10초의 신
 export const tensec = {
-  id: 'tensec', no: 6, name: '10초의 신', emoji: '⏱️',
+  id: 'tensec', no: 6, name: '10초의 신', emoji: '⏱️', recordLow: true,
   dur: { kid: 35, elem: 40, adult: 45 },
   rule: {
     kid: '시작을 누르고, 마음속으로 5초를 세고 멈춰요!',
@@ -168,7 +168,7 @@ function makeVault(r, age) {
   return { kind: 'num', len: 4, code: d, hints };
 }
 export const vault = {
-  id: 'vault', no: 8, name: '팀 협동 금고', emoji: '🔐',
+  id: 'vault', no: 8, name: '팀 협동 금고', emoji: '🔐', teamOnly: true, // 개인 기록 없음 (팀 점수를 팀원에게 같이 보여 줌)
   dur: { kid: 60, elem: 90, adult: 120 },
   teamGame: true,
   rule: {
@@ -285,7 +285,7 @@ export const mole = {
 
 // ---------------------------------------------------------------- 10 반응속도 챔피언
 export const reaction = {
-  id: 'reaction', no: 10, name: '반응속도 챔피언', emoji: '⚡',
+  id: 'reaction', no: 10, name: '반응속도 챔피언', emoji: '⚡', recordLow: true,
   dur: { kid: 30, elem: 35, adult: 40 },
   untimed: true,
   rule: {

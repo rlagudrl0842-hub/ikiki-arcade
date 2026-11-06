@@ -248,6 +248,8 @@ function intro() {
       tx ? h('div', { class: 'igoal' }, h('b', {}, '🏆 '), tx.goal) : h('div', { class: 'ih' }, it.howto), chips, cnt));
     sayV(`${it.name}! ${it.rule}`);
   }
+  // 이 게임 최고 기록 (행사와 따로 저장 · 깨면 결과 화면에 신기록!)
+  stage.append(h('div', { class: 'srec' }, S.record ? ['🏅 이 게임 최고 기록 ', h('b', {}, recTxt(S.record))] : '🏅 아직 최고 기록 없음 — 첫 기록에 도전!'));
   render.t = setInterval(() => { cnt.textContent = S.phaseEnd && !S.paused ? `${Math.max(0, Math.ceil((S.phaseEnd - live.now()) / 1000))}초 뒤 시작` : '진행자가 시작 버튼을 누르면 시작해요'; }, 250);
 }
 
@@ -297,6 +299,7 @@ function cheerGauge(c) {
 }
 
 // ---------------- 결과 ----------------
+const recTxt = (r) => (r ? `${r.label} · ${r.holder}${r.kind === 'player' && r.team ? ` (${r.team})` : ''} · ${new Date(r.at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : '');
 function results(prev) {
   const lr = S.lastResult; if (!lr) return;
   sfx('end', sfxOn()); stage.classList.remove('last10');
@@ -318,6 +321,7 @@ function results(prev) {
       list.prepend(row);
     });
     wrap.append(list);
+    if (lr.record?.isNew) wrap.append(h('div', { class: 'snewrec' }, '🎉 신기록! ', h('b', {}, recTxt(lr.record.rec)), lr.record.prev ? h('small', {}, ` (이전 ${lr.record.prev.label})`) : null));
     const w = lr.teams[0];
     // 이긴 이유: 1위 기록과 2위와의 차이 (팀이 무엇으로 이겼는지 한 줄로)
     if (w && lr.teams[1]) { const t1 = team(w.id), w2 = lr.teams[1]; const gap = Math.round((w.metric - w2.metric) * 10) / 10; wrap.append(h('div', { class: 'rwhy', style: { '--tc': t1.color } }, `🏆 ${t1.icon} ${t1.name} 승리 — ${w.label || `기록 ${w.metric}`}${gap > 0 ? ` · 2위와 ${gap} 차이` : ' · 동점 (먼저 앞선 순서)'}`)); }

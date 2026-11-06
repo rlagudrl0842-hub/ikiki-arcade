@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { openDb } from './db.js';
 import { Event, Err, sanitizeSettings, TEAM_COLORS, TEAM_ICONS, defaultPlaylist } from './engine.js';
-import { GAME_LIST } from './games.js';
+import { GAME_LIST, GAMES } from './games.js';
 import { DEFAULT_QUESTIONS } from './c.js';
 
 // 모든 파일이 저장소 최상위에 있는 구조 (Render: node server.js)
@@ -300,6 +300,17 @@ export function createServer(opts = {}) {
       return json(res, 200, { events: rows.filter((r) => !isTest(r)).map((r) => ({ ...r, mode: JSON.parse(r.settings).mode, settings: undefined, phase: events.get(r.id)?.phase ?? null })) });
     }
     // ---- 🎮 혼자 테스트하기 / 게임 미리보기: 홍팀(나) vs 청팀(컴퓨터) 테스트 행사 (실제 행사 기록과 분리)
+    // 게임별 최고 기록 보기 · 초기화(마스터만, 명시적으로 고른 것만)
+    if (a === 'records' && method === 'GET' && !b) {
+      const rows = db.all('SELECT * FROM records ORDER BY game, mode');
+      return json(res, 200, { records: rows.map((r) => ({ ...r, name: GAMES[r.game]?.name || r.game, emoji: GAMES[r.game]?.emoji || '🎮' })) });
+    }
+    if (a === 'records' && b === 'reset' && method === 'POST') {
+      needMaster();
+      const g = String(body.game || ''), m = String(body.mode || '');
+      if (!g || !m) throw new Err('초기화할 기록을 골라 주세요');
+      db.run('DELETE FROM records WHERE game=? AND mode=?', g, m); return json(res, 200, { ok: true });
+    }
     if (a === 'solo' && method === 'POST') {
       const list = (Array.isArray(body.games) ? body.games : []).filter((g) => typeof g === 'string' && GAME_LIST.some((x) => x.id === g)).slice(0, 40);
       if (!list.length) throw new Err('테스트할 게임을 골라 주세요');

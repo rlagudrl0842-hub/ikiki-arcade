@@ -111,8 +111,9 @@ function skill(o) {
         view(pid) {
           const p = P.get(pid); if (!p) return { g: o.id, spectator: true };
           const avg = avgBy(P, (q) => (q.active ? q.v : null), ctx.teams);
-          const order = Object.entries(avg).sort((a, b) => b[1] - a[1]).map((x) => +x[0]);
-          return { g: o.id, seed: ctx.seed, lv: p.lv, age: p.age, t0, dur: ctx.durMs / 1000, v: p.v, rank: order.indexOf(p.team) + 1, n: ctx.teams.length };
+          // 순위 = 우리 팀보다 높은 팀 수 + 1 (점수가 같으면 같은 순위 · 전에는 같은 점수도 1·2·3위로 갈렸음)
+          const mine = avg[p.team] ?? 0; const above = Object.values(avg).filter((x) => x > mine).length; const same = Object.values(avg).filter((x) => x === mine).length;
+          return { g: o.id, seed: ctx.seed, lv: p.lv, age: p.age, t0, dur: ctx.durMs / 1000, v: p.v, rank: above + 1, tie: same > 1, n: ctx.teams.length };
         },
         screen() {
           const f = feed; feed = [];

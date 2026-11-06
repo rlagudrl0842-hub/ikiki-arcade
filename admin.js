@@ -89,7 +89,7 @@ async function home() {
   const list = h('div', { class: 'evlist' }, h('p', { class: 'muted' }, '불러오는 중…'));
   app.append(h('header', { class: 'ah' }, h('div', { class: 'brand' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), ' ', h('b', {}, '팀 대항 오락실'), h('span', { class: 'muted' }, ` 👤 ${me.name}${isMaster() ? ' (마스터)' : ''}`)),
     isMaster() ? h('button', { class: 'btn small blue', onclick: usersModal }, '👥 강사 계정') : null,
-    h('button', { class: 'btn small ghost', onclick: settingsModal }, '⚙️ 설정'), isMaster() ? h('button', { class: 'btn small ghost', onclick: questionsModal }, '⭕ OX 문제') : null,
+    h('button', { class: 'btn small ghost', onclick: settingsModal }, '⚙️ 설정'), h('button', { class: 'btn small ghost', onclick: recordsModal }, '🏅 게임 신기록'), isMaster() ? h('button', { class: 'btn small ghost', onclick: questionsModal }, '⭕ OX 문제') : null,
     h('button', { class: 'btn small ghost', onclick: async () => { await A('/api/logout', {}).catch(() => {}); store('ikiki:admin', null); token = null; route(); } }, '로그아웃')),
   h('main', { class: 'amain' }, newEventCard(), soloCard(), h('h2', {}, '행사 목록'), list));
   try {
@@ -315,10 +315,23 @@ function draw() {
   // → 진행에 영향 있는 값이 바뀔 때만 다시 그리고, 인원수는 글자만 바꿈
   const ck = ctrlKey();
   if (ck !== draw.ck || !$('.ctrl .bigbtns')) { draw.ck = ck; drawCtrl(); } else updateCounts();
-  drawQuick(); paintTime(); timeModal.paint?.();
+  paintBoard(); drawQuick(); paintTime(); timeModal.paint?.();
   if (tab === 'run') { const rk = runKey(); if (rk !== draw.rk || !$('.tabbody .plist')) { draw.rk = rk; drawTab(); } }
   else if (tab === 'prep' || tab === 'playlist') { const pk = JSON.stringify([S.playlist, S.phase === 'lobby', busyPh(), S.idx, S.teams.length, S.settings.mode, S.settings.device, S.standings.played > 0]); if (pk !== draw.pk) { draw.pk = pk; if (!formDirty) drawTab(); } draw.rk = null; }
   else draw.rk = null;
+}
+// 팀 점수·순위 + 개인 순위 TOP 5 (참가자 폰·큰 화면과 같은 계산) — 버튼은 그대로 두고 점수판만 다시 그림
+function paintBoard() {
+  const tb = $('.ctrl .tboard'), pb = $('.ctrl .pboard'); if (!tb || !S) return;
+  const rows = S.standings.rows || []; const P = S.personal || {};
+  const key = JSON.stringify([rows, S.teams, P, S.standings.played]); if (draw.bk === key) return; draw.bk = key;
+  const tot = Object.fromEntries(rows.map((r) => [r.id, r])); const top = rows[0]?.total ?? 0; const started = S.standings.played > 0 || rows.some((r) => r.total !== 0);
+  tb.innerHTML = '';
+  for (const r of rows) { const t = S.teams.find((x) => x.id === r.id); if (!t) continue; const tie = rows.filter((x) => x.rank === r.rank).length > 1;
+    tb.append(h('div', { class: 'tsc', style: { '--tc': t.color } }, h('span', {}, `${t.icon} ${t.name}`), h('b', {}, r.total), started ? h('small', {}, `${tie ? '공동 ' : ''}${r.rank}위${r.rank > 1 ? ` · −${Math.round((top - r.total) * 10) / 10}` : ''}`) : null)); }
+  pb.innerHTML = '';
+  if (!P.runs) { pb.append(h('span', { class: 'muted small' }, '🙋 개인 순위: 개인 점수가 집계되는 게임을 하면 표시돼요 (체육·진행자 판정 게임은 팀 점수만)')); return; }
+  pb.append(h('b', { class: 'small' }, `🙋 개인 TOP 5 (${P.n}명)`), ...(P.list || []).map((x) => { const t = S.teams.find((y) => y.id === x.team); return h('span', { class: 'pitem', style: { '--tc': t?.color || '#888' } }, `${x.tie ? '공동 ' : ''}${x.rank}위 ${t?.icon || ''}${x.name} ${x.total}`); }));
 }
 const ctrlKey = () => JSON.stringify([S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
 const runKey = () => JSON.stringify([S.phase, S.idx, S.playlist, S.standings.rows, S.replayLog, S.teams.map((t) => [t.id, t.name, t.icon, t.color])]);
@@ -458,8 +471,7 @@ function drawCtrl() {
     h('span', { class: 'muted small' }, S.idx >= S.total ? '모든 게임 끝' : `남은 게임 ${left.length}개 · 예상 남은 시간 ${TP.fmt(TP.remainSec(S, ctxT(), live.now()))} (시상 포함)`)) : null;
   const now = h('div', { class: 'nowline' }, h('b', { class: 'nowg' }, it ? `${it.emoji} ${S.idx + 1}/${S.total} ${it.name}${(S.playlist[S.idx]?.rep || 1) > 1 ? ` (${S.rep || 1}/${S.playlist[S.idx].rep}판)` : ''}` : S.idx >= S.total ? '🏁 모든 게임 완료' : '게임 없음'), h('span', { class: 'ctime' }), h('span', { class: 'muted' }, `참가 ${total}명 (접속 ${online})`));
   // 팀 점수 (크게)
-  const tot = Object.fromEntries((S.standings.rows || []).map((r) => [r.id, r]));
-  const board = h('div', { class: 'tboard' }, ...S.teams.map((t) => h('div', { class: 'tsc', style: { '--tc': t.color } }, h('span', {}, `${t.icon} ${t.name}`), h('b', {}, tot[t.id]?.total ?? 0), S.standings.played ? h('small', {}, `${tot[t.id]?.rank ?? '-'}위`) : null)));
+  const board = h('div', { class: 'tboard' }); const pboard = h('div', { class: 'pboard' }); draw.bk = null; // 점수판은 paintBoard()가 점수가 바뀔 때마다 그 자리에서 고침
   const main = h('div', { class: 'bigbtns' });
   const more = h('div', { class: 'morebtns' });
   if (ph === 'lobby') {
@@ -504,7 +516,7 @@ function drawCtrl() {
     h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: S.settings.autoPrep !== false, disabled: S.settings.auto, onchange: (e) => save({ settings: { autoPrep: e.target.checked } }) }), ' 다음 게임 자동 준비 (결과 뒤 소개 화면까지만, 시작은 직접)'));
   const moreBox = h('details', { class: 'ctrlmore' }, h('summary', {}, '더보기 (건너뛰기·재경기·시상식·리모컨·자동 진행…)'), more, h('div', { class: 'muted small' }, '단축키: Space 다음 · P 일시정지 · E 지금 종료 (확인 후) — 대형 화면 창에서도 동작'));
   if (draw.moreOpen) moreBox.open = true; moreBox.ontoggle = () => { draw.moreOpen = moreBox.open; };
-  c.append(now, prog, board, S.notice ? h('div', { class: 'notice' }, S.notice) : null, main, tools, moreBox, ph === 'ended' ? null : h('div', { class: 'qpad' }), h('div', { class: 'livemini' }));
+  c.append(now, prog, board, pboard, S.notice ? h('div', { class: 'notice' }, S.notice) : null, main, tools, moreBox, ph === 'ended' ? null : h('div', { class: 'qpad' }), h('div', { class: 'livemini' }));
 }
 function clock() {
   const el = $('.ctime'); if (!el || !S || !live) return;
@@ -547,6 +559,20 @@ function pePad(s) {
 }
 async function save(body) { try { await A(`/api/events/${eid}/update`, body); } catch (e) { toast(e.message); } }
 
+// 게임별 최고 기록 (모든 행사 공통 · 행사를 지워도 남음) — 초기화는 마스터가 하나씩 직접 골라서만
+async function recordsModal() {
+  const box = h('div', { class: 'stack' }); modal('🏅 게임별 최고 기록', box);
+  const load = async () => {
+    let r; try { r = await A('/api/records'); } catch (e) { box.textContent = e.message; return; }
+    box.innerHTML = '';
+    box.append(h('p', { class: 'muted small' }, '게임과 연령 모드별로 가장 좋은 기록이에요. 혼자 테스트·미리보기는 기록에 넣지 않아요. 행사를 지워도 기록은 남아요.'));
+    if (!r.records.length) { box.append(h('p', {}, '아직 기록이 없어요. 행사에서 게임을 하면 자동으로 쌓여요.')); return; }
+    const MD = { baby: '영아', kid: '유아', elem: '초등', mid: '중등', high: '고등', adult: '성인', mixed: '혼합' };
+    for (const x of r.records) box.append(h('div', { class: 'recrow' }, h('b', {}, `${x.emoji} ${x.name}`), h('small', { class: 'muted' }, ` ${MD[x.mode] || x.mode}`), h('div', {}, `${x.label} · ${x.holder}${x.kind === 'player' && x.team ? ` (${x.team})` : ''}`), h('small', { class: 'muted' }, `${new Date(x.at).toLocaleDateString('ko-KR')} · ${x.event_name || ''}`),
+      isMaster() ? h('button', { class: 'btn small ghost', onclick: async () => { if (!confirm(`'${x.name}' (${MD[x.mode] || x.mode}) 최고 기록을 지울까요? 되돌릴 수 없어요.`)) return; try { await A('/api/records/reset', { game: x.game, mode: x.mode }); toast('기록을 지웠어요'); load(); } catch (e) { toast(e.message); } } }, '초기화') : null));
+  };
+  load();
+}
 function qrModal() {
   const url = joinUrl();
   const base = S.settings.joinUrl || localBase || location.origin; const qurl = qrJoinUrl(base, S.event.code);
