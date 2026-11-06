@@ -64,7 +64,7 @@ const SHAPES = [
 ];
 G.dalgona = skillUI({
   init(S) { S.k = 0; this.newCookie(S); },
-  newCookie(S) { S.shape = Math.min(SHAPES.length - 1, Math.floor(S.k / 2) + (S.lv >= 3 ? 1 : 0)); S.pts = Array.from({ length: 120 }, (_, i) => SHAPES[S.shape](i / 120)); S.cov = new Array(120).fill(false); S.err = []; S.crack = 0; S.done = 0; },
+  newCookie(S) { S.shape = Math.min(SHAPES.length - 1, Math.floor(S.k / 2) + (S.lv >= 3 ? 1 : 0)); S.pts = Array.from({ length: 120 }, (_, i) => SHAPES[S.shape](i / 120)); S.cov = new Array(120).fill(false); S.err = []; S.crack = 0; S.done = 0; S.last = null; },
   step(S) { if (S.done && performance.now() - S.done > 900) { S.k++; this.newCookie(S); } },
   toPath(S, x, y) { const R = 0.36; const cx = 0.5, cy = 0.5; const ar = S.W && S.H ? S.W / S.H : 0.75; return [(x - cx) / R, (y - cy) / (R * ar)]; },
   move(S, x, y) {
@@ -73,9 +73,13 @@ G.dalgona = skillUI({
     const tol = [0.2, 0.17, 0.13, 0.11, 0.1, 0.1][S.lv];
     if (best > tol * 2.3) { S.crack++; vibrate(60); if (S.crack >= 3) { S.say('💥 쩍! 금이 갔어요'); sfx('bad', S.api.sfxOn); S.done = performance.now(); } return; }
     S.err.push(best); for (let j = -3; j <= 3; j++) S.cov[(bi + j + 120) % 120] = true;
+    // 손가락을 빨리 움직이면 터치 신호 사이가 벌어져 그 사이 선이 비었음 → 바로 전 위치에서 지금 위치까지 모양을 따라 이어서 칠함
+    if (S.last != null) { const diff = ((bi - S.last + 180) % 120) - 60; if (Math.abs(diff) <= 20) for (let k = 1; k < Math.abs(diff); k++) S.cov[(S.last + Math.sign(diff) * k + 120) % 120] = true; }
+    S.last = bi;
     if (S.cov.filter(Boolean).length >= 112) { const m = S.err.reduce((a, b) => a + b, 0) / S.err.length; const q = Math.max(0.2, 1 - m / tol); const s = Math.round(10 + 30 * q); S.add(s, q > 0.8 ? 1 : 0, q > 0.8 ? `완벽! +${s}` : `+${s}`); sfx('win', S.api.sfxOn); S.done = performance.now(); }
   },
-  down(S, x, y) { this.move(S, x, y); },
+  down(S, x, y) { S.last = null; this.move(S, x, y); },
+  up(S) { S.last = null; }, // 손을 떼면 다음 획은 새로 시작 (떨어진 곳끼리 잇지 않음)
   draw(S, c, W, H, d) {
     S.W = W; S.H = H; bg(c, W, H, '#2b1d14', '#120c08');
     const cx = W * 0.5, cy = H * 0.5, R = W * 0.36;
