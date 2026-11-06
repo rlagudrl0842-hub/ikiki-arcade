@@ -30,10 +30,14 @@ export class Live {
     this.hello = hello; this.onMsg = onMsg; this.onStatus = onStatus || (() => {});
     this.offset = 0; this.rtt = 999; this.tries = 0; this.queue = [];
     this.open();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && (!this.ws || this.ws.readyState > 1)) this.open(); });
-    window.addEventListener('online', () => this.open());
+    // 화면이 다시 보이거나 인터넷이 돌아오면 다시 연결 (끝낸 연결은 다시 열지 않음 — 예전 행사 상태가 섞이던 원인)
+    this.onVis = () => { if (!document.hidden && (!this.ws || this.ws.readyState > 1)) this.open(); };
+    this.onOnline = () => this.open();
+    document.addEventListener('visibilitychange', this.onVis);
+    window.addEventListener('online', this.onOnline);
   }
   open() {
+    if (this.stopped) return;
     if (this.ws && this.ws.readyState <= 1) return;
     clearTimeout(this.retryT);
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
@@ -63,7 +67,7 @@ export class Live {
   sync() { for (let i = 0; i < 3; i++) setTimeout(() => this.send({ t: 'ping', c: performance.now() }), i * 300); }
   send(m) { if (this.ws?.readyState === 1) { this.ws.send(JSON.stringify(m)); return true; } return false; }
   now() { return Date.now() + this.offset; } // 서버 시각
-  stop() { this.stopped = true; this.ws?.close(); }
+  stop() { this.stopped = true; clearTimeout(this.retryT); clearInterval(this.syncT); document.removeEventListener('visibilitychange', this.onVis); window.removeEventListener('online', this.onOnline); this.ws?.close(); }
 }
 
 // ---------------- 효과음 (Web Audio로 직접 합성 — 파일 없음) ----------------

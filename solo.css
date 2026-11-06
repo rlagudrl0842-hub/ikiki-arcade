@@ -50,3 +50,9 @@ body { background: #0b0e24; color: #fff; overflow: hidden; }
   .glive { margin-left: 0; }
 }
 @media (max-width: 600px) { .sh .chip { display: none; } }
+.hidden { display: none !important; }
+.pepad { flex: 1; overflow: auto; gap: 8px; padding: 10px; }
+.pepad .pnote { font-weight: 800; color: #ffe066; margin-bottom: 6px; }
+.pepad .prow { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; } .pepad .prow .btn { flex: 1 1 auto; font-size: 18px; padding: 14px 12px; }
+.pepad .prow.glob { border-top: 1px dashed #ffffff30; padding-top: 8px; }
+.sm.watch .pepad { max-height: 200px; }

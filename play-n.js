@@ -16,11 +16,13 @@ function stopLoop(self) { self.dead = true; cancelAnimationFrame(self.raf); }
 function joystick(api, onVec) {
   const knob = h('div', { class: 'jk' });
   const pad = h('div', { class: 'jpad' }, knob, h('div', { class: 'jhint' }, '여기를 누른 채 움직여요'));
-  let id = null, vx = 0, vy = 0, sent = [0, 0], at = 0;
+  let id = null, vx = 0, vy = 0, sent = [0, 0], at = 0, tr = 0;
   const flush = (force) => {
     const now = performance.now();
-    if (!force && now - at < 70) return;
     if (!force && Math.abs(vx - sent[0]) < 0.08 && Math.abs(vy - sent[1]) < 0.08) return;
+    // 0.07초에 한 번까지만 보냄 — 막힌 변화는 다음 0.12초 확인까지 기다리지 않고 0.07초가 차는 순간 바로 보냄 (방향 바꿀 때 반응이 늦던 것)
+    if (!force && now - at < 70) { if (!tr) tr = setTimeout(() => { tr = 0; flush(); }, 70 - (now - at)); return; }
+    clearTimeout(tr); tr = 0;
     at = now; sent = [vx, vy]; api.send({ a: 'mv', x: Math.round(vx * 100) / 100, y: Math.round(vy * 100) / 100 });
   };
   const upd = (e) => {
@@ -33,13 +35,19 @@ function joystick(api, onVec) {
   pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) upd(e); });
   const end = (e) => { if (e.pointerId !== id) return; id = null; vx = vy = 0; knob.style.transform = ''; pad.classList.remove('on'); onVec(0, 0); flush(true); };
   pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
+  pad.addEventListener('lostpointercapture', end); // 손가락을 뗀 신호를 놓쳐도(알림창·화면 전환) 계속 움직이지 않게
   // 컴퓨터 테스트용 방향키
   const keys = new Set();
   const kd = (e) => { if (!e.key.startsWith('Arrow')) return; keys.add(e.key); kv(); }; const ku = (e) => { keys.delete(e.key); kv(); };
   const kv = () => { vx = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0); vy = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0); const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l; onVec(vx, vy); flush(true); };
   addEventListener('keydown', kd); addEventListener('keyup', ku);
+  // 다른 앱으로 가거나 화면이 꺼지면 손을 뗀 것으로 (방향키·손가락이 눌린 채 남아 혼자 계속 가던 문제 방지)
+  const off = () => { keys.clear(); if (id != null) { id = null; knob.style.transform = ''; pad.classList.remove('on'); } if (vx || vy) { vx = vy = 0; onVec(0, 0); flush(true); } };
+  const vis = () => { if (document.hidden) off(); };
+  addEventListener('blur', off); document.addEventListener('visibilitychange', vis);
   const iv = setInterval(() => flush(), 120);
-  pad.stop = () => { clearInterval(iv); removeEventListener('keydown', kd); removeEventListener('keyup', ku); };
+  pad.resync = () => flush(true); // 일시정지·재연결 뒤: 지금 방향을 서버에 다시 알림 (멈춘 동안 보낸 '손 뗌'은 서버가 버림)
+  pad.stop = () => { clearInterval(iv); clearTimeout(tr); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('blur', off); document.removeEventListener('visibilitychange', vis); };
   return pad;
 }
 function arenaGame(kind) {
@@ -51,8 +59,8 @@ function arenaGame(kind) {
       this.fx = h('div', { class: 'afx' });
       this.pad = joystick(api, (x, y) => { this.vec = [x, y]; });
       root.append(h('div', { class: `arena k-${kind}` }, motionChip(api, '폰을 기울여 이동'), this.st, h('div', { class: 'amapw' }, this.cv, this.fx), this.pad));
-      let lastT = [0, 0];
-      this.tiv = setInterval(() => { if (!M.on || this.pad.classList.contains('on')) return; const [x, y] = M.tilt(); const v = [Math.round(x * 100) / 100, Math.round(y * 100) / 100]; this.vec = v; if (Math.abs(v[0] - lastT[0]) < 0.08 && Math.abs(v[1] - lastT[1]) < 0.08) return; lastT = v; api.send({ a: 'mv', x: v[0], y: v[1] }); }, 100);
+      this.lastT = [0, 0];
+      this.tiv = setInterval(() => { if (!M.on || this.pad.classList.contains('on')) return; const [x, y] = M.tilt(); const v = [Math.round(x * 100) / 100, Math.round(y * 100) / 100]; this.vec = v; const lastT = this.lastT; if (Math.abs(v[0] - lastT[0]) < 0.08 && Math.abs(v[1] - lastT[1]) < 0.08) return; this.lastT = v; api.send({ a: 'mv', x: v[0], y: v[1] }); }, 100);
       this.update(v);
       loop(this, () => this.draw());
     },
@@ -81,6 +89,7 @@ function arenaGame(kind) {
       if (r.tag) { sfx('good', this.api.sfxOn); this.flash('tag', `🧟 ${r.who} 잡았다!`); }
       if (r.big) { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); this.flash('tag', '대형 보석 +5'); }
     },
+    resync() { if (M.on && !this.pad.classList.contains('on')) this.lastT = [9, 9]; else this.pad.resync(); },
     flash(cls, text) { const f = h('div', { class: `aflash ${cls}` }, text); this.fx.append(f); setTimeout(() => f.remove(), 1200); },
     draw() {
       const v = this.v; const { W, H, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d');

@@ -56,6 +56,7 @@ function renderCodeEntry() {
 function logo() { return h('div', { class: 'brand big' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), h('div', {}, h('b', {}, '팀 대항 오락실'))); }
 
 async function renderJoin(addMode = false) {
+  unmount(); // 게임 중에 '아이 추가'로 와도 이전 게임 화면의 반복 그리기·타이머를 정리
   app.innerHTML = '';
   const wrap = h('main', { class: 'join' }, logo(), h('p', { class: 'muted' }, '불러오는 중…'));
   app.append(wrap);
@@ -105,13 +106,15 @@ async function renderJoin(addMode = false) {
 
 // ---------------- 연결 ----------------
 function connect() {
+  unmount(); // 화면을 새로 만들면 이전 게임 인스턴스도 정리 (안 그러면 떨어진 화면에 계속 그리고 새 화면엔 게임이 안 뜸)
   app.innerHTML = '';
   app.append(h('div', { class: 'top' }), h('main', { id: 'main' }), h('div', { id: 'bar' }));
   if (live) live.stop();
   live = new Live(() => ({ t: 'hello', role: 'player', eid: sess.eventId, players: sess.players.map((p) => ({ pid: p.pid, secret: p.secret })) }), onMsg, onStatus);
-  setInterval(tickClock, 200);
+  clearInterval(connect.clock); connect.clock = setInterval(tickClock, 200); // 참가자 추가·취소로 다시 연결해도 시계 타이머가 겹겹이 쌓이지 않게
 }
 function onStatus(st, code) {
+  if (st === 'online') setTimeout(() => mounted?.inst?.resync?.(), 600); // 다시 연결됨: 끊긴 동안 보낸 방향을 다시 보냄
   document.body.classList.toggle('offline', st === 'offline');
   if (st === 'offline' && code === 4004) { store(KEY, null); toast('행사가 삭제되었어요'); }
 }
@@ -136,6 +139,8 @@ function onMsg(m) {
 }
 
 function onState(prev) {
+  window.__paused = !!S.paused;
+  if (prev?.paused && !S.paused) setTimeout(() => mounted?.inst?.resync?.(), 50); // 재개: 멈춘 동안 바뀐 조이스틱 방향을 다시 보냄
   sfxOn = S.settings.sfx && !aiLv; // 컴퓨터 폰은 소리 없음
   const me = ME[active()?.pid]?.me;
   document.body.classList.toggle('kid', ['kid', 'baby'].includes(S.settings.mode) || ['kid', 'baby'].includes(me?.age));

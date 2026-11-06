@@ -6,6 +6,8 @@ import './screen-n.js';
 import './screen-n2.js';
 import './screen-n3.js';
 import './screen-n4.js';
+import { mountPeTutorial } from './screen-pe2.js';
+import { PE_BY, AGE_NAME } from './pe2data.js';
 import { mountDemo, demoText } from './preview.js';
 // 노트북에서 직접 실행(localhost)하면 폰은 localhost로 못 들어오므로, 참가 QR에는 이 노트북의 같은 와이파이 주소를 씀
 let localBase = '';
@@ -31,12 +33,12 @@ const gate = $('#gate');
 // 혼자 테스트·미리보기 안에 넣은 화면: 안내 덮개 없이, 바깥 화면에서 '시작'을 누르면 소리 켜기 (iframe allow=autoplay)
 if (new URLSearchParams(location.search).has('embed')) {
   gate.classList.add('hidden'); document.body.classList.add('embed');
-  addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'unlock') { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); } });
+  addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'unlock') { audioUnlock(); BGM.preloadAll(nextIds()); setTimeout(audioSync, 50); } });
 }
-gate.addEventListener('click', () => { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); gate.classList.add('hidden'); try { document.documentElement.requestFullscreen?.(); } catch { /* */ } say('아이키키 팀 대항 오락실을 시작합니다', voiceOn()); });
+gate.addEventListener('click', () => { audioUnlock(); BGM.preloadAll(nextIds()); setTimeout(audioSync, 50); gate.classList.add('hidden'); try { document.documentElement.requestFullscreen?.(); } catch { /* */ } say('아이키키 팀 대항 오락실을 시작합니다', voiceOn()); });
 addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
-  if (!gate.classList.contains('hidden')) { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); gate.classList.add('hidden'); }
+  if (!gate.classList.contains('hidden')) { audioUnlock(); BGM.preloadAll(nextIds()); setTimeout(audioSync, 50); gate.classList.add('hidden'); }
   // 진행자 단축키 (관리자 로그인 상태에서만)
   const tok = store('ikiki:admin');
   if (!tok || !S) return;
@@ -59,8 +61,10 @@ addEventListener('keydown', (e) => {
 if (!code) { stage.innerHTML = ''; stage.append(h('div', { class: 'center' }, h('h1', {}, '행사 코드가 필요해요'), h('p', {}, '진행자 화면의 [대형 화면 열기] 버튼으로 열어 주세요'))); }
 else live = new Live({ t: 'hello', role: 'screen', code }, onMsg, (st) => document.body.classList.toggle('offline', st === 'offline'));
 
+// 지금·다음 게임 곡만 미리 받기
+const nextIds = () => (S ? [S.playlist?.[S.idx], S.playlist?.[S.idx + 1]].filter(Boolean).map((p) => BGM.pick(S.settings, p.game, customList)?.id) : []);
 function onMsg(m) {
-  if (m.t === 'state') { const prev = S; S = m; joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
+  if (m.t === 'state') { const prev = S; S = m; if (prev && prev.idx !== S.idx && gate.classList.contains('hidden')) BGM.preloadAll(nextIds()); joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
   if (m.t === 'live' && cur?.inst && S?.phase === 'playing' && m.run === S.run?.id) {
     const vals = cur.inst.update(m.s);
     if (vals) overtake(vals);
@@ -217,7 +221,18 @@ function intro() {
   const cnt = h('div', { class: 'icount' });
   const tx = demoText(it.game, S.settings.mode);
   const chips = h('div', { class: 'ichips' }, it.durSec ? h('span', { class: 'chip' }, `⏱ ${it.durSec}초`) : h('span', { class: 'chip' }, '🔁 라운드제'), it.weight !== 1 ? h('span', { class: 'chip hot' }, `🔥 점수 ${it.weight}배`) : null, it.team ? h('span', { class: 'chip' }, '🤝 팀 협동') : null, it.host ? h('span', { class: 'chip' }, '🎯 진행자 점수') : null, nowPlaying());
-  if (S.settings.preview !== false && tx) {
+  const pe = PE_BY[it.game];
+  if (pe && S.settings.preview !== false) {
+    // 폰 없는 체육: 10~20초 시각 튜토리얼 (동작·성공·점수·안전) — 사회자가 [게임 시작]을 누르면 건너뜀
+    const lv = { baby: 0, kid: 1, elem: 2, mid: 3, high: 4, adult: 5 }[S.settings.mode] ?? 2;
+    const demo = h('div', { class: 'idemo pe' });
+    stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv2' }, demo,
+      h('div', { class: 'iinfo' }, h('div', { class: 'in' }, `${it.emoji} ${pe.type} · ${S.settings.space === 'class' ? '🏫 교실' : '🏟️ 체육관'}`), h('div', { class: 'it' }, it.name),
+        h('div', { class: 'igoal' }, h('b', {}, '🎤 '), pe.say), h('div', { class: 'iscore' }, h('b', {}, '🏆 이기는 팀 '), pe.win), h('div', { class: 'iscore' }, h('b', {}, '📊 점수 '), pe.score), chips,
+        h('div', { class: 'ipv' }, '👀 설명 중 — 아직 시작 전이에요'), cnt)));
+    render.demo = mountPeTutorial(demo, it.game, { lv, space: S.settings.space || 'gym' });
+    sayV(`${it.name}! ${pe.say}`);
+  } else if (S.settings.preview !== false && tx) {
     // 시범 미리보기 (점수·게임 시간은 아직 시작 안 함) + 팀 목표·이기는 방법·점수 기준
     const demo = h('div', { class: 'idemo' });
     stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv2' },

@@ -156,7 +156,7 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', space: this.settings.space || 'gym', elemLevel: this.settings.elemLevel || 'low', favs: this.settings.favs || [], introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       idx: this.state.idx, total: this.settings.playlist.length,
       playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur, rep: p.rep })),
@@ -265,7 +265,11 @@ export class Event {
       case 'end': return this.endEvent();
       case 'reopen': return this.reopen();
       case 'cheerEvent': return this.startCheerEvent(arg);
-      case 'hostPt': { if (!this.game?.hostPt || this.state.phase !== 'playing') throw new Err('지금은 점수를 줄 수 없어요'); this.game.hostPt(Number(arg.team), Number(arg.d)); this.audit('hostPt', { team: Number(arg.team), d: Number(arg.d) }); return; }
+      case 'hostPt': {
+        if (!this.game?.hostPt || this.state.phase !== 'playing') throw new Err('지금은 점수를 줄 수 없어요');
+        // 폰 없는 체육 60종: 사회자 판정 버튼(성공·실패·선택·공개·다음 라운드 등) → 게임 규칙이 점수 계산
+        if (arg?.a && this.game.hostAct) { this.game.hostAct(arg); this.audit('hostAct', { a: String(arg.a).slice(0, 12), team: Number(arg.team) || 0, v: Number(arg.v) || 0 }); return; }
+        this.game.hostPt(Number(arg.team), Number(arg.d)); this.audit('hostPt', { team: Number(arg.team), d: Number(arg.d) }); return; }
       default: throw new Err('알 수 없는 명령');
     }
   }
@@ -317,7 +321,7 @@ export class Event {
     const durMs = this.durOf(item, def);
     const startAt = now + COUNTDOWN_MS;
     const ctx = {
-      runId, def, players, teams: this.teams.map((t) => t.id), teamInfo: this.teams, settings: this.gameSettings(), item, qset: null,
+      runId, def, players, teams: this.teams.map((t) => t.id), teamInfo: this.teams, teamName: (id) => { const t = this.teams.find((x) => x.id === id); return t ? `${t.icon || ''}${t.name}` : `${id}팀`; }, settings: this.gameSettings(), item, qset: null,
       seed: crypto.randomInt(1, 2 ** 31), startAt, durMs, now: () => Date.now(),
       sendTo: (pid, m) => this.sendPlayer(pid, { t: 'g', ...m }),
       endEarly: () => setImmediate(() => { if (this.game === inst && this.state.phase === 'playing') this.finishGame('auto'); }),
@@ -698,6 +702,8 @@ export function sanitizeSettings(s) {
   const o = {};
   if ([...AGES6, 'mixed'].includes(s.mode)) o.mode = s.mode;
   if (['low', 'high'].includes(s.elemLevel)) o.elemLevel = s.elemLevel;
+  if (['class', 'gym'].includes(s.space)) o.space = s.space; // 교실(제자리 동작) / 체육관
+  if (Array.isArray(s.favs)) o.favs = s.favs.filter((x) => typeof x === 'string' && /^[a-z_0-9]{2,20}$/.test(x)).slice(0, 120); // 즐겨찾기 게임
   if (Number.isInteger(s.teamCount) && s.teamCount >= 2 && s.teamCount <= 16) o.teamCount = s.teamCount;
   if (['avg', 'sum', 'rep', 'top'].includes(s.scoring)) o.scoring = s.scoring;
   if (Number.isInteger(s.topN) && s.topN >= 1 && s.topN <= 50) o.topN = s.topN;
@@ -733,7 +739,7 @@ export function sanitizeSettings(s) {
   const txt = (v, n) => String(v ?? '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, n);
   if (Array.isArray(s.bellCustom)) o.bellCustom = s.bellCustom.slice(0, 40).map((q) => (Array.isArray(q) ? q.slice(0, 5).map((x, i) => txt(x, i ? 30 : 80)).filter(Boolean) : [])).filter((q) => q.length >= 3 && new Set(q.slice(1)).size === q.length - 1);
   if (Array.isArray(s.drawCustom)) o.drawCustom = [...new Set(s.drawCustom.slice(0, 60).map((w) => txt(w, 16)).filter(Boolean))];
-  if (Array.isArray(s.playlist) && s.playlist.length <= 40) {
+  if (Array.isArray(s.playlist) && s.playlist.length <= 120) {
     o.playlist = s.playlist.filter((p) => p && GAMES[p.game]).map((p) => ({
       game: p.game,
       weight: [0.5, 1, 1.5, 2, 3].includes(p.weight) ? p.weight : 1,

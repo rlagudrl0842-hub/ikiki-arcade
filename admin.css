@@ -228,3 +228,20 @@ body.remote .ctrlmore .chk { display: none; }
 @media (max-width: 640px) { .timebar .tbig { font-size: 21px; } .timebar .tdelay { font-size: 17px; } }
 .timebar .tmain { flex: 1 1 320px; } .timebar .tsub { white-space: normal; }
 @media (max-width: 640px) { .timebar .tmain, .timebar .tside { flex-basis: 100%; } .timebar .tside { justify-content: space-between; } }
+/* 폰 없는 체육 판정 패드 */
+.pe2pad .pnote { font-weight: 800; color: #ffe066; font-size: 15px; }
+.pe2pad .hprow { flex-wrap: wrap; padding: 6px 0 6px 10px; }
+.pe2pad .hprow b { flex: 1 1 140px; min-width: 120px; } .pe2pad .hprow b small { color: var(--muted); font-weight: 700; }
+.pe2pad .hprow .btn { min-width: 0; font-size: 17px; padding: 12px 14px; }
+.pe2pad .hprow.out { opacity: .4; } .pe2pad .hprow.turn { background: #ffd43b22; border-radius: 10px; } .pe2pad .hprow.warn b::after { content: ' ⚠️'; }
+.pe2pad .pglob { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px dashed #ffffff30; padding-top: 8px; }
+.pe2pad .pglob .btn { font-size: 18px; padding: 12px 18px; }
+.pe2pad .chip.ok { background: #2fd27a33; color: #2fd27a; }
+@media (max-width: 640px) { .pe2pad .hprow .btn { font-size: 15px; padding: 10px; flex: 1 1 auto; } }
+.gfilt { gap: 6px; } .gfilt select { width: auto; padding: 6px 8px; font-size: 14px; } .gfilt .gsearch { width: 150px; }
+.ggrid.cards .gpick { cursor: pointer; padding-right: 54px; } .ggrid.cards .gpick small { grid-column: 2; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gpick .gfav { position: absolute; right: 30px; top: 6px; color: var(--muted); font-size: 18px; } .gpick .gfav.on { color: #ffd43b; }
+.gpick .gpv { position: absolute; right: 8px; bottom: 6px; width: 24px; height: 24px; border-radius: 12px; background: #ffffff18; display: grid; place-items: center; font-size: 11px; }
+.gpick.on::after { right: 52px !important; }
+.ggrid.cards { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); max-height: 520px; overflow: auto; padding-right: 4px; }
+.reclist { margin: 4px 0; padding-left: 22px; } .reclist li { padding: 3px 0; font-weight: 800; }

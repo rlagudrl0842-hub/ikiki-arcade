@@ -29,6 +29,9 @@ export const REC = {
   rope: 'none', rhythm: 'none', sync: 'none', shout: 'none',
 };
 export const AGE_LABEL = { baby: '영아', kid: '유아', elem: '초등', mid: '중등', high: '고등', adult: '성인' };
+// 폰 없는 체육 60종 추천곡
+import { PE as PE60 } from './pe2data.js';
+for (const g of PE60) if (!REC[g.id]) REC[g.id] = g.bgm;
 export const NO_MUSIC_WHY = { rope: '줄 박자 소리를 들어야 해요', rhythm: '게임 자체 비트가 나와요', sync: '북 박자를 들어야 해요', shout: '마이크가 음악 소리를 잡아요' };
 
 // 설정에서 이 게임의 곡 고르기 → { id, name, mood, rec, custom } 또는 null(음악 없음)
@@ -115,19 +118,24 @@ async function fetchBuf(url) {
 }
 export function load(id) {
   const a = ctx(); if (!a) return Promise.reject(new Error('소리가 아직 꺼져 있어요'));
-  if (P.cache.has(id)) return P.cache.get(id);
+  if (P.cache.has(id)) { const hit = P.cache.get(id); P.cache.delete(id); P.cache.set(id, hit); return hit; } // 최근 쓴 곡을 뒤로 (LRU)
   const t = TRACKS.find((x) => x.id === id);
   const p = (async () => {
     const ab = id === 'fanfare' ? await fetchBuf(FANFARE.file) : t ? await fetchBuf(t.file) : await (await customBlob(id) || Promise.reject(new Error('이 컴퓨터에 없는 곡이에요'))).arrayBuffer();
     return await new Promise((res, rej) => a.decodeAudioData(ab, res, rej));
   })();
   P.cache.set(id, p); p.catch(() => P.cache.delete(id));
+  // 풀어 둔 곡(디코딩된 소리)은 곡당 20~70MB → 최근 4곡(빵빠레·지금 곡·다음 곡 포함)만 남기고 나머지는 메모리에서 비움 (재생 중인 곡은 재생 노드가 계속 붙잡고 있어 끊기지 않음)
+  while (P.cache.size > 4) { const old = P.cache.keys().next().value; if (old === 'fanfare' || old === P.cur?.id) { const v = P.cache.get(old); P.cache.delete(old); P.cache.set(old, v); if ([...P.cache.keys()].every((k) => k === 'fanfare' || k === P.cur?.id)) break; continue; } P.cache.delete(old); }
   return p;
 }
-export function preloadAll() { if (!ctx()) return; for (const t of TRACKS) load(t.id).catch(() => {}); load('fanfare').catch(() => {}); }
+// 미리 받기: 예전엔 모든 곡(17MB)을 한꺼번에 받아 풀었음 → 지금·다음 게임 곡과 빵빠레만
+export function preloadAll(ids = []) { if (!ctx()) return; for (const id of ['fanfare', ...ids]) if (id && id !== 'none') load(id).catch(() => {}); }
 
 function fadeStop(src, g, sec) {
   const a = ctx(); if (!a || !src) return;
+  // 다 멈춘 소리 노드는 연결을 끊어 바로 정리 (곡을 여러 번 바꿔도 노드가 쌓이지 않게)
+  const prev = src.onended; src.onended = () => { try { prev?.(); } catch { /* */ } try { src.disconnect(); g.disconnect(); } catch { /* */ } };
   const t = a.currentTime; try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.03, sec)); src.stop(t + Math.max(0.03, sec) + 0.05); } catch { /* */ }
 }
 function posOf(c, at) { // 반복 구간을 고려한 지금 곡 위치(초)

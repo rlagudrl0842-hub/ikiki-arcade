@@ -355,7 +355,7 @@ canvas.fx { z-index: 60; }
 .tray { position: absolute; width: 1400px; height: 1400px; max-width: 160vmax; max-height: 160vmax; background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--tc) 55%, transparent) 0 8deg, transparent 8deg 22deg); border-radius: 50%; mask: radial-gradient(circle, #000 20%, transparent 65%); -webkit-mask: radial-gradient(circle, #000 20%, transparent 65%); animation: trSpin 6s linear infinite, trRay .5s ease-out; }
 .tcup { font-size: 34vmin; filter: drop-shadow(0 0 40px #ffd43b) drop-shadow(0 20px 30px #000a); animation: trDrop .7s cubic-bezier(.2, 1.6, .4, 1) both, trShine 1.2s .7s ease-in-out infinite alternate; }
 @keyframes trDrop { from { transform: translateY(-80vh) scale(.4) rotate(-25deg); } 70% { transform: translateY(0) scale(1.15) rotate(6deg); } to { transform: none; } }
-@keyframes trShine { to { filter: drop-shadow(0 0 80px #fff6b0) drop-shadow(0 20px 30px #000a); transform: scale(1.04); } }
+@keyframes trShine { to { transform: scale(1.04); } } /* 번쩍임은 크기만 — 큰 그림자 번짐(filter)을 매 프레임 다시 그리면 결과 발표 때 화면이 버벅임 */
 @keyframes trSpin { to { transform: rotate(360deg); } }
 @keyframes trRay { from { opacity: 0; transform: scale(.2); } }
 @keyframes trOut { 0%, 80% { opacity: 1; } 100% { opacity: 0; transform: scale(.7) translateY(-30vh); } }
@@ -396,3 +396,7 @@ canvas.fx { z-index: 60; }
 .demo-steps li.on { opacity: 1; background: #ffd43b33; }
 .rwhy { margin: 10px auto 0; font-size: 26px; font-weight: 900; padding: 8px 18px; border-radius: 14px; background: #ffffff10; border-left: 8px solid var(--tc); max-width: 1100px; }
 .npg { font-size: 13px; opacity: .75; font-weight: 700; margin-left: 4px; }
+/* 폰 없는 체육: 튜토리얼을 넓게 (가로 화면) */
+.introv2:has(.idemo.pe) { grid-template-columns: 1.25fr 1fr; gap: 28px; padding: 16px 36px; }
+.idemo.pe { height: auto; aspect-ratio: 16 / 10; width: 100%; border-radius: 22px; overflow: hidden; box-shadow: 0 20px 60px #0008; }
+.idemo.pe canvas { display: block; width: 100%; height: 100%; }

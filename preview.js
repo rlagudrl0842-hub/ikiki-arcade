@@ -1,3 +1,5 @@
+import { PE_BY, mvFor } from './pe2data.js';
+import { tutorial as peTutorial } from './pe2draw.js';
 // 게임별 시범 미리보기: 대형 화면(설명 시간)과 참가자 폰(도움 버튼)에서 같은 애니메이션
 // 손가락을 처음 대는 곳 → 움직이는 방향·누르는 시점 → 결과를 ①②③ 순서로 보여 줌. 문구는 실제 게임 코드 규칙과 맞춤
 // 연령: kid(영아·유아) 그림+짧은 말 / elem(초등) 쉬운 동사 / adult(중등 이상) 간결·정확
@@ -46,7 +48,7 @@ export const DEMO = {
   towerup: { t: 'tower', steps: K(['내 차례를 기다려요', '블록이 탑 위에 오면 콕', '높이 쌓아요'], ['내 차례가 되면 진동이 와요', '움직이는 블록이 탑과 겹칠 때 탭', '겹친 만큼만 남아요 · 딱 맞으면 PERFECT'], null), goal: '탑 평균 높이가 높은 팀이 이겨요 (차례대로 번갈아)', score: '탑 평균 층수' },
 };
 export const ageKey = (mode) => (['baby', 'kid'].includes(mode) ? 'kid' : ['mid', 'high', 'adult'].includes(mode) ? 'adult' : 'elem');
-export function demoText(game, mode) { const d = DEMO[game]; if (!d) return null; const a = ageKey(mode); return { steps: d.steps[a] || d.steps.elem, goal: d.goal, score: d.score }; }
+export function demoText(game, mode) { const d = DEMO[game]; if (!d && PE_BY[game]) { const g = PE_BY[game]; return { steps: g.tut.slice(0, 3), goal: g.win, score: g.score }; } if (!d) return null; const a = ageKey(mode); return { steps: d.steps[a] || d.steps.elem, goal: d.goal, score: d.score }; }
 
 // ---------------- 그리기 ----------------
 const FINGER = (c, x, y, s, down) => { c.save(); c.globalAlpha = 0.95; if (down) { c.fillStyle = '#ffd43b55'; c.beginPath(); c.arc(x, y, s * 0.9, 0, 7); c.fill(); } c.font = `${s * 1.4}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'top'; c.fillText('👆', x + s * 0.15, y - s * 0.1); c.restore(); };
@@ -179,8 +181,16 @@ function drawDemo(c, W, H, d, k, col) {
 }
 
 // 미리보기 붙이기: root에 캔버스 + 단계 글을 넣고 반복 재생. 반환: { stop() }
-export function mountDemo(root, game, { mode = 'elem', color = '#ffd43b', sec = 6, big = false, h, t0 = performance.now() }) {
-  const d = DEMO[game]; if (!d) return { stop() {} };
+export function mountDemo(root, game, { mode = 'elem', color = '#ffd43b', sec = 6, big = false, h, t0 = performance.now(), space = 'gym' }) {
+  const d = DEMO[game];
+  if (!d && PE_BY[game]) {
+    // 폰 없는 체육: 동작·성공·점수·안전 4장 튜토리얼
+    const cv = document.createElement('canvas'); cv.className = 'demo-cv petut'; const box = h('div', { class: `demo pe ${big ? 'big' : ''}` }, cv); root.append(box);
+    const lv = { baby: 0, kid: 1, elem: 2, mid: 3, high: 4, adult: 5 }[mode] ?? 2; let dead = false;
+    const frame = () => { if (dead || !box.isConnected && performance.now() - t0 > 500) return; const r = cv.getBoundingClientRect(); const dpr = Math.min(2, devicePixelRatio || 1); const W = Math.max(10, Math.round(r.width * dpr)), H = Math.max(10, Math.round(r.height * dpr)); if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; } peTutorial(cv.getContext('2d'), W, H, PE_BY[game], (performance.now() - t0) / 1000, lv, space, mvFor); requestAnimationFrame(frame); };
+    requestAnimationFrame(frame); return { stop() { dead = true; box.remove(); }, el: box };
+  }
+  if (!d) return { stop() {} };
   const tx = demoText(game, mode);
   const cv = document.createElement('canvas'); cv.className = 'demo-cv';
   const steps = h('ol', { class: 'demo-steps' }, ...tx.steps.map((s, i) => h('li', { 'data-i': i }, h('b', {}, '①②③'[i]), ' ', s)));

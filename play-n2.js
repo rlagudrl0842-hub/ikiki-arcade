@@ -31,12 +31,13 @@ function skillUI(g, opts = {}) {
       const extra = opts.buttons ? opts.buttons(S, g) : null;
       const chip = opts.motion ? motionChip(api, opts.motion) : null;
       root.append(h('div', { class: 'gwrap skg' }, chip, box, extra));
-      this.unsub = M.sub((ev) => { if (M.on && g.motion && this.S.v.t0 && api.now() >= this.S.v.t0) g.motion(S, ev); });
+      this.unsub = M.sub((ev) => { if (M.on && g.motion && !window.__paused && this.S.v.t0 && api.now() >= this.S.v.t0) g.motion(S, ev); });
       g.init(S);
       let last = performance.now();
       const loop = () => {
         if (this.dead) return; const now = performance.now(); const dt = Math.min(0.05, (now - last) / 1000); last = now;
-        if (this.S.v.t0 && api.now() >= this.S.v.t0) { S.t += dt; if (M.on && g.tilt) g.tilt(S, M.tilt()); g.step(S, dt); }
+        // 진행자가 일시정지하면 내 폰 게임도 멈춤 (전에는 '잠시 멈춤' 화면 뒤에서 혼자 계속 진행돼 새가 떨어지거나 장애물에 부딪혔음)
+        if (this.S.v.t0 && api.now() >= this.S.v.t0 && !window.__paused) { S.t += dt; if (M.on && g.tilt) g.tilt(S, M.tilt()); g.step(S, dt); }
         const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); c.clearRect(0, 0, W, H); g.draw(S, c, W, H, d);
         if (S.msg && now - S.msgAt < 900) { c.globalAlpha = 1 - (now - S.msgAt) / 900; c.fillStyle = '#fff'; c.font = `900 ${26 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = '#000'; c.shadowBlur = 8 * d; c.fillText(S.msg, W / 2, H * 0.32 - ((now - S.msgAt) / 900) * 30 * d); c.shadowBlur = 0; c.globalAlpha = 1; }
         this.sc.textContent = `${S.score}${opts.unit || ''}`;
@@ -47,6 +48,7 @@ function skillUI(g, opts = {}) {
       this.update(v);
     },
     update(v) { this.S.v = v; this.rk.textContent = v.rank ? `우리 팀 ${v.rank}위 / ${v.n}` : ''; },
+    resync() { this.S.sent = NaN; }, // 재개·재연결 뒤: 멈춘 사이 서버가 버린 점수를 다시 보냄
     reply() {},
     unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); clearInterval(this.iv); if (this.S.score !== this.S.sent) this.S.api.send({ a: 'sc', v: this.S.score }); },
   };
@@ -307,7 +309,8 @@ G.curling = {
     let lt = performance.now();
     const loop = () => {
       if (this.dead) return; const now = performance.now(); const dt = Math.min(0.05, (now - lt) / 1000); lt = now; const S = this.s; const o = S.stone;
-      if (o?.moving) { const fr = 0.42 - Math.min(0.25, S.rub * 0.9); S.rub *= 0.85; o.x += o.vx * dt; o.y -= o.vy * dt; const sp = Math.hypot(o.vx, o.vy); const nsp = Math.max(0, sp - fr * dt); if (sp > 0) { o.vx *= nsp / sp; o.vy *= nsp / sp; } if (nsp <= 0.003 || o.y < -0.1) { o.moving = false; const hx = (o.x - 0.5) / 0.22, hy = (o.y - 0.22) / 0.22 * (this.cv.height / this.cv.width) ; api.send({ a: 'throw', x: Math.max(-1.5, Math.min(1.5, hx)), y: Math.max(-1.5, Math.min(1.5, hy)) }); vibrate(30); } }
+      // 일시정지 중엔 스톤도 멈춤 (멈춘 사이 결과를 보내면 서버가 버려 다음 스톤을 못 던지던 문제)
+      if (o?.moving && !window.__paused) { const fr = 0.42 - Math.min(0.25, S.rub * 0.9); S.rub *= 0.85; o.x += o.vx * dt; o.y -= o.vy * dt; const sp = Math.hypot(o.vx, o.vy); const nsp = Math.max(0, sp - fr * dt); if (sp > 0) { o.vx *= nsp / sp; o.vy *= nsp / sp; } if (nsp <= 0.003 || o.y < -0.1) { o.moving = false; const hx = (o.x - 0.5) / 0.22, hy = (o.y - 0.22) / 0.22 * (this.cv.height / this.cv.width) ; this.pend = { a: 'throw', x: Math.max(-1.5, Math.min(1.5, hx)), y: Math.max(-1.5, Math.min(1.5, hy)), n0: this.v.th.length }; api.send({ a: 'throw', x: this.pend.x, y: this.pend.y }); vibrate(30); } }
       const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); bg(c, W, H, '#e9f3ff', '#c7dcf2');
       const cx = W * 0.5, cy = H * 0.22, R = W * 0.22;
       [[1, '#3d8bff'], [0.66, '#ffffff'], [0.33, '#ff4d6d'], [0.08, '#ffffff']].forEach(([k, col]) => { c.fillStyle = col; c.beginPath(); c.arc(cx, cy, R * k, 0, 7); c.fill(); });
@@ -319,8 +322,10 @@ G.curling = {
     };
     this.raf = requestAnimationFrame(loop); this.update(v);
   },
-  update(v) { this.v = v; this.s.n = Math.max(this.s.n, v.th.length); this.info.textContent = `스톤 ${v.th.length}/3 ${v.th.length ? '· ' + v.th.join(' · ') + '점' : ''}`; },
-  reply(r) { this.s.n = r.n; this.info.textContent = `스톤 ${r.n}/3 · 방금 ${r.s}점`; sfx(r.s >= 70 ? 'win' : 'good', this.api.sfxOn); setTimeout(() => { if (r.n < 3) this.s.stone = null; }, 900); },
+  update(v) { this.v = v; if (this.pend && v.th.length > this.pend.n0) this.pend = null; this.s.n = Math.max(this.s.n, v.th.length); this.info.textContent = `스톤 ${v.th.length}/3 ${v.th.length ? '· ' + v.th.join(' · ') + '점' : ''}`; },
+  // 던진 결과가 일시정지·끊김으로 서버에 안 닿았으면 다시 보냄 (안 그러면 스톤이 멈춘 채 다음 스톤을 못 던짐)
+  resync() { const p = this.pend; if (p && this.v.th.length <= p.n0) this.api.send({ a: 'throw', x: p.x, y: p.y }); },
+  reply(r) { this.pend = null; this.s.n = r.n; this.info.textContent = `스톤 ${r.n}/3 · 방금 ${r.s}점`; sfx(r.s >= 70 ? 'win' : 'good', this.api.sfxOn); setTimeout(() => { if (r.n < 3) this.s.stone = null; }, 900); },
   unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); },
 };
 
