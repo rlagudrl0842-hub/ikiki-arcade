@@ -3,6 +3,7 @@
 import { rng, shuffle } from './gen.js';
 import { clamp, round1, numIn, intIn } from './common.js';
 import { BELL, WORDS } from './n3data.js';
+import { permFor } from './qpool.js';
 
 function clock() {
   const c = { T: 0, last: null };
@@ -19,21 +20,35 @@ export const bell = {
   rule: { all: '문제를 보고 정답을 골라요! 틀리면 탈락, 탈락해도 다음 문제를 맞히면 바로 부활!', kid: '정답 그림을 콕! 눌러요 (탈락 없어요)' },
   howto: '맞힌 문제 수로 점수 · 끝까지 살아남으면 보너스',
   lateJoin: true,
+  quiz: true, board: true, // 휴대폰 없이도(대형 화면 + 종이·보드 + 진행자 점수) 진행 가능
+  // 문제 후보: 진행자 문제 + 연령에 맞는 기본 문제 (엔진이 행사 단위로 중복 없이 고름)
+  qsource(st) {
+    const age = qAge(st.mode);
+    const bank = st.mode6 === 'mid' ? [...BELL.elem.slice(8), ...BELL.adult] : BELL[age];
+    // 진행자 문제 앞에 [유아]·[초등]·[성인](또는 중등·고등) 표시를 붙이면 그 연령에서만 나옴 · 표시가 없으면 모든 연령
+    const TAG = { 유아: 'kid', 초등: 'elem', 중등: 'adult', 고등: 'adult', 성인: 'adult' };
+    const own = (st.bellCustom || []).filter((q) => Array.isArray(q) && q.length >= 3 && q.every((x) => typeof x === 'string' && x.trim())).map((q) => {
+      const m = q[0].match(/^\s*\[(유아|초등|중등|고등|성인)\]\s*/); const tag = m ? TAG[m[1]] : null;
+      return Object.assign([m ? q[0].slice(m[0].length) : q[0], ...q.slice(1)], { own: true, tag });
+    }).filter((q) => !q.tag || q.tag === age);
+    return { items: [...own, ...bank], n: age === 'kid' ? 7 : 10, key: (q) => q[0], pri: (q) => !!q.own };
+  },
   create(ctx) {
     const r = rng(ctx.seed);
     const age = qAge(ctx.settings.mode);
-    const N = age === 'kid' ? 7 : 10;
     const revive = -1; // (예전 '6번째 문제 패자부활전' → 이제 매 문제 부활 기회)
-    const bank = ctx.settings.mode6 === 'mid' ? [...BELL.elem.slice(8), ...BELL.adult] : BELL[age];
-    // 진행자가 직접 넣은 문제를 먼저, 모자라면 기본 문제로 채움
-    const own = (ctx.settings.bellCustom || []).filter((q) => Array.isArray(q) && q.length >= 3);
-    const qs = [...shuffle(r, own), ...shuffle(r, bank)].slice(0, N).map((q) => { const opts = shuffle(r, q.slice(1)); return { text: q[0], opts, ans: opts.indexOf(q[1]) }; });
+    const src = ctx.qset || bell.qsource(ctx.settings).items.slice(0, 10);
+    // 한 판의 모든 참가자가 같은 문제 세트 · 보기 순서만 사람마다 다르게(view에서)
+    const qs = src.map((q) => { const opts = shuffle(r, q.slice(1)); return { text: q[0], opts, ans: opts.indexOf(q[1]) }; });
+    const N = qs.length;
+    if (ctx.settings.device === 'nophone') return bellBoard(ctx, qs, age);
+    const perm = (pid, i) => permFor(pid, `${ctx.runId}:${i}`, qs[i].opts.length); // perm[보이는 자리] = 원래 보기 번호
     const qSec = age === 'kid' ? 12 : 10;
     const C = clock();
     const P = new Map();
     const add = (p) => P.set(p.id, { ...p, alive: true, ok: 0, ans: {}, active: false, outAt: null });
     ctx.players.forEach(add);
-    let qi = 0, ph = 'q', phEnd = qSec, outNow = [], revNow = [], counts = null;
+    let qi = 0, ph = 'q', phEnd = qSec, outNow = [], revNow = [], counts = null, rate = null;
     const canLose = age !== 'kid';
     const reveal = () => {
       const q = qs[qi]; counts = q.opts.map(() => 0); outNow = []; revNow = [];
@@ -45,6 +60,8 @@ export const bell = {
         if (!p.alive) { if (right) { p.alive = true; revNow.push([p.name, p.team]); } continue; } // 탈락 중이어도 맞히면 바로 부활
         if (canLose && p.alive && !right && (p.active || a != null)) { p.alive = false; p.outAt = qi; outNow.push([p.name, p.team]); }
       }
+      // 팀별 정답률은 공개 순간에만 계산해 보여 줌
+      rate = {}; for (const t of ctx.teams) { const m = [...P.values()].filter((p) => p.team === t && p.ans[qi] != null); if (m.length) rate[t] = Math.round((m.filter((p) => p.ans[qi] === q.ans).length / m.length) * 100); }
       ph = 'reveal'; phEnd = C.T + 4.5; ctx.dirtyAll();
     };
     const aliveBy = () => { const o = Object.fromEntries(ctx.teams.map((t) => [t, 0])); for (const p of P.values()) if (p.alive && p.active && o[p.team] != null) o[p.team]++; return o; };
@@ -53,9 +70,9 @@ export const bell = {
       shift: C.shift,
       input(pid, m) {
         const p = P.get(pid); if (!p || m.a !== 'ans' || ph !== 'q' || m.q !== qi) return;
-        const q = qs[qi]; if (!intIn(m.c, 0, q.opts.length - 1) || p.ans[qi] != null) return;
-        p.ans[qi] = m.c; p.active = true;
-        return { locked: m.c };
+        const q = qs[qi]; if (!intIn(m.c, 0, q.opts.length - 1) || p.ans[qi] != null) return; // 한 번 내면 바꿀 수 없음
+        p.ans[qi] = perm(pid, qi)[m.c]; p.active = true; // 보이는 자리 → 원래 보기 번호
+        return { locked: true };
       },
       tick(now) {
         C.dt(now);
@@ -65,19 +82,24 @@ export const bell = {
         } else if (C.T >= phEnd) {
           qi++;
           if (qi >= N) { ph = 'end'; ctx.endEarly(); return; }
-          ph = 'q'; phEnd = C.T + qSec; counts = null; ctx.dirtyAll();
+          ph = 'q'; phEnd = C.T + qSec; counts = null; rate = null; ctx.dirtyAll();
         }
         if (now - (this._v || 0) > 1000) { this._v = now; ctx.dirtyAll(); }
       },
       view(pid, now) {
         const p = P.get(pid); if (!p) return { g: 'bell', spectator: true };
-        const q = qs[qi] || qs[N - 1];
-        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: q.opts, kid: age === 'kid', my: p.ans[qi] ?? null, ans: ph === 'reveal' ? q.ans : null, alive: p.alive, revive: qi === revive, ok: p.ok };
+        const i = Math.min(qi, N - 1); const q = qs[i]; const pm = perm(pid, i); const inv = (c) => (c == null ? null : pm.indexOf(c));
+        const done = p.ans[i] != null;
+        // 컴퓨터 참가자(테스트 전용): 난이도별 확률로 '아는 문제'면 정답 위치를 알려 줌 (모르면 찍음)
+        let aiKnow;
+        if (p.ai && ph === 'q') { p.know ||= {}; if (p.know[i] == null) p.know[i] = Math.random() < ({ easy: 0.35, normal: 0.6, hard: 0.85 }[p.ai] ?? 0.3 + Math.random() * 0.6); if (p.know[i]) aiKnow = pm.indexOf(q.ans); }
+        // 낸 뒤에는 보기를 숨기고 '제출 완료'만 (정답·내 답·정답률은 공개 시간까지 안 보냄)
+        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: ph === 'q' && done ? null : pm.map((k) => q.opts[k]), submitted: done, aiKnow, kid: age === 'kid', my: ph === 'reveal' ? inv(p.ans[i]) : done ? -1 : null, ans: ph === 'reveal' ? inv(q.ans) : null, alive: p.alive, revive: qi === revive, ok: p.ok };
       },
       screen() {
         const q = qs[qi] || qs[N - 1];
         const al = aliveBy();
-        return { qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, counts, out: outNow.slice(0, 14), outN: outNow.length, rev: revNow.slice(0, 14), revN: revNow.length, alive: al, aliveN: Object.values(al).reduce((a, b) => a + b, 0), revive: qi === revive, answered: [...P.values()].filter((p) => p.ans[qi] != null).length, kid: age === 'kid' };
+        return { qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, counts: ph === 'reveal' ? counts : null, rate: ph === 'reveal' ? rate : null, out: outNow.slice(0, 14), outN: outNow.length, rev: revNow.slice(0, 14), revN: revNow.length, alive: al, aliveN: Object.values(al).reduce((a, b) => a + b, 0), revive: qi === revive, answered: [...P.values()].filter((p) => p.ans[qi] != null).length, kid: age === 'kid' };
       },
       finish() {
         const players = {};
@@ -92,6 +114,31 @@ export const bell = {
   },
 };
 
+// 휴대폰 없이 진행하는 골든벨: 대형 화면에 문제·타이머 → 팀마다 종이·보드에 답을 가려 적기
+// → "하나 둘 셋, 공개!"에 맞춰 동시에 들기 → 정답 공개 → 맞힌 팀에 진행자가 점수(+1)
+function bellBoard(ctx, qs, age) {
+  const N = qs.length; const C = clock(); const qSec = age === 'kid' ? 20 : 15;
+  const pts = Object.fromEntries(ctx.teams.map((t) => [t, 0])); let flash = null;
+  let qi = 0, ph = 'q', phEnd = qSec;
+  return {
+    addPlayer() {}, shift: C.shift, input() {},
+    hostPt(team, d) { if (pts[team] == null || ![-1, 1, 2, 3].includes(d)) return; pts[team] = Math.max(0, pts[team] + d); flash = { team, d, at: C.T }; ctx.dirtyAll(); },
+    tick(now) {
+      C.dt(now);
+      if (C.T >= phEnd) {
+        if (ph === 'q') { ph = 'open'; phEnd = C.T + 3.5; } // 하나 둘 셋 → 동시에 공개
+        else if (ph === 'open') { ph = 'reveal'; phEnd = C.T + (age === 'kid' ? 12 : 10); } // 정답 보고 진행자가 점수 주는 시간
+        else { qi++; if (qi >= N) { ph = 'end'; ctx.endEarly(); return; } ph = 'q'; phEnd = C.T + qSec; }
+        ctx.dirtyAll();
+      }
+      if (now - (this._v || 0) > 1000) { this._v = now; ctx.dirtyAll(); }
+    },
+    view() { return { g: 'bell', board: true }; },
+    screen() { const q = qs[Math.min(qi, N - 1)]; return { board: true, qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, pts, flash: flash && C.T - flash.at < 1.5 ? [flash.team, flash.d] : null, kid: age === 'kid', counts: null, rate: null, alive: {}, aliveN: 0, answered: 0, out: [], rev: [] }; },
+    finish() { return { players: {}, teams: { ...pts }, teamLabel: Object.fromEntries(Object.entries(pts).map(([t, v]) => [t, `정답 ${v}점`])) }; },
+  };
+}
+
 // ---------------------------------------------------------------- 그려라 맞혀라
 export const draw = {
   id: 'draw', no: 26, name: '그려라 맞혀라', emoji: '🖍',
@@ -99,6 +146,12 @@ export const draw = {
   rule: { all: '팀마다 한 명이 몰래 받은 단어를 그려요! 나머지는 큰 화면을 보고 정답을 골라요', kid: '친구가 그리는 그림을 보고 정답을 골라요!' },
   howto: '빨리 맞힐수록 고득점 · 그린 사람은 팀원들이 맞힌 만큼 점수 · 판마다 그리는 사람이 바뀌어요',
   lateJoin: true,
+  // 단어 후보: 진행자 단어(6개 이상이면 그것만) + 연령별 기본 단어 · 판 수 × 팀 수만큼 중복 없이
+  qsource(st) {
+    const age = qAge(st.mode); const ownW = (st.drawCustom || []).filter((w) => typeof w === 'string' && w.trim());
+    const pool = ownW.length >= 6 ? ownW : [...ownW, ...WORDS[age]];
+    return { items: pool, n: (age === 'kid' ? 2 : 3) * Math.max(1, st.nTeams || 4), key: (w) => w, pri: (w) => ownW.includes(w) };
+  },
   create(ctx) {
     const r = rng(ctx.seed);
     const age = qAge(ctx.settings.mode);
@@ -114,7 +167,8 @@ export const draw = {
     let round = -1, ph = 'gap', phEnd = 1.5, roundStart = 0;
     let TM = {}; // 팀별 이번 판 {drawer, word, opts, sk:[], seq, newSk:[]}
     let used = new Set();
-    const pickWord = () => { const left = pool.filter((w) => !used.has(w)); const w = (left.length ? left : pool)[Math.floor(r() * (left.length || pool.length))]; used.add(w); return w; };
+    const deck = ctx.qset ? [...ctx.qset] : null; // 엔진이 고른 이번 판 단어(행사 안 중복 없음)
+    const pickWord = () => { if (deck && deck.length) { const w = deck.shift(); used.add(w); return w; } const left = pool.filter((w) => !used.has(w)); const w = (left.length ? left : pool)[Math.floor(r() * (left.length || pool.length))]; used.add(w); return w; };
     const startRound = () => {
       round++; ph = 'draw'; roundStart = C.T; phEnd = C.T + rSec; TM = {};
       for (const t of ctx.teams) {
@@ -165,7 +219,7 @@ export const draw = {
         if (m.a === 'g' && tm.drawer !== pid && p.got == null && intIn(m.w, 0, tm.opts.length - 1)) {
           p.active = true;
           if (C.T < p.lock) return { wait: true };
-          if (tm.opts[m.w] === tm.word) {
+          if (tm.opts[permFor(pid, `${ctx.runId}:d${round}`, tm.opts.length)[m.w]] === tm.word) { // 보기 순서는 사람마다 다름
             p.got = C.T - roundStart;
             const all = Object.keys(TM).every((t) => guessers(t).every((g) => g.got != null || (!g.active && round > 0)));
             if (all && Object.keys(TM).some((t) => guessers(t).some((g) => g.got != null))) phEnd = Math.min(phEnd, C.T + 1.2);
@@ -189,7 +243,8 @@ export const draw = {
         if (!tm) return { ...base, wait: true };
         const drawerName = P.get(tm.drawer)?.name || '';
         if (tm.drawer === pid) return { ...base, me: 'draw', word: tm.word, solved: guessers(p.team).filter((g) => g.got != null).length, n: guessers(p.team).length };
-        return { ...base, me: 'guess', drawer: drawerName, opts: tm.opts, got: p.got != null, answer: ph === 'reveal' ? tm.word : null, seq: tm.seq, ...(p.syncSeq !== tm.seq ? (p.syncSeq = tm.seq, { sk: tm.sk }) : {}) };
+        const pm = permFor(pid, `${ctx.runId}:d${round}`, tm.opts.length);
+        return { ...base, me: 'guess', drawer: drawerName, opts: pm.map((k) => tm.opts[k]), got: p.got != null, answer: ph === 'reveal' ? tm.word : null, seq: tm.seq, ...(p.syncSeq !== tm.seq ? (p.syncSeq = tm.seq, { sk: tm.sk }) : {}) };
       },
       screen() {
         const teams = {};

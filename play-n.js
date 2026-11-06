@@ -145,7 +145,7 @@ function arenaGame(kind) {
       c.fillStyle = '#fff'; c.beginPath(); c.arc(mx, my, 17 * d * pulse, 0, 7); c.fill();
       c.fillStyle = v.z ? '#2fbf4a' : this.api.team.color; c.beginPath(); c.arc(mx, my, 13 * d, 0, 7); c.fill();
       c.font = `${18 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; if (v.z) c.fillText('🧟', mx, my);
-      c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 28 * d);
+      c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 28 * d < 10 * d ? my + 28 * d : my - 28 * d); // 위쪽 끝이면 '나' 글자를 아래에
     },
     unmount() { stopLoop(this); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); },
   };
@@ -378,18 +378,22 @@ G.fruit = {
 G.bell = {
   mount(root, v, api) { this.api = api; this.root = h('div', { class: 'gwrap bell2' }); root.append(this.root); this.update(v); this.t = setInterval(() => this.tick(), 250); },
   update(v) {
-    const key = `${v.qi}:${v.ph}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
+    const key = `${v.qi}:${v.ph}:${v.submitted}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
     const R = this.root; R.innerHTML = '';
     const head = h('div', { class: 'bellh' }, h('span', {}, `🔔 ${v.qi + 1} / ${v.N}`), v.revive ? h('span', { class: 'chip hot' }, '🔥 패자부활전') : null, h('span', { class: 'belltime' }));
     const status = v.kid ? null : h('div', { class: `bellst ${v.alive ? 'ok' : 'out'}` }, v.alive ? `✅ 생존 중 · ${v.ok}개 정답` : '😤 탈락 중 · 이번 문제 맞히면 바로 부활!');
-    const can = v.ph === 'q' && v.my == null; // 탈락해도 매 문제 누를 수 있음
-    const opts = h('div', { class: `bellopts n${v.opts.length}` }, v.opts.map((o, i) => {
-      const cls = v.ph === 'reveal' ? (i === v.ans ? 'right' : i === v.my ? 'wrong' : 'dim') : i === v.my ? 'mine' : '';
-      return onPress(h('button', { class: `bopt ${cls}`, disabled: !can }, h('b', {}, '①②③④'[i]), o), () => { if (!can) return; this.api.send({ a: 'ans', q: v.qi, c: i }); vibrate(15); this.v.my = i; this.key = ''; this.update(this.v); });
+    // 답을 내면 보기를 감추고 '제출 완료'만 (옆 사람이 보고 따라 하기 어렵게) · 보기 순서는 사람마다 다름
+    if (v.ph === 'q' && (v.submitted || this.sent === v.qi)) {
+      R.append(head, status, h('div', { class: 'bellq' }, v.text), h('div', { class: 'bellsent' }, h('div', { class: 'cic' }, '📨'), h('b', {}, '제출 완료'), h('small', {}, '모두 내거나 시간이 끝나면 정답을 함께 공개해요')));
+      return this.tick();
+    }
+    const can = v.ph === 'q' && !v.submitted; // 탈락해도 매 문제 누를 수 있음
+    const opts = h('div', { class: `bellopts n${(v.opts || []).length}` }, (v.opts || []).map((o, i) => {
+      const cls = v.ph === 'reveal' ? (i === v.ans ? 'right' : i === v.my ? 'wrong' : 'dim') : '';
+      return onPress(h('button', { class: `bopt ${cls}`, disabled: !can }, h('b', {}, '①②③④'[i]), o), () => { if (!can || this.sent === v.qi) return; this.sent = v.qi; this.api.send({ a: 'ans', q: v.qi, c: i }); vibrate(15); this.key = ''; this.update(this.v); });
     }));
     let foot = null;
     if (v.ph === 'reveal') foot = h('div', { class: `bellres ${v.my === v.ans ? 'ok' : 'no'}` }, v.my === v.ans ? '🎉 정답!' : v.my == null ? '⏰ 시간 초과' : '❌ 땡!');
-    else if (v.my != null) foot = h('div', { class: 'muted' }, '답을 골랐어요! 결과를 기다려요');
     R.append(head, status, h('div', { class: 'bellq' }, v.text), opts, foot);
     this.tick();
   },

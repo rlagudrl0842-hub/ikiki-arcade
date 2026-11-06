@@ -361,3 +361,38 @@ canvas.fx { z-index: 60; }
 @keyframes trOut { 0%, 80% { opacity: 1; } 100% { opacity: 0; transform: scale(.7) translateY(-30vh); } }
 /* 선생님 말씀 중 */
 #duckb { position: fixed; left: 0; right: 0; margin: 0 auto; width: fit-content; bottom: 24px; background: #ffd43b; color: #1b1440; font-weight: 900; font-size: 26px; padding: 10px 26px; border-radius: 999px; z-index: 70; box-shadow: 0 6px 30px #0008; animation: bounce 1.4s infinite; }
+.bellrate { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 22px; } .bellrate span { color: #111; border-radius: 10px; padding: 4px 12px; font-weight: 900; }
+/* 진행자 퀵 점수 알림 (프로젝터에는 조작 버튼 없이 결과만) */
+.qfx { position: fixed; right: 24px; top: 86px; z-index: 60; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; opacity: 0; transform: translateX(40px); transition: opacity .25s, transform .25s; }
+.qfx.show { opacity: 1; transform: none; }
+.qfxbig { display: flex; align-items: center; gap: 14px; padding: 10px 22px; border-radius: 18px; background: var(--tc); color: #111; font-weight: 900; font-size: 30px; box-shadow: 0 10px 30px #0008; animation: qpop .5s ease-out; }
+.qfxbig b { font-size: 52px; }
+.qfxbig small { font-size: 18px; opacity: .8; }
+.qfxrank { display: flex; flex-direction: column; gap: 4px; background: #0b0e24e6; border-radius: 14px; padding: 8px 12px; min-width: 300px; }
+.qfxr { display: grid; grid-template-columns: 48px 1fr 70px; gap: 8px; align-items: center; font-size: 22px; font-weight: 800; color: #fff; padding: 2px 8px; border-left: 6px solid var(--tc); border-radius: 6px; }
+.qfxr b { text-align: right; } .qfxr i { font-style: normal; color: #ffd43b; }
+.qfxr.on { background: #ffffff22; }
+@keyframes qpop { 0% { transform: scale(.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.bellboard { font-size: 34px; font-weight: 900; text-align: center; padding: 14px; border-radius: 16px; background: #ffffff12; }
+.bellboard.open { background: #ffd43b; color: #111; font-size: 52px; animation: qpop .5s ease-out; }
+.bellboard.reveal { background: #2fd27a33; }
+.bellalive span.pop { animation: qpop .5s ease-out; outline: 4px solid #fff; }
+.lleft.nophone { justify-content: center; text-align: center; gap: 18px; }
+.npbig { font-size: 120px; line-height: 1; }
+.npnote { font-size: 28px; font-weight: 800; max-width: 460px; }
+.npnote.small { font-size: 20px; font-weight: 600; opacity: .85; }
+/* 시범 미리보기 (설명 화면) */
+.introv2 { display: grid; grid-template-columns: 520px 1fr; gap: 36px; align-items: center; padding: 20px 50px; height: calc(100% - 90px); }
+.idemo { height: 560px; }
+.iinfo { display: flex; flex-direction: column; gap: 14px; }
+.iinfo .in { font-size: 26px; color: #ffd43b; font-weight: 900; } .iinfo .it { font-size: 66px; font-weight: 900; line-height: 1.1; }
+.igoal { font-size: 30px; font-weight: 800; padding: 12px 18px; border-radius: 16px; background: #ffd43b22; border: 2px solid #ffd43b66; }
+.iscore { font-size: 24px; opacity: .92; }
+.ipv { font-size: 20px; color: #9aa3c7; }
+.demo { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+.demo-cv { flex: 1; width: 100%; min-height: 0; }
+.demo-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.demo-steps li { font-size: 22px; font-weight: 800; padding: 8px 12px; border-radius: 12px; background: #ffffff10; opacity: .55; transition: opacity .2s, background .2s; }
+.demo-steps li.on { opacity: 1; background: #ffd43b33; }
+.rwhy { margin: 10px auto 0; font-size: 26px; font-weight: 900; padding: 8px 18px; border-radius: 14px; background: #ffffff10; border-left: 8px solid var(--tc); max-width: 1100px; }
+.npg { font-size: 13px; opacity: .75; font-weight: 700; margin-left: 4px; }

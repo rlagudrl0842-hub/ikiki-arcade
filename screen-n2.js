@@ -60,16 +60,33 @@ for (const id of Object.keys(THEME)) V[id] = skillScreen(id);
 V.curling = {
   mount(root, ctx) { this.ctx = ctx; this.st = []; this.cv = canvas(1100, 880); this.panel = teamPanel(ctx, '팀 평균 점수'); root.append(h('div', { class: 'nar' }, h('div', { class: 'narc', style: { width: '1100px' } }, this.cv), h('div', { class: 'nside' }, this.panel))); loop(this, (t) => this.draw(t)); },
   update(s) { if (s.all) this.st = s.all.map((x) => [...x, 0]); else for (const x of s.add || []) { this.st.push([...x, performance.now()]); this.ctx.sfx(x[3] >= 80 ? 'good' : 'tap'); } this.panel.set(s.avg, 100); return s.avg; },
+  // 빙판 경기장: 배경(관중석·펜스·빙판 결·하우스)은 한 번만 그려 두고, 스톤과 '가장 가까운 팀'만 매번 그림
+  bg() {
+    if (this.bgc) return this.bgc; const W = 1100, H = 880; const b = document.createElement('canvas'); b.width = W; b.height = H; const c = b.getContext('2d');
+    c.fillStyle = '#18213f'; c.fillRect(0, 0, W, 90); for (let r = 0; r < 3; r++) for (let i = 0; i < 46; i++) { c.fillStyle = ['#ff4d6d66', '#3d8bff66', '#ffd43b66', '#2fd27a66', '#ffffff44'][(i * 7 + r) % 5]; c.beginPath(); c.arc(12 + i * 24, 18 + r * 24, 9, 0, 7); c.fill(); }
+    c.fillStyle = '#e94b5f'; c.fillRect(0, 86, W, 14); c.fillStyle = '#fff'; c.font = '900 12px sans-serif'; for (let i = 0; i < 9; i++) c.fillText('IKIKI CURLING', 20 + i * 125, 97);
+    const g = c.createLinearGradient(0, 100, 0, H); g.addColorStop(0, '#f6fbff'); g.addColorStop(1, '#d7e7f7'); c.fillStyle = g; c.fillRect(0, 100, W, H - 100);
+    c.strokeStyle = '#ffffff'; c.globalAlpha = 0.5; for (let i = 0; i < 120; i++) { const x = (i * 97) % W, y = 100 + ((i * 53) % (H - 100)); c.lineWidth = 1; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 40 + (i % 5) * 12, y + (i % 3) - 1); c.stroke(); } c.globalAlpha = 1;
+    const sh = c.createRadialGradient(W * 0.3, 300, 20, W * 0.3, 300, 500); sh.addColorStop(0, '#ffffff88'); sh.addColorStop(1, '#ffffff00'); c.fillStyle = sh; c.fillRect(0, 100, W, H - 100);
+    const cx = W / 2, cy = 490, R = 360;
+    c.fillStyle = '#00000010'; c.beginPath(); c.arc(cx + 6, cy + 8, R, 0, 7); c.fill();
+    [[1, '#2f6fe0'], [0.66, '#f8fbff'], [0.33, '#e5354d'], [0.1, '#f8fbff']].forEach(([k, col]) => { c.fillStyle = col; c.beginPath(); c.arc(cx, cy, R * k, 0, 7); c.fill(); });
+    c.strokeStyle = '#8fa6c8'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, 100); c.lineTo(cx, H); c.moveTo(0, cy); c.lineTo(W, cy); c.stroke();
+    c.strokeStyle = '#e5354d'; c.lineWidth = 4; c.beginPath(); c.moveTo(0, H - 40); c.lineTo(W, H - 40); c.stroke(); c.fillStyle = '#8fa6c8'; c.font = '700 16px sans-serif'; c.fillText('HOG LINE', 12, H - 48);
+    this.bgc = b; return b;
+  },
   draw() {
-    const c = this.cv.getContext('2d'); const W = 1100, H = 880; const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#f2f8ff'); g.addColorStop(1, '#cfe0f5'); c.fillStyle = g; c.fillRect(0, 0, W, H);
-    const cx = W / 2, cy = H / 2, R = 380;
-    [[1, '#3d8bff'], [0.66, '#ffffff'], [0.33, '#ff4d6d'], [0.08, '#ffffff']].forEach(([k, col]) => { c.fillStyle = col; c.beginPath(); c.arc(cx, cy, R * k, 0, 7); c.fill(); });
-    c.strokeStyle = '#9fb6d6'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, 0); c.lineTo(cx, H); c.moveTo(0, cy); c.lineTo(W, cy); c.stroke();
-    const now = performance.now();
-    for (const [x, y, team, , at] of this.st) {
-      const k = at ? Math.min(1, (now - at) / 600) : 1; const X = cx + x * R, Y = cy + y * R + (1 - k) * 500; const col = this.ctx.team(team).color;
-      c.fillStyle = '#00000022'; c.beginPath(); c.arc(X + 3, Y + 4, 16, 0, 7); c.fill(); c.fillStyle = '#6b7280'; c.beginPath(); c.arc(X, Y, 16, 0, 7); c.fill(); c.fillStyle = col; c.beginPath(); c.arc(X, Y, 11, 0, 7); c.fill();
+    const c = this.cv.getContext('2d'); const W = 1100, H = 880; c.drawImage(this.bg(), 0, 0);
+    const cx = W / 2, cy = 490, R = 360; const now = performance.now();
+    let best = null;
+    for (const [x, y, team, sc, at] of this.st) {
+      const k = at ? Math.min(1, (now - at) / 700) : 1; const X = cx + x * R, Y = cy + y * R + (1 - k) * 420; const col = this.ctx.team(team).color;
+      if (k === 1 && (!best || sc > best.sc)) best = { X, Y, team, sc };
+      c.fillStyle = '#00000030'; c.beginPath(); c.ellipse(X + 4, Y + 6, 19, 15, 0, 0, 7); c.fill();
+      const gr = c.createRadialGradient(X - 5, Y - 6, 2, X, Y, 18); gr.addColorStop(0, '#c9ced6'); gr.addColorStop(1, '#5f6672'); c.fillStyle = gr; c.beginPath(); c.arc(X, Y, 17, 0, 7); c.fill();
+      c.fillStyle = col; c.beginPath(); c.arc(X, Y, 11, 0, 7); c.fill(); c.fillStyle = '#222'; c.fillRect(X - 3, Y - 13, 6, 10);
     }
+    if (best) { const t = this.ctx.team(best.team); c.strokeStyle = '#ffd43b'; c.lineWidth = 4; c.beginPath(); c.arc(best.X, best.Y, 26 + Math.sin(now / 150) * 3, 0, 7); c.stroke(); c.fillStyle = '#0b0e24dd'; c.beginPath(); c.roundRect(20, 112, 360, 44, 12); c.fill(); c.fillStyle = '#fff'; c.font = '900 22px sans-serif'; c.textAlign = 'left'; c.fillText(`🎯 가장 가까운 스톤: ${t.icon} ${t.name} (${best.sc}점)`, 34, 141); }
   },
   unmount() { stop(this); },
 };
@@ -104,19 +121,25 @@ V.penalty = {
 // ---------------------------------------------------------------- 리듬 마스터: 대형 화면이 비트를 울림
 V.rhythm = {
   mount(root, ctx) { this.ctx = ctx; this.s = null; this.eq = {}; this.lastBeat = -1; this.cv = canvas(1832, 880); root.append(h('div', { class: 'nfull' }, this.cv)); loop(this, (t) => this.draw(t)); },
-  update(s) { this.s = s; for (const [k, n] of Object.entries(s.hits || {})) this.eq[k] = Math.min(1, (this.eq[k] || 0) + n * 0.06); return s.avg; },
+  update(s) { this.s = s; const now = performance.now(); this.hq ||= {}; for (const [k, n] of Object.entries(s.hits || {})) { this.eq[k] = Math.min(1, (this.eq[k] || 0) + n * 0.06); (this.hq[k] ||= []).push([now, n]); } return s.avg; },
   draw(t) {
     const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1832, H = 880;
     const now = this.ctx.now(); const beat = 60000 / s.bpm; const bi = Math.floor((now - s.t0) / beat); const ph = (((now - s.t0) % beat) + beat) % beat / beat;
     if (now >= s.t0 && bi !== this.lastBeat) { this.lastBeat = bi; this.ctx.sfx(bi % 4 === 0 ? 'count' : 'tap'); }
     const g = c.createRadialGradient(W / 2, H, 50, W / 2, H, W * 0.8); g.addColorStop(0, `rgba(176,107,255,${0.35 + (1 - ph) * 0.25})`); g.addColorStop(1, '#05040f'); c.fillStyle = g; c.fillRect(0, 0, W, H);
     c.strokeStyle = '#ffffff10'; for (let i = 0; i < 12; i++) { const y = H - ((i / 12 + ph / 12) % 1) * H; c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+    // 무대: 트러스 조명 + 박자 신호(원이 줄어드는 순간 = 탭 타이밍) + 판정 안내
+    c.fillStyle = '#2b2440'; c.fillRect(0, 0, W, 26); for (let i = 0; i < 9; i++) { const lx = 100 + i * 205; const on = (bi + i) % 4 === 0; c.fillStyle = on ? '#fff3b0' : '#665c80'; c.beginPath(); c.arc(lx, 26, 12, 0, 7); c.fill(); if (on) { const sg = c.createLinearGradient(lx, 26, lx, H); sg.addColorStop(0, 'rgba(255,243,176,.22)'); sg.addColorStop(1, 'rgba(255,243,176,0)'); c.fillStyle = sg; c.beginPath(); c.moveTo(lx - 8, 26); c.lineTo(lx + 8, 26); c.lineTo(lx + 120, H); c.lineTo(lx - 120, H); c.fill(); } }
+    const bx = W / 2, by = 140; c.strokeStyle = '#ffd43b'; c.lineWidth = 6; c.beginPath(); c.arc(bx, by, 40 + (1 - ph) * 70, 0, 7); c.globalAlpha = 0.25 + ph * 0.75; c.stroke(); c.globalAlpha = 1; c.fillStyle = ph > 0.85 || ph < 0.08 ? '#ffd43b' : '#ffffff33'; c.beginPath(); c.arc(bx, by, 40, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.font = '900 26px sans-serif'; c.textAlign = 'center'; c.fillText('원이 가운데에 닿는 박자 = 노트가 판정선에 닿을 때 탭!  PERFECT 3 · GOOD 2 (빠름/늦음) · MISS', bx, 240);
     const teams = this.ctx.teams; const bw = Math.min(260, (W - 200) / teams.length - 30); const total = teams.length * (bw + 30); let x = (W - total) / 2;
     const max = Math.max(1, ...Object.values(s.avg || {}));
     for (const tm of teams) {
       this.eq[tm.id] = (this.eq[tm.id] || 0) * 0.95; const e = this.eq[tm.id]; const v = (s.avg || {})[tm.id] || 0;
       for (let j = 0; j < 5; j++) { const hgt = (0.15 + e * (0.6 + Math.sin(t / 90 + j) * 0.3) + (1 - ph) * 0.08) * 520; c.fillStyle = tm.color; c.globalAlpha = 0.85; c.fillRect(x + j * (bw / 5), 700 - hgt, bw / 5 - 6, hgt); }
-      c.globalAlpha = 1; c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = '800 28px sans-serif'; c.fillText(`${tm.icon} ${tm.name}`, x + bw / 2, 750); c.font = '900 44px sans-serif'; c.fillText(Math.round(v), x + bw / 2, 805);
+      c.globalAlpha = 1; const q = (this.hq?.[tm.id] || []).filter((a) => performance.now() - a[0] < 2000); if (this.hq) this.hq[tm.id] = q; const streak = q.reduce((a, b) => a + b[1], 0);
+      if (streak) { c.fillStyle = '#ffd43b'; c.font = '900 30px sans-serif'; c.textAlign = 'center'; c.fillText(`🔥 팀 연속 ${streak}`, x + bw / 2, 300); }
+      c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = '800 28px sans-serif'; c.fillText(`${tm.icon} ${tm.name}`, x + bw / 2, 750); c.font = '900 44px sans-serif'; c.fillText(Math.round(v), x + bw / 2, 805);
       c.fillStyle = '#ffffff22'; c.fillRect(x, 820, bw, 10); c.fillStyle = tm.color; c.fillRect(x, 820, (bw * v) / max, 10);
       x += bw + 30;
     }

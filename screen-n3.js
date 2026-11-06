@@ -155,13 +155,14 @@ V.relay = {
       const v = s.t[t.id]; if (!v) return; const y = y0 + i * lh; const cy = y + lh / 2;
       c.fillStyle = i % 2 ? '#b0503a' : '#c45c43'; c.fillRect(tx0 - 20, y + 10, tx1 - tx0 + 60, lh - 20);
       c.strokeStyle = '#ffffff88'; c.lineWidth = 3; c.setLineDash([22, 16]); c.beginPath(); c.moveTo(tx0 - 20, y + 10); c.lineTo(tx1 + 40, y + 10); c.stroke(); c.setLineDash([]);
-      for (let k = 0; k <= LAP; k++) { const x = tx0 + ((tx1 - tx0) * k) / LAP; c.fillStyle = '#ffffff33'; c.fillRect(x - 2, y + 14, 4, lh - 28); }
+      for (let k = 0; k <= LAP; k++) { const x = tx0 + ((tx1 - tx0) * k) / LAP; c.fillStyle = '#ffffff33'; c.fillRect(x - 2, y + 14, 4, lh - 28); if (k % 2 === 0 && k) { c.fillStyle = '#ffd43b22'; c.fillRect(x - 26, y + 12, 52, lh - 24); } } // 노란 칸 = 바통 교대 구간
+      for (let q = 0; q < Math.floor((lh - 24) / 14); q++) for (let r = 0; r < 2; r++) { c.fillStyle = (q + r) % 2 ? '#111' : '#fff'; c.fillRect(tx1 + 30 + r * 12, y + 12 + q * 14, 12, 14); } // 결승선
       c.fillStyle = t.color; c.fillRect(0, y + 10, 300, lh - 20);
       c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = `900 ${Math.min(40, lh * 0.25)}px sans-serif`; c.fillText(`${t.icon} ${t.name}`, 18, cy - lh * 0.14);
       c.font = `800 ${Math.min(30, lh * 0.19)}px sans-serif`; c.fillText(`${v.legs}구간${v.legs + v.prog === lead && lead > 0 ? ' 🔥' : ''}`, 18, cy + lh * 0.2);
       const pos = (v.legs % LAP) + v.prog; const x = tx0 + ((tx1 - tx0) * pos) / LAP; const bob = Math.abs(Math.sin(t0 * 10 + i)) * 10;
       if (v.pass) { c.fillStyle = '#ffd43b55'; c.beginPath(); c.arc(x, cy, 70 + Math.sin(t0 * 20) * 6, 0, 7); c.fill(); }
-      c.font = `${Math.min(84, lh * 0.5)}px sans-serif`; c.textAlign = 'center'; c.save(); c.translate(x, cy - bob); c.scale(-1, 1); c.fillText('🏃', 0, 0); c.restore();
+      c.font = `${Math.min(84, lh * 0.5)}px sans-serif`; c.textAlign = 'center'; c.save(); c.translate(x, cy - bob); c.scale(-1, 1); c.fillText('🏃', 0, 0); c.restore(); c.fillStyle = '#ffd43b'; c.save(); c.translate(x + lh * 0.12, cy - bob + lh * 0.02); c.rotate(-0.6); c.fillRect(-4, -lh * 0.12, 8, lh * 0.24); c.restore(); // 바통
       c.fillStyle = '#fff'; c.font = `900 ${Math.min(30, lh * 0.18)}px sans-serif`; const nm = v.h || '-'; const tw = c.measureText(nm).width + 24; c.fillStyle = '#000a'; c.beginPath(); c.roundRect(x - tw / 2, cy - lh * 0.5 + 6, tw, lh * 0.2, 10); c.fill(); c.fillStyle = '#fff'; c.fillText(nm, x, cy - lh * 0.4 + 6);
       if (v.nx) { c.fillStyle = '#ffe9a8'; c.font = `700 ${Math.min(24, lh * 0.14)}px sans-serif`; c.textAlign = 'right'; c.fillText(`다음 ➜ ${v.nx}`, tx1 + 30, cy + lh * 0.33); }
       if (v.pass) { c.fillStyle = '#ffd43b'; c.font = `900 ${Math.min(34, lh * 0.2)}px sans-serif`; c.textAlign = 'center'; c.fillText('바통 터치!', x, cy + lh * 0.36); }

@@ -4,12 +4,18 @@ import { G } from './play-games.js';
 import './play-n.js';
 import { saveCard } from './card.js';
 import './play-n2.js';
+import './play-n3.js';
+import { mountDemo, demoText } from './preview.js';
 
 const app = $('#app');
 const params = new URLSearchParams(location.search);
 const code = (params.get('e') || params.get('code') || '').toUpperCase();
-const KEY = 'ikiki:' + code;
+// 혼자 테스트하기: ?join=이름&team=1 → 바로 참가 / ?ai=난이도 → 컴퓨터 참가자 (같은 브라우저 안에서도 저장 칸을 따로 씀)
+const aiLv = params.get('ai'); const autoName = params.get('join'); const autoTeam = Number(params.get('team')) || 0; const embed = params.has('embed');
+const KEY = 'ikiki:' + code + (aiLv ? ':ai' + (autoTeam || 2) : embed ? ':me' : '');
 let dev = store('ikiki:dev'); if (!dev) { dev = Math.random().toString(36).slice(2) + Date.now().toString(36); store('ikiki:dev', dev); }
+if (aiLv) dev = `ai:${aiLv}:${dev}`.slice(0, 40); else if (embed) dev = `me:${dev}`.slice(0, 40);
+if (embed || aiLv) document.body.classList.add('embed');
 
 let sess = code ? store(KEY) : null;        // {eventId, players:[{pid,secret,name,team,age}], active}
 let live = null, S = null;                   // S = 서버 공개 상태
@@ -26,7 +32,19 @@ const active = () => sess?.players?.find((p) => p.pid === sess.active) || sess?.
 // ---------------- 시작 ----------------
 if (!code) renderCodeEntry();
 else if (sess?.players?.length) connect();
+else if (autoName != null || aiLv) autoJoin();
 else renderJoin();
+async function autoJoin() {
+  try {
+    const info = await api('/api/public/' + encodeURIComponent(code));
+    const t = info.teams[(autoTeam || (aiLv ? 2 : 1)) - 1] || info.teams[0];
+    const r = await api('/api/join', { code, name: autoName || (aiLv ? '컴퓨터' : '나'), team: t.id, device: dev });
+    sess = { eventId: r.eventId, players: [{ pid: r.pid, secret: r.secret, name: r.name, team: r.team }], active: r.pid }; store(KEY, sess); connect();
+  } catch (e) { app.innerHTML = ''; app.append(h('main', { class: 'join' }, logo(), h('p', {}, e.message))); }
+}
+// 컴퓨터 참가자: 이 화면의 게임을 실제 입력으로 조작
+let aiBot = null;
+if (aiLv) import('./ai.js').then(({ AI }) => { aiBot = new AI({ level: aiLv, send: (m) => { const p = active(); if (p && live) live.send({ t: 'in', pid: p.pid, run: RUN[p.pid], ...m }); }, now: () => (live ? live.now() : Date.now()), get pid() { return active()?.pid; } }); Object.defineProperty(aiBot, 'pid', { get: () => active()?.pid }); window.__ai = aiBot; });
 
 function renderCodeEntry() {
   app.innerHTML = '';
@@ -46,7 +64,7 @@ async function renderJoin(addMode = false) {
   if (info.phase === 'ended') { wrap.innerHTML = ''; wrap.append(logo(), h('h2', {}, info.name), h('p', {}, '행사가 끝났어요. 참가해 주셔서 고마워요!')); return; }
   document.body.classList.toggle('kid', info.mode === 'kid');
   let team = null, age = info.mode === 'mixed' ? null : info.mode;
-  const name = h('input', { class: 'inp', maxlength: 12, placeholder: info.mode === 'kid' ? '아이 이름' : '이름 (닉네임)', autocomplete: 'off' });
+  const name = h('input', { class: 'inp', maxlength: 12, placeholder: info.mode === 'kid' ? '아이 이름 (비워도 돼요)' : '이름·닉네임 (비우면 참가 번호)', autocomplete: 'off' });
   const teams = h('div', { class: 'teampick' });
   info.teams.forEach((t) => {
     const b = h('button', { class: 'tp', style: { '--tc': t.color } }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name), h('small', {}, `${info.counts[t.id]?.total || 0}명`));
@@ -61,7 +79,6 @@ async function renderJoin(addMode = false) {
   const btn = h('button', { class: 'btn wide' }, addMode ? '이 아이도 참가 ➕' : '참가하기 🎮');
   btn.onclick = async () => {
     err.textContent = '';
-    if (!name.value.trim()) { err.textContent = '이름을 입력해 주세요'; name.focus(); return; }
     if (info.teamAssign === 'choose' && !team) { err.textContent = '팀을 골라 주세요'; return; }
     if (info.mode === 'mixed' && !age) { err.textContent = '나이를 골라 주세요'; return; }
     btn.disabled = true;
@@ -82,7 +99,7 @@ async function renderJoin(addMode = false) {
     info.mode === 'mixed' ? [h('label', {}, '누가 참가하나요?'), ages] : null,
     info.teamAssign === 'choose' ? [h('label', {}, '팀 고르기'), teams] : h('p', { class: 'muted' }, '팀은 자동으로 정해져요'),
     err, btn,
-    addMode ? h('button', { class: 'btn ghost wide', onclick: () => connect() }, '취소') : h('p', { class: 'muted small' }, '이름은 행사 진행에만 쓰이고, 행사가 끝나면 지울 수 있어요'));
+    addMode ? h('button', { class: 'btn ghost wide', onclick: () => connect() }, '취소') : h('p', { class: 'muted small' }, '이름을 비우면 "참가 7번"처럼 번호로 참가해요. 전화번호·계정은 필요 없어요. 이름은 행사 진행에만 쓰여요'));
   name.focus();
 }
 
@@ -99,6 +116,7 @@ function onStatus(st, code) {
   if (st === 'offline' && code === 4004) { store(KEY, null); toast('행사가 삭제되었어요'); }
 }
 function onMsg(m) {
+  try { aiBot?.onMsg(m); } catch (e) { console.error('ai', e); }
   if (m.t === 'err') {
     if (m.code === 404) { // 참가 정보 없음 → 다시 참가
       store(KEY, null); sess = null; live?.stop(); live = null; toast(m.msg); renderJoin(); return;
@@ -118,7 +136,7 @@ function onMsg(m) {
 }
 
 function onState(prev) {
-  sfxOn = S.settings.sfx;
+  sfxOn = S.settings.sfx && !aiLv; // 컴퓨터 폰은 소리 없음
   const me = ME[active()?.pid]?.me;
   document.body.classList.toggle('kid', ['kid', 'baby'].includes(S.settings.mode) || ['kid', 'baby'].includes(me?.age));
   const key = S.phase + ':' + S.seq;
@@ -139,6 +157,7 @@ function header() {
   top.innerHTML = '';
   top.style.setProperty('--tc', t.color);
   top.append(h('div', { class: 'tm' }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name)), h('div', { class: 'nm' }, me?.name || p?.name || '', me?.rep ? h('span', { class: 'rep' }, '👑대표') : null),
+    (['playing', 'countdown'].includes(S.phase) && DEMO_OK(VIEW[p?.pid]?.g)) ? h('button', { class: 'helpbtn', 'aria-label': '하는 방법 다시 보기', onclick: () => helpSheet(VIEW[active().pid]?.g, t.color) }, '❓') : null,
     h('button', { class: 'menu', onclick: openMenu }, '☰'));
   const bar = $('#bar'); bar.innerHTML = '';
   if (sess.players.length > 1) {
@@ -228,10 +247,17 @@ function mini() {
   return h('div', { class: 'mini' }, h('div', { class: 'mh' }, `종합 순위 · ${S.standings.played}게임 진행`),
     rows.map((r) => { const t = teamOf(S, r.id); return h('div', { class: `mr ${r.id === me?.team ? 'mine' : ''}`, style: { '--tc': t.color } }, h('b', {}, `${r.rank}`), h('span', {}, `${t.icon} ${t.name}`), h('em', {}, `${r.total}점`)); }));
 }
+// 시범 미리보기: 설명 화면에서 자동으로, 게임 중에는 ❓ 버튼으로 다시 보기
+let introDemo = null; const demoT0 = {};
 function intro() {
   const it = S.item; if (!it) return center('🎮', '곧 시작해요');
   const me = ME[active().pid]?.me;
+  introDemo?.stop?.();
+  const dbox = h('div', { class: 'introdemo' });
+  const tx = demoText(it.game, S.settings.mode);
+  if (S.settings.preview !== false && tx) introDemo = mountDemo(dbox, it.game, { mode: S.settings.mode, color: teamOf(S, me?.team).color, sec: S.settings.previewSec || 6, h, t0: (demoT0[S.seq] ||= performance.now()) });
   return h('div', { class: 'intro' }, h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name),
+    tx ? h('div', { class: 'igoal' }, `🏆 ${tx.goal}`) : null, dbox,
     h('div', { class: 'ir' }, it.rule), it.weight > 1 ? h('div', { class: 'chip big' }, `🔥 점수 ${it.weight}배!`) : null, it.durSec ? h('div', { class: 'muted' }, `⏱ ${it.durSec}초`) : null,
     h('div', { class: 'ready' }, me?.rep && it.team ? '👑 당신은 팀 대표예요!' : '준비하세요! 곧 시작합니다'), cheerBtn(teamOf(S, me?.team)));
 }
@@ -304,16 +330,26 @@ function renderGame() {
   const t = teamOf(S, ME[p.pid]?.me?.team ?? p.team);
   const gapi = {
     send: (m) => live.send({ t: 'in', pid: p.pid, run: RUN[p.pid], ...m }),
-    now: () => live.now(), team: t, age: ME[p.pid]?.me?.age, get sfxOn() { return sfxOn; }, toast,
+    now: () => live.now(), pid: p.pid, team: t, age: ME[p.pid]?.me?.age, get sfxOn() { return sfxOn; }, toast,
     teamName: (id) => { const x = teamOf(S, id); return `${x.icon}${x.name}`; },
     teamColor: (id) => teamOf(S, id).color,
     motion: S.settings.motion || 'auto',
   };
   const box = h('div', { class: 'game', style: { '--tc': t.color } });
-  main.append(timerBar(), box);
+  main.append(timerBar(), box); header(); // ❓ 도움 버튼은 맨 위 줄(☰ 옆)에 — 게임 화면 높이를 줄이지 않음
   inst.mount(box, v, gapi);
   mounted = { key, inst, pid: p.pid }; window.__game = inst; // 점검용
   document.body.classList.add('ingame'); // 게임 중: 폰을 가로로 돌리면 '세로로 돌려 주세요' 안내
+}
+const DEMO_OK = (g) => !!demoText(g, 'elem');
+// 게임 중 도움말: 게임은 계속 진행 (멈추지 않음) · 닫기 버튼 또는 바깥을 누르면 닫힘
+function helpSheet(g, color) {
+  if (document.querySelector('.helpsheet')) return;
+  const tx = demoText(g, S.settings.mode); const body = h('div', {});
+  const m = h('div', { class: 'helpsheet', onclick: (e) => { if (e.target === m) close(); } }, h('div', { class: 'hsbox' }, h('b', {}, `❓ ${S.item?.name || ''} 하는 방법`), h('div', { class: 'muted small' }, `🏆 ${tx.goal} · ${tx.score}`), body, h('button', { class: 'btn wide', onclick: () => close() }, '알겠어요! 계속하기')));
+  const d = mountDemo(body, g, { mode: S.settings.mode, color, sec: S.settings.previewSec || 6, h });
+  const close = () => { d.stop(); m.remove(); };
+  document.body.append(m);
 }
 function timerBar() { return h('div', { class: `gtimer ${S.run?.endAt ? '' : 'hidden'}` }, h('div', { class: 'gbar' }), h('span', { class: 'gsec' })); }
 

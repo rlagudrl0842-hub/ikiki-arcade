@@ -2,6 +2,8 @@
 import crypto from 'node:crypto';
 import { GAMES } from './games.js';
 import { AGE_LABEL, AGES6, BASE3, LV6 } from './common.js';
+import { pickSet } from './qpool.js';
+import { rng } from './gen.js';
 
 export const TEAM_COLORS = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#b06bff', '#ff922b', '#22d3ee', '#f472b6',
   '#a3e635', '#94a3b8', '#fb7185', '#60a5fa', '#facc15', '#34d399', '#c084fc', '#fdba74'];
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   scoring: 'avg',         // avg | sum | rep | top
   topN: 5,
   auto: true,             // 자동 진행
+  autoPrep: true,         // 자동 진행이 꺼져 있어도 결과 다음엔 다음 게임 소개 화면까지 준비 (시작은 사회자가)
   introSec: 10,
   resultSec: 12,
   voice: true,
@@ -58,6 +61,9 @@ export class Event {
     this.timer = null;
     this.lastResult = null;
     this.prevRanks = null;
+    this.pendingQ = null;            // 설명 화면에서 미리 고른 문제 세트 (문제 바꾸기 가능)
+    try { this.qmem = JSON.parse(this.db.getKV('qset:' + this.id) || '{}'); } catch { this.qmem = {}; }
+    try { this.replayLog = JSON.parse(this.db.getKV('replay:' + this.id) || '[]'); } catch { this.replayLog = []; }
     this.load(row);
   }
 
@@ -86,6 +92,24 @@ export class Event {
     const st = { phase: this.state.phase, seq: this.state.seq, idx: this.state.idx, runId: this.state.runId, ceremonyStep: this.state.ceremonyStep, notice: this.state.notice };
     this.db.run('UPDATE events SET state=?, settings=?, name=?, updated_at=? WHERE id=?', JSON.stringify(st), JSON.stringify(this.settings), this.name, Date.now(), this.id);
   }
+  noPhone() { return this.settings.device === 'nophone'; }
+  isHost(def) { return !!def && (!!def.hostScore || (!!def.board && this.noPhone())); }
+  // ---------- 문제 세트 (중복 방지) ----------
+  qState(game) { return (this.qmem[game] ||= { used: [], last: [] }); }
+  gameSettings() { return { ...this.settings, mode: this.settings.mode === 'mixed' ? 'mixed' : BASE3[this.settings.mode] || 'elem', mode6: this.settings.mode, lv: this.modeLv(), nTeams: this.teams.length }; }
+  prepQ(avoid) {
+    const item = this.currentItem(); const def = item && GAMES[item.game];
+    if (!def?.qsource) { this.pendingQ = null; return; }
+    const src = def.qsource(this.gameSettings());
+    const res = pickSet(this, def.id, rng(crypto.randomInt(1, 2 ** 31)), src.items, src.n, src.key, { avoid, pri: src.pri });
+    this.pendingQ = { idx: this.state.idx, game: def.id, ...res, ver: (this.pendingQ?.ver || 0) + 1, preview: res.list.map(src.key).slice(0, 30) };
+  }
+  rerollQ() {
+    if (this.state.phase !== 'intro') throw new Err('문제는 게임 설명 화면에서 바꿀 수 있어요');
+    if (!this.pendingQ) throw new Err('이 게임은 바꿀 문제가 없어요');
+    this.prepQ(new Set(this.pendingQ.ids)); this.audit('reroll', { game: this.pendingQ.game }); this.state.seq++; this.broadcastState();
+  }
+  commitQ(game, res) { const st = this.qState(game); st.used = res.used; st.last = res.ids; this.db.setKV('qset:' + this.id, JSON.stringify(this.qmem)); }
   audit(action, detail) { this.db.run('INSERT INTO audit(event_id,action,detail,at) VALUES(?,?,?,?)', this.id, action, detail ? JSON.stringify(detail) : null, Date.now()); }
 
   static create(hub, { name, settings }) {
@@ -132,10 +156,11 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, duck: !!this.settings.duck, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       idx: this.state.idx, total: this.settings.playlist.length,
-      playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur })),
+      playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur, rep: p.rep })),
+      rep: this.state.rep || 1, startedAt: this.state.startedAt || null, // 반복 몇 번째 판 · 행사 실제 시작 시각(첫 게임 설명)
       item: item ? { ...item, ...gameInfo(item.game, this) } : null,
       run: g ? { id: g.runId, game: g.def.id, startAt: g.startAt, endAt: g.endAt, phaseAt: this.phaseAt } : null,
       phaseAt: this.phaseAt, phaseEnd: this.phaseEnd,
@@ -144,6 +169,9 @@ export class Event {
       cheer: Object.fromEntries(this.cheer), cheerEvent: this.cheerEvent,
       lastResult: this.lastResult && !opts.full ? { ...this.lastResult, players: undefined, nPlayers: Object.keys(this.lastResult.players || {}).length } : this.lastResult, ceremonyStep: this.state.ceremonyStep,
       teamMvp: ['ceremony', 'ended'].includes(this.state.phase) ? this.teamMvp() : null,
+      replayLog: (this.replayLog || []).slice(-8),
+      quickFx: this.quickFx || null, quickLog: this.quickLog(),
+      qinfo: this.pendingQ ? { game: this.pendingQ.game, n: this.pendingQ.ids.length, notice: this.pendingQ.notice, ver: this.pendingQ.ver, preview: opts.full ? this.pendingQ.preview : undefined } : null,
     };
   }
 
@@ -154,7 +182,13 @@ export class Event {
   // ---------- 참가 ----------
   join({ name, team, age, device }) {
     name = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 12);
-    if (!name) throw new Err('이름을 입력해 주세요');
+    // 이름 없이 참가 번호로도 참가 가능 (실명·전화번호·계정 필요 없음)
+    if (!name) {
+      for (const p of this.players.values()) if (p.device && device && p.device === device && /^참가\d+번$/.test(p.name)) return p;
+      let n = this.players.size + 1; const all = new Set([...this.players.values()].map((p) => p.name));
+      while (all.has(`참가${n}번`)) n++;
+      name = `참가${n}번`;
+    }
     if (!AGES6.includes(age)) age = this.settings.mode === 'mixed' ? 'elem' : this.settings.mode;
     if (this.state.phase === 'ended') throw new Err('행사가 끝났어요');
     if (this.activePlayers().length >= 400) throw new Err('참가 인원이 가득 찼어요');
@@ -164,10 +198,15 @@ export class Event {
     for (const p of this.players.values()) {
       if (p.device && device && p.device === device && p.name === name) return p;
     }
+    // 진행자가 미리 등록한 이름(기기 없음)이면 그 자리를 이어받음 (팀도 진행자가 정한 대로)
+    const pre = [...this.players.values()].find((p) => !p.device && p.name === name && !p.excluded);
+    if (pre && device) { pre.device = String(device).slice(0, 40); this.db.run('UPDATE players SET device=? WHERE id=?', pre.device, pre.id); this.broadcastSoon(); return pre; }
     let shown = name; let n = 2;
     const names = new Set([...this.players.values()].filter((p) => p.team === teamId).map((p) => p.name));
     while (names.has(shown)) shown = `${name}${n++}`;
     const p = { id: id(9), team: teamId, name: shown, age, secret: id(16), device: device ? String(device).slice(0, 40) : null, rep: false, excluded: false, joinedAt: Date.now(), online: false };
+    // 컴퓨터 참가자: 테스트 행사에서만 (기기 이름이 ai:난이도)
+    if (this.settings.test && /^ai:(easy|normal|hard|random)/.test(p.device || '')) p.ai = p.device.split(':')[1];
     if (!this.activePlayers().some((x) => x.team === teamId && x.rep)) p.rep = true;
     this.db.run('INSERT INTO players(id,event_id,team_id,name,age,secret,device,rep,excluded,joined_at) VALUES(?,?,?,?,?,?,?,?,0,?)', p.id, this.id, p.team, p.name, p.age, p.secret, p.device, p.rep ? 1 : 0, p.joinedAt);
     this.players.set(p.id, p);
@@ -175,11 +214,20 @@ export class Event {
     this.broadcastSoon();
     return p;
   }
+  // 진행자가 참가자를 직접 등록 (휴대폰 없는 아이 · 명단 미리 입력)
+  hostAdd({ name, team }) {
+    const t = Number(team); if (!this.teams.some((x) => x.id === t)) throw new Err('팀을 골라 주세요');
+    const p = this.join({ name, team: t, device: null });
+    if (p.team !== t) { p.team = t; this.db.run('UPDATE players SET team_id=? WHERE id=?', t, p.id); }
+    p.hostAdded = true; this.db.run('UPDATE players SET device=NULL WHERE id=?', p.id);
+    this.audit('hostAdd', { pid: p.id, name: p.name, team: t });
+    return p;
+  }
   smallestTeam() {
     const c = this.teamCounts();
     return this.teams.slice().sort((a, b) => c[a.id].total - c[b.id].total || a.id - b.id)[0].id;
   }
-  ctxPlayer(p) { const a = AGES6.includes(this.ageOf(p)) ? this.ageOf(p) : 'elem'; return { id: p.id, team: p.team, age: BASE3[a], age6: a, lv: LV6[a], name: p.name, rep: p.rep }; }
+  ctxPlayer(p) { const a = AGES6.includes(this.ageOf(p)) ? this.ageOf(p) : 'elem'; return { id: p.id, team: p.team, age: BASE3[a], age6: a, lv: LV6[a], name: p.name, rep: p.rep, ai: p.ai || (/^ai:/.test(p.device || '') && this.settings.test ? p.device.split(':')[1] : null) }; }
 
   playerView(p) {
     const base = { t: 'me', me: { id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded } };
@@ -208,7 +256,8 @@ export class Event {
       case 'pause': return this.pause();
       case 'resume': return this.resume();
       case 'skip': return this.skip();
-      case 'replay': return this.replay();
+      case 'replay': return this.replay(arg.keep);
+      case 'reroll': return this.rerollQ();
       case 'abort': return this.abortGame();
       case 'next': return this.next();
       case 'ceremony': return this.startCeremony();
@@ -231,15 +280,28 @@ export class Event {
   }
 
   toIntro(idx) {
-    if (!['lobby', 'results'].includes(this.state.phase)) throw new Err('지금은 게임을 고를 수 없어요');
-    if (idx != null) { if (!(idx >= 0 && idx < this.settings.playlist.length)) throw new Err('게임 번호 오류'); this.state.idx = idx; }
-    const item = this.currentItem();
+    // 다음 게임이 이미 자동 준비(소개 화면)된 상태에서 같은 게임을 또 고르면 그대로 둠 (예전 순서 '다음→설명 시작'도 그대로 동작)
+    if (this.state.phase === 'intro' && (idx == null || idx === this.state.idx)) return;
+    if (this.state.phase === 'intro') this.clearTimer();
+    if (!['lobby', 'results', 'intro'].includes(this.state.phase)) throw new Err('지금은 게임을 고를 수 없어요');
+    if (idx != null) { if (!(idx >= 0 && idx < this.settings.playlist.length)) throw new Err('게임 번호 오류'); if (idx !== this.state.idx) this.state.rep = 1; this.state.idx = idx; }
+    let item = this.currentItem();
     if (!item) throw new Err('남은 게임이 없어요. 시상식을 진행하세요');
-    if (!this.activePlayers().length && !GAMES[item.game]?.hostScore) throw new Err('참가자가 아직 없어요');
+    if (this.noPhone() && GAMES[item.game].dev === 'phone') {
+      // 휴대폰 없이 진행: 참가자 휴대폰이 꼭 필요한 게임은 건너뜀 (사회자가 직접 고른 경우는 안내)
+      if (idx != null) throw new Err(`'${GAMES[item.game].name}'은(는) 참가자 휴대폰이 필요해요. 휴대폰 없이 진행 모드에서는 할 수 없어요`);
+      while (item && GAMES[item.game].dev === 'phone') { this.state.idx++; item = this.currentItem(); }
+      if (!item) { this.bump('lobby'); this.state.notice = '휴대폰 없이 할 수 있는 게임이 더 없어요. 시상식을 진행하세요'; this.broadcastState(); return; }
+    }
+    if (!this.activePlayers().length && !this.isHost(GAMES[item.game])) throw new Err('참가자가 아직 없어요');
+    if (!this.state.startedAt) this.state.startedAt = Date.now(); // 행사 시간 추적 시작
     this.lastResult = null;
-    this.bump('intro', this.settings.auto ? this.settings.introSec * 1000 : 0);
+    this.pendingQ = null; this.prepQ();
+    // 자동 진행이면 설명 시간 = 설명 시간 설정과 시범 미리보기 시간 중 긴 쪽 (미리보기가 끝난 뒤 카운트다운)
+    const introMs = Math.max(this.settings.introSec, this.settings.preview !== false ? (this.settings.previewSec || 6) : 0) * 1000;
+    this.bump('intro', this.settings.auto ? introMs : 0);
     this.audit('intro', { idx: this.state.idx, game: item.game });
-    if (this.settings.auto) this.schedule(this.settings.introSec * 1000, () => this.startCountdown());
+    if (this.settings.auto) this.schedule(introMs, () => this.startCountdown());
     this.broadcastState();
   }
 
@@ -255,7 +317,7 @@ export class Event {
     const durMs = this.durOf(item, def);
     const startAt = now + COUNTDOWN_MS;
     const ctx = {
-      runId, def, players, teams: this.teams.map((t) => t.id), teamInfo: this.teams, settings: { ...this.settings, mode: this.settings.mode === 'mixed' ? 'mixed' : BASE3[this.settings.mode] || 'elem', mode6: this.settings.mode, lv: this.modeLv() }, item,
+      runId, def, players, teams: this.teams.map((t) => t.id), teamInfo: this.teams, settings: this.gameSettings(), item, qset: null,
       seed: crypto.randomInt(1, 2 ** 31), startAt, durMs, now: () => Date.now(),
       sendTo: (pid, m) => this.sendPlayer(pid, { t: 'g', ...m }),
       endEarly: () => setImmediate(() => { if (this.game === inst && this.state.phase === 'playing') this.finishGame('auto'); }),
@@ -263,6 +325,12 @@ export class Event {
       dirtyAll: () => { this.dirtyAllFlag = true; },
       events: this,
     };
+    if (def.qsource) {
+      if (!this.pendingQ || this.pendingQ.game !== def.id || this.pendingQ.idx !== this.state.idx) this.prepQ();
+      ctx.qset = this.pendingQ.list; this.commitQ(def.id, this.pendingQ);
+      this.db.run('UPDATE runs SET config=? WHERE id=?', JSON.stringify({ ...item, qids: this.pendingQ.ids }), runId); // 이 판에 낸 문제 기록
+      this.pendingQ = null;
+    }
     const inst = def.create(ctx);
     inst.def = def; inst.runId = runId; inst.startAt = startAt; inst.endAt = def.untimed ? null : startAt + durMs;
     this.game = inst;
@@ -347,7 +415,10 @@ export class Event {
     this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, aces: out.aces, extra: res.extra || null, bonus: res.bonus || null, reason };
     this.game = null;
     this.state.runId = null;
-    this.state.idx = Math.min(this.state.idx + 1, this.settings.playlist.length);
+    // 반복 횟수(rep): 같은 게임을 정한 판 수만큼 한 뒤 다음 게임으로
+    const reps = this.currentItem()?.rep || 1;
+    if ((this.state.rep || 1) < reps) this.state.rep = (this.state.rep || 1) + 1;
+    else { this.state.idx = Math.min(this.state.idx + 1, this.settings.playlist.length); this.state.rep = 1; }
     this.bump('results', this.settings.auto ? this.settings.resultSec * 1000 : 0);
     this.audit('finish', { runId: g.runId, reason });
     if (this.settings.auto) this.schedule(this.settings.resultSec * 1000, () => this.afterResults(false));
@@ -393,7 +464,7 @@ export class Event {
       const a = aces[p.team];
       if (!a || s.norm > a.norm || (s.norm === a.norm && s.raw > a.raw)) aces[p.team] = { id: pid, name: p.name, norm: s.norm, raw: s.raw, show: s.show ?? null };
     }
-    if (g?.def?.hostScore) mvp = null; // 진행자 판정 게임은 개인 MVP 없음
+    if (this.isHost(g?.def)) mvp = null; // 진행자 판정 게임은 개인 MVP 없음
     return { teams: sorted, mvp, aces };
   }
 
@@ -405,7 +476,8 @@ export class Event {
       if (this.settings.auto && !manual) this.schedule(4000, () => { if (this.state.phase === 'lobby') this.startCeremony(); });
       return;
     }
-    if (this.settings.auto) return this.toIntro();
+    // 다음 게임 자동 준비: 소개 화면까지만 띄우고, 자동 진행이 꺼져 있으면 사회자가 [시작]을 눌러야 시작
+    if (this.settings.auto || this.settings.autoPrep !== false) return this.toIntro();
     this.bump('lobby'); this.broadcastState();
   }
 
@@ -434,7 +506,7 @@ export class Event {
     if (['playing', 'countdown'].includes(this.state.phase)) this.abortGame();
     if (!['lobby', 'intro', 'results'].includes(this.state.phase)) throw new Err('건너뛸 수 없어요');
     this.clearTimer();
-    this.state.idx = Math.min(this.state.idx + 1, this.settings.playlist.length);
+    this.state.idx = Math.min(this.state.idx + 1, this.settings.playlist.length); this.state.rep = 1;
     this.audit('skip', { idx: this.state.idx });
     this.bump('lobby'); this.broadcastState();
   }
@@ -446,19 +518,25 @@ export class Event {
     this.bump('lobby'); this.state.notice = '게임을 중단했어요 (점수 반영 안 됨).'; this.save();
     this.broadcastState();
   }
-  replay() {
-    // 방금 끝난(또는 중단된) 게임을 다시: 이전 결과는 취소
+  replay(keep) {
+    // 재경기: keep=true → 방금 판 점수는 그대로 두고 새 판 점수를 추가 / keep=false → 방금 그 판 점수만 지우고 다시
     if (['playing', 'countdown'].includes(this.state.phase)) { this.abortGame(); return this.toIntro(); }
     if (!['lobby', 'results'].includes(this.state.phase)) throw new Err('지금은 재경기할 수 없어요');
-    this.clearTimer();
-    const last = this.db.get("SELECT id, seq, status FROM runs WHERE event_id=? ORDER BY id DESC LIMIT 1", this.id);
+    const last = this.db.get("SELECT id, seq, game, label, status FROM runs WHERE event_id=? ORDER BY id DESC LIMIT 1", this.id);
     if (!last) throw new Err('재경기할 게임이 없어요');
-    if (last.status === 'done') {
+    this.clearTimer();
+    keep = keep === true || keep === 'keep';
+    if (last.status === 'done' && !keep) {
       this.db.run("UPDATE runs SET status='replaced' WHERE id=?", last.id);
       this.db.run("DELETE FROM adjustments WHERE event_id=? AND kind='luck' AND reason LIKE ?", this.id, `%#${last.id}%`);
     }
+    // 반복 게임 재경기: 아직 같은 게임이면 판 번호를 되돌리고(점수 지우기) / 그대로(새 판 추가), 이미 다음으로 넘어갔으면 마지막 판으로
+    const wasIdx = this.state.idx; const reps = this.settings.playlist[last.seq - 1]?.rep || 1;
+    if (wasIdx === last.seq - 1) { if (!keep) this.state.rep = Math.max(1, (this.state.rep || 1) - 1); } else this.state.rep = reps;
     this.state.idx = last.seq - 1; this.lastResult = null;
-    this.audit('replay', { runId: last.id });
+    this.audit('replay', { runId: last.id, keep });
+    this.replayLog = [...(this.replayLog || []), { at: Date.now(), game: last.game, name: last.label, runId: last.id, keep, was: last.status }].slice(-20);
+    this.db.setKV('replay:' + this.id, JSON.stringify(this.replayLog));
     this.bump('lobby'); return this.toIntro();
   }
   startCeremony() {
@@ -551,6 +629,30 @@ export class Event {
     this.broadcastState();
   }
 
+  // ---------- 진행자 퀵 점수 (응원·수동) ----------
+  // op: 화면이 만든 1회용 번호 → 같은 번호가 두 번 오면(연타·재전송) 한 번만 반영
+  quick(teamId, delta, op) {
+    if (!this.teams.some((t) => t.id === teamId)) throw new Err('팀 오류');
+    if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 100) throw new Err('퀵 점수는 -100~100 사이로 입력하세요');
+    this.quickOps ||= new Map();
+    if (op && this.quickOps.has(op)) return { id: this.quickOps.get(op), dup: true };
+    const id = Number(this.db.run('INSERT INTO adjustments(event_id,team_id,delta,kind,reason,at) VALUES(?,?,?,?,?,?)', this.id, teamId, Math.round(delta * 10) / 10, 'quick', '퀵 점수', Date.now()).lastInsertRowid);
+    if (op) { this.quickOps.set(String(op).slice(0, 40), id); if (this.quickOps.size > 500) this.quickOps.delete(this.quickOps.keys().next().value); }
+    this.quickFx = { id, team: teamId, delta: Math.round(delta * 10) / 10, at: Date.now() };
+    this.audit('quick', { teamId, delta, id });
+    this.broadcastState();
+    return { id };
+  }
+  undoQuick(adjId) {
+    const row = this.db.get("SELECT * FROM adjustments WHERE id=? AND event_id=? AND kind IN ('quick','manual')", Number(adjId), this.id);
+    if (!row) throw new Err('되돌릴 점수 기록이 없어요 (이미 되돌렸을 수 있어요)');
+    this.db.run('DELETE FROM adjustments WHERE id=?', row.id);
+    this.audit('quickUndo', { id: row.id, teamId: row.team_id, delta: row.delta });
+    this.quickFx = { id: -row.id, team: row.team_id, delta: -row.delta, at: Date.now(), undo: true };
+    this.broadcastState();
+  }
+  quickLog() { return this.db.all("SELECT id, team_id team, delta, kind, at FROM adjustments WHERE event_id=? AND kind IN ('quick','manual') ORDER BY id DESC LIMIT 8", this.id); }
+
   loadLastResult() { return null; }
 
   // 행사 전체 팀 MVP: 끝난 게임들의 환산 점수(0~100) 합이 팀 안에서 가장 높은 참가자
@@ -582,7 +684,7 @@ function compactPlayers(players = {}) {
 export function gameInfo(gid, ev) {
   const d = GAMES[gid]; if (!d) return {};
   const age = ev.dominantAge();
-  return { name: d.name, emoji: d.emoji, no: d.no, rule: (ev.settings.mode === 'baby' && d.rule.baby) || d.ruleFor(age, ev.settings), howto: d.howto, dur: undefined, durSec: d.untimed ? null : ev.durOf(ev.currentItem() || {}, d) / 1000, team: !!d.teamGame, host: !!d.hostScore, pre: !!d.inputDuringCountdown };
+  return { name: d.name, emoji: d.emoji, no: d.no, rule: (ev.settings.mode === 'baby' && d.rule.baby) || d.ruleFor(age, ev.settings), howto: d.howto, dur: undefined, durSec: d.untimed ? null : ev.durOf(ev.currentItem() || {}, d) / 1000, team: !!d.teamGame, host: ev.isHost(d), board: !!(d.board && ev.noPhone()), dev: d.dev, pre: !!d.inputDuringCountdown };
 }
 
 export function defaultPlaylist(mode) {
@@ -599,7 +701,7 @@ export function sanitizeSettings(s) {
   if (Number.isInteger(s.teamCount) && s.teamCount >= 2 && s.teamCount <= 16) o.teamCount = s.teamCount;
   if (['avg', 'sum', 'rep', 'top'].includes(s.scoring)) o.scoring = s.scoring;
   if (Number.isInteger(s.topN) && s.topN >= 1 && s.topN <= 50) o.topN = s.topN;
-  for (const k of ['auto', 'voice', 'sfx']) if (typeof s[k] === 'boolean') o[k] = s[k];
+  for (const k of ['auto', 'autoPrep', 'voice', 'sfx']) if (typeof s[k] === 'boolean') o[k] = s[k];
   if (Number.isInteger(s.introSec) && s.introSec >= 3 && s.introSec <= 60) o.introSec = s.introSec;
   if (Number.isInteger(s.resultSec) && s.resultSec >= 3 && s.resultSec <= 60) o.resultSec = s.resultSec;
   if (['choose', 'auto'].includes(s.teamAssign)) o.teamAssign = s.teamAssign;
@@ -608,6 +710,20 @@ export function sanitizeSettings(s) {
   for (const k of ['bgmVol', 'sfxVol']) if (Number.isInteger(s[k]) && s[k] >= 0 && s[k] <= 100) o[k] = s[k];
   if (Number.isInteger(s.fanfareSec) && s.fanfareSec >= 3 && s.fanfareSec <= 60) o.fanfareSec = s.fanfareSec;
   if (typeof s.duck === 'boolean') o.duck = s.duck;
+  // 행사 시간 계획: 목표 시간(분) · 추정값(사회자 설명·참가자 준비·게임 사이 전환·시작 인사·시상·여유)
+  if (s.timing && typeof s.timing === 'object') {
+    const t = s.timing; const T = {}; const iv = (v, a, b) => Number.isInteger(v) && v >= a && v <= b;
+    if (t.target === null || iv(t.target, 5, 480)) T.target = t.target;
+    for (const [k, a, b] of [['explain', 0, 600], ['ready', 0, 300], ['trans', 0, 600], ['opening', 0, 1800], ['ceremony', 0, 1800]]) if (iv(t[k], a, b)) T[k] = t[k];
+    if (iv(t.buffer, 0, 50)) T.buffer = t.buffer;
+    o.timing = T;
+  }
+  if (typeof s.winTrack === 'string' && /^(fanfare|g(1|7|8|12)|u-[\w-]{4,40})$/.test(s.winTrack)) o.winTrack = s.winTrack; // 승리 음악
+  if ([1, 2, 3, 5, 10].includes(s.quickUnit)) o.quickUnit = s.quickUnit;
+  if (['phone', 'nophone'].includes(s.device)) o.device = s.device;
+  if (typeof s.preview === 'boolean') o.preview = s.preview;
+  if (s.test === true) o.test = true; // 혼자 테스트·미리보기용 행사 (행사 목록·리그·기록에서 빠짐)
+  if (Number.isInteger(s.previewSec) && s.previewSec >= 5 && s.previewSec <= 8) o.previewSec = s.previewSec;
   if (typeof s.league === 'string') o.league = s.league.replace(/[<>]/g, '').trim().slice(0, 30);
   if (typeof s.joinUrl === 'string' && s.joinUrl.length < 200 && (s.joinUrl === '' || /^https?:\/\/[^\s"'<>]+$/.test(s.joinUrl))) o.joinUrl = s.joinUrl.replace(/\/+$/, '');
   if (Number.isInteger(s.rouletteCapPct) && s.rouletteCapPct >= 0 && s.rouletteCapPct <= 30) o.rouletteCapPct = s.rouletteCapPct;
@@ -622,6 +738,7 @@ export function sanitizeSettings(s) {
       game: p.game,
       weight: [0.5, 1, 1.5, 2, 3].includes(p.weight) ? p.weight : 1,
       ...(Number.isInteger(p.dur) && p.dur >= 5 && p.dur <= 300 ? { dur: p.dur } : {}),
+      ...(Number.isInteger(p.rep) && p.rep >= 2 && p.rep <= 5 ? { rep: p.rep } : {}), // 같은 게임 반복 판 수
     }));
   }
   return o;

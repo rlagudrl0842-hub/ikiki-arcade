@@ -373,7 +373,7 @@ G.rhythm = {
       c.fillStyle = '#ffffff55'; c.fillRect(0, hitY - 2 * d, W, 4 * d);
       for (const n of this.chart?.notes || []) { if (this.hit.has(n.i)) continue; const y = hitY - ((n.t - now) / 1000) * speed; if (y < -30 || y > H + 30) continue; c.fillStyle = cols[n.l]; c.shadowColor = cols[n.l]; c.shadowBlur = 14 * d; rr(c, n.l * lw + 10 * d, y - 10 * d, lw - 20 * d, 20 * d, 10 * d); c.fill(); c.shadowBlur = 0; }
       this.fx = this.fx.filter((f) => performance.now() - f.at < 500);
-      for (const f of this.fx) { const k = (performance.now() - f.at) / 500; c.globalAlpha = 1 - k; c.fillStyle = f.j === 'perfect' ? '#ffd43b' : f.j === 'good' ? '#8ff0b8' : '#ff8fa3'; c.font = `900 ${22 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(f.j === 'perfect' ? 'PERFECT' : f.j === 'good' ? 'GOOD' : 'MISS', f.l * lw + lw / 2, hitY - 30 * d - k * 30 * d); c.globalAlpha = 1; }
+      for (const f of this.fx) { const k = (performance.now() - f.at) / 500; c.globalAlpha = 1 - k; c.fillStyle = f.j === 'perfect' ? '#ffd43b' : f.j === 'good' ? '#8ff0b8' : '#ff8fa3'; c.font = `900 ${22 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(f.j === 'perfect' ? 'PERFECT' : f.j === 'good' ? `GOOD ${f.e < 0 ? '빠름' : '늦음'}` : f.e == null ? 'MISS' : `MISS ${f.e < 0 ? '빠름' : '늦음'}`, f.l * lw + lw / 2, hitY - 30 * d - k * 30 * d); c.globalAlpha = 1; }
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -386,7 +386,7 @@ G.rhythm = {
     if (!best) { this.fx.push({ l, j: 'miss', at: performance.now() }); this.combo = 0; this.info.textContent = ''; return; }
     this.hit.add(best.n.i); this.api.send({ a: 'hit', i: best.n.i, l, ts: now });
   },
-  reply(r) { const n = this.chart.notes[r.i]; this.fx.push({ l: n ? n.l : 0, j: r.j, at: performance.now() }); if (r.j !== 'miss') { this.combo = r.combo; this.info.textContent = `${r.combo} COMBO`; sfx('tap', this.api.sfxOn); } else { this.combo = 0; this.info.textContent = ''; } },
+  reply(r) { const n = this.chart.notes[r.i]; this.fx.push({ l: n ? n.l : 0, j: r.j, e: r.e, at: performance.now() }); if (r.j !== 'miss') { this.combo = r.combo; this.info.textContent = `${r.combo} COMBO`; sfx('tap', this.api.sfxOn); } else { this.combo = 0; this.info.textContent = ''; } },
   unmount() { this.dead = true; cancelAnimationFrame(this.raf); },
 };
 

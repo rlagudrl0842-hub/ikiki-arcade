@@ -42,9 +42,10 @@ export const tele = {
   rule: { all: '정답은 없어요! 우리 팀원들이 가장 많이 고를 것 같은 답을 고르세요', baby: '마음에 드는 그림을 골라요' },
   howto: '팀원과 같은 답을 고른 비율이 높을수록 고득점 (팀 마음이 하나!)',
   lateJoin: true,
+  qsource(st) { return { items: TELE, n: (st.lv ?? 2) <= 1 ? 4 : 6, key: (q) => q[0] }; },
   create(ctx) {
-    const r = rng(ctx.seed); const N = lvOf(ctx) <= 1 ? 4 : 6;
-    const Q = shuffle(r, TELE).slice(0, N).map((q) => ({ text: q[0], opts: q.slice(1) }));
+    const r = rng(ctx.seed);
+    const Q = (ctx.qset || shuffle(r, TELE).slice(0, lvOf(ctx) <= 1 ? 4 : 6)).map((q) => ({ text: q[0], opts: q.slice(1) })); const N = Q.length;
     const P = new Map(); const add = (p) => P.set(p.id, { ...p, a: {}, pts: [], active: false }); ctx.players.forEach(add);
     const sync = Object.fromEntries(ctx.teams.map((t) => [t, []])); let dist = null;
     const R = rounds(ctx, { n: N, qSec: lvOf(ctx) <= 1 ? 12 : 9, revSec: 5, onReveal: (i) => {
@@ -78,8 +79,9 @@ export const mino = {
   rule: { all: '둘 중 하나를 고르세요. 더 적은 사람이 고른 쪽만 살아남아요! 탈락해도 살아남는 쪽을 맞히면 부활', baby: '둘 중 마음에 드는 쪽을 골라요' },
   howto: '살아남은 라운드 수 · 마지막까지 남으면 보너스 (영아·유아는 탈락 없음)',
   lateJoin: true,
+  qsource() { return { items: MINO, n: 7, key: (q) => q.join('/') }; },
   create(ctx) {
-    const r = rng(ctx.seed); const N = 7; const Q = shuffle(r, MINO).slice(0, N);
+    const r = rng(ctx.seed); const Q = ctx.qset || shuffle(r, MINO).slice(0, 7); const N = Q.length;
     const P = new Map(); const add = (p) => P.set(p.id, { ...p, alive: true, a: {}, ok: 0, active: false }); ctx.players.forEach(add);
     const canLose = lvOf(ctx) >= 2; let res = null;
     const R = rounds(ctx, { n: N, qSec: 8, revSec: 5, onReveal: (i) => {

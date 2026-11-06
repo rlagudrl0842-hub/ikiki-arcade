@@ -1,5 +1,5 @@
 // 새 게임 공용 계산 (서버와 폰이 똑같이 계산 → 서버가 입력 검증)
-import { rng } from './gen.js';
+import { rng, hashSeed, shuffle } from './gen.js';
 
 // ---------------- 과일 베기: 과일이 날아오는 순서 ----------------
 // 좌표: 가로 0~1, 세로 0(위)~1.5(아래). 시간은 게임 시작 후 초
@@ -75,3 +75,21 @@ export function rhythmChart(seed, t0, durMs, lv) {
 }
 
 export const BURGER = ['🍞', '🥩', '🧀', '🥬', '🍅', '🥓', '🧅', '🥚'];
+
+// ---------------- 풍선 터뜨리기: 참가자마다 다른 풍선 배치(서버와 폰이 같은 계산) ----------------
+export const BALLOON_COLORS = [['빨강', '#ff4d6d'], ['파랑', '#3d8bff'], ['노랑', '#ffd43b'], ['초록', '#2fd27a'], ['보라', '#b06bff']];
+export function balloonCfg(lv) { return { gap: [1.6, 1.4, 1.2, 1.05, 1.0, 1.0][lv] ?? 1.2, per: [2, 3, 3, 4, 4, 4][lv] ?? 3, life: [6, 5.5, 5, 4.6, 4.4, 4.4][lv] ?? 5, nc: [3, 3, 4, 5, 5, 5][lv] ?? 4, tSec: 7 }; }
+// 목표 색: 7초마다 바뀜 (k번째 구간)
+export function balloonTarget(seed, k, nc) { const r = rng(hashSeed(seed, 'bt', k)); return Math.floor(r() * nc); }
+// w번째 묶음 풍선: [{id, c(색 번호), x(0~1), t0(초), life, sp}] · 묶음마다 목표 색 풍선이 꼭 하나 있음
+export function balloonWave(seed, pid, w, lv) {
+  const C = balloonCfg(lv); const r = rng(hashSeed(seed, pid, 'bw', w)); const t0 = 1 + w * C.gap;
+  const tgt = balloonTarget(seed, Math.floor(t0 / C.tSec), C.nc);
+  const out = []; const lane = shuffle(r, [0, 1, 2, 3, 4].slice(0, Math.max(C.per, 3) + 1));
+  for (let k = 0; k < C.per; k++) { const c = k === 0 ? tgt : Math.floor(r() * C.nc); out.push({ id: w * 10 + k, c, x: 0.12 + (lane[k] / Math.max(C.per, 3)) * 0.76 + (r() - 0.5) * 0.06, t0: t0 + r() * 0.5, life: C.life * (0.85 + r() * 0.3), sw: r() * 6.28 }); }
+  return out;
+}
+
+// ---------------- 보스 레이드: 약점이 나타나는 칸 (참가자마다 다른 순서) ----------------
+export function bossCfg(lv) { return { slot: [1.25, 1.1, 0.95, 0.85, 0.8, 0.8][lv] ?? 0.95, cells: lv <= 1 ? 4 : 9, hp: [18, 22, 26, 28, 30, 32][lv] ?? 26 }; }
+export function bossCell(seed, pid, k, cells) { const r = rng(hashSeed(seed, pid, 'bc', k)); return Math.floor(r() * cells); }

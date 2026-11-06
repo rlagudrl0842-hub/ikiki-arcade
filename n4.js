@@ -230,11 +230,12 @@ export const rhythm = {
         const p = P.get(pid); if (!p || m.a !== 'hit' || !intIn(m.i, 0, 5000) || !intIn(m.l, 0, 2) || !tsOk(m.ts, now)) return;
         const n = chart(p.lv).notes[m.i]; if (!n || n.l !== m.l || p.hit.has(m.i)) return;
         const err = Math.abs(m.ts - n.t); const win = by6(p.lv, [220, 180, 140, 125, 115, 110]);
-        if (err > win) { p.combo = 0; return { i: m.i, j: 'miss' }; }
+        const e = Math.round(m.ts - n.t); // − = 빨리 누름, + = 늦게 누름
+        if (err > win) { p.combo = 0; return { i: m.i, j: 'miss', e }; }
         const j = err < win * 0.35 ? 'perfect' : 'good'; const s = j === 'perfect' ? 3 : 2;
         p.hit.set(m.i, s); p.combo++; p.best = Math.max(p.best, p.combo); p.active = true;
         evq[p.team] = (evq[p.team] || 0) + 1;
-        return { i: m.i, j, combo: p.combo };
+        return { i: m.i, j, combo: p.combo, e };
       },
       tick(now) { if (now - (this._v || 0) > 1500) { this._v = now; ctx.dirtyAll(); } },
       view(pid) { const p = P.get(pid); if (!p) return { g: 'rhythm', spectator: true }; return { g: 'rhythm', seed: ctx.seed + p.lv, lv: p.lv, t0, dur: ctx.durMs + 1000, best: p.best }; },

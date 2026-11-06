@@ -15,7 +15,9 @@ export const MOODS = {
   rush: { label: '⚡ 스피드', color: '#ff6b2c' },
   battle: { label: '🔥 배틀', color: '#ff2fa8' },
   focus: { label: '🎯 집중', color: '#2fd5ff' },
-  groove: { label: '🎉 신나게', color: '#ffd43b' },
+  groove: { label: '🎉 신나는', color: '#ffd43b' },
+  win: { label: '🏆 승리', color: '#ffe066' },
+  etc: { label: '🎵 기타', color: '#b197fc' },
   none: { label: '🔇 음악 없음', color: '#8f98cc' },
 };
 // 게임별 기본 추천 곡 ('none' = 게임 자체 박자·마이크를 쓰는 게임이라 음악이 방해돼요)
@@ -36,8 +38,22 @@ export function pick(settings, game, customList = []) {
   const id = want === 'auto' ? REC[game] || 'g7' : want;
   if (id === 'none') return null;
   const t = TRACKS.find((x) => x.id === id) || customList.find((x) => x.id === id);
-  if (!t) { const r = REC[game] || 'g7'; return r === 'none' ? null : { ...TRACKS.find((x) => x.id === r), rec: true, missing: id }; }
-  return { ...t, rec: want === 'auto', custom: id.startsWith('u-') };
+  // 지운 곡이 남아 있으면 → 그 게임 추천곡으로 안전하게 대신 (음악이 끊기거나 오류 나지 않음)
+  if (!t) { const r = REC[game] || 'g7'; return r === 'none' ? null : { ...withMeta(TRACKS.find((x) => x.id === r)), rec: true, missing: id }; }
+  return { ...withMeta(t), rec: want === 'auto', custom: id.startsWith('u-') };
+}
+
+// 곡별 음량·순서 (내장 곡은 이 브라우저에 따로 기억, 내가 넣은 곡은 곡 정보에 같이 저장)
+const MK = 'ikiki:bgmMeta';
+export function metaAll() { try { return JSON.parse(localStorage.getItem(MK) || '{}') || {}; } catch { return {}; } }
+export function setMeta(id, patch) { const m = metaAll(); m[id] = { ...(m[id] || {}), ...patch }; try { localStorage.setItem(MK, JSON.stringify(m)); } catch { /* 저장 안 되는 창 */ } return m[id]; }
+function withMeta(t) { if (!t) return t; if (t.id?.startsWith('u-')) return t; const m = metaAll()[t.id]; return m?.vol != null ? { ...t, vol: m.vol } : t; }
+// 승리 음악: 'fanfare'(내장 빵빠레) · 내장 곡 · 내가 넣은 곡. 없는 곡이면 내장 빵빠레로
+export function winTrack(settings, customList = []) {
+  const id = settings?.winTrack || 'fanfare';
+  if (id === 'fanfare') return { id: 'fanfare', name: '🎺 빵빠레 (기본)', hit: FANFARE.hit, vol: metaAll().fanfare?.vol };
+  const t = TRACKS.find((x) => x.id === id) || customList.find((x) => x.id === id);
+  return t ? { ...withMeta(t), hit: 0 } : { id: 'fanfare', name: '🎺 빵빠레 (기본)', hit: FANFARE.hit, missing: id };
 }
 
 // ---------------- 내가 추가한 곡 (이 브라우저의 IndexedDB에 저장) ----------------
@@ -46,20 +62,27 @@ export const MAX_MB = 25;
 function idb() { return new Promise((res, rej) => { const r = indexedDB.open(DBN, 1); r.onupgradeneeded = () => r.result.createObjectStore(ST, { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function tx(mode, fn) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction(ST, mode); const out = fn(t.objectStore(ST)); t.oncomplete = () => { db.close(); res(out?.result ?? out); }; t.onerror = () => { db.close(); rej(t.error); }; }); }
 export async function listCustom() {
-  try { const all = await tx('readonly', (s) => s.getAll()); return (all || []).map(({ blob, ...m }) => ({ ...m, size: blob?.size || m.size })).sort((a, b) => a.added - b.added); } catch { return []; }
+  try { const all = await tx('readonly', (s) => s.getAll()); return (all || []).map(({ blob, ...m }) => ({ ...m, size: blob?.size || m.size })).sort((a, b) => (a.order ?? a.added) - (b.order ?? b.added)); } catch { return []; }
 }
 export async function addCustom(file, name, mood = 'battle') {
   if (!file) throw new Error('파일을 골라 주세요');
-  if (!/^audio\//.test(file.type) && !/\.(mp3|m4a|aac|wav|ogg)$/i.test(file.name)) throw new Error('음악 파일(MP3 등)만 넣을 수 있어요');
+  if (!/^audio\//.test(file.type) && !/\.(mp3|m4a|aac|wav|ogg)$/i.test(file.name)) throw new Error(`'${file.name}': MP3·WAV·M4A 음악 파일만 넣을 수 있어요`);
   if (file.size > MAX_MB * 1048576) throw new Error(`${MAX_MB}MB 이하 파일만 넣을 수 있어요`);
   // 실제로 재생 가능한 파일인지 먼저 풀어 봄
   const tmp = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 44100, 44100);
   let buf; try { buf = await tmp.decodeAudioData(await file.arrayBuffer()); } catch { throw new Error('이 파일은 재생할 수 없어요. MP3로 바꿔서 넣어 주세요'); }
   const id = 'u-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-  const rec = { id, name: String(name || file.name.replace(/\.[^.]+$/, '')).slice(0, 30), mood: MOODS[mood] ? mood : 'battle', dur: Math.round(buf.duration), size: file.size, added: Date.now(), cue: 0, blob: new Blob([file], { type: file.type || 'audio/mpeg' }) };
+  const rec = { id, name: String(name || file.name.replace(/\.[^.]+$/, '')).slice(0, 30), mood: MOODS[mood] ? mood : 'battle', dur: Math.round(buf.duration), size: file.size, added: Date.now(), order: Date.now(), vol: 100, cue: 0, blob: new Blob([file], { type: file.type || 'audio/mpeg' }) };
   try { await tx('readwrite', (s) => s.put(rec)); } catch (e) { throw new Error(/quota/i.test(String(e)) ? '브라우저 저장 공간이 부족해요. 안 쓰는 곡을 지워 주세요' : '저장하지 못했어요: ' + (e?.message || e)); }
   try { await navigator.storage?.persist?.(); } catch { /* */ }
   return { id, name: rec.name, mood: rec.mood, dur: rec.dur, size: rec.size };
+}
+// 내가 넣은 곡 이름·분류·음량·순서 바꾸기
+export async function updateCustom(id, patch) {
+  const db = await idb();
+  await new Promise((res, rej) => { const t = db.transaction(ST, 'readwrite'); const st = t.objectStore(ST); const g = st.get(id);
+    g.onsuccess = () => { const r = g.result; if (!r) return; if (typeof patch.name === 'string' && patch.name.trim()) r.name = patch.name.trim().slice(0, 30); if (MOODS[patch.mood] && patch.mood !== 'none') r.mood = patch.mood; if (Number.isFinite(patch.vol)) r.vol = Math.max(0, Math.min(100, Math.round(patch.vol))); if (Number.isFinite(patch.order)) r.order = patch.order; st.put(r); };
+    t.oncomplete = () => { db.close(); res(); }; t.onerror = () => { db.close(); rej(t.error); }; });
 }
 export async function removeCustom(id) { await tx('readwrite', (s) => s.delete(id)); P.cache.delete(id); }
 async function customBlob(id) { const r = await tx('readonly', (s) => s.get(id)); return r?.blob || null; }
@@ -128,7 +151,8 @@ export async function play(meta, opts = {}) {
   const when = Math.max(a.currentTime, opts.at ?? a.currentTime);
   let offset = opts.offset ?? meta.cue ?? 0; if (offset > src.loopEnd) offset = src.loopStart + ((offset - src.loopStart) % (src.loopEnd - src.loopStart));
   const fi = opts.fadeIn ?? 0.04;
-  g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(1, when + Math.max(0.02, fi));
+  const tv = Math.max(0.0001, (meta.vol ?? 100) / 100); // 곡별 음량
+  g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(tv, when + Math.max(0.02, fi));
   src.start(when, offset);
   P.cur = { id: meta.id, meta, src, g, startT: when, offset, rate: 1 };
 }
@@ -153,15 +177,17 @@ export function voice(sec) { P.voiceUntil = Math.max(P.voiceUntil, performance.n
 function applyDuck() { const n = nodes(); if (!n) return; const v = P.ducked ? 0.15 : performance.now() < P.voiceUntil ? 0.45 : 1; n.duck.gain.setTargetAtTime(v, n.a.currentTime, P.ducked ? 0.06 : 0.12); }
 
 // 승리 빵빠레: 배경음악을 내리고 빵빠레 → sec초 뒤 자연스럽게 사라짐. onHit: 첫 타격 순간(트로피 연출 맞춤)
-export async function fanfare(sec = 12, onHit) {
+export async function fanfare(sec = 12, onHit, win) {
   const n = nodes(); if (!n) { onHit?.(); return; }
   stop(0.35); stopFanfare(0.15);
-  let buf; try { buf = await load('fanfare'); } catch { onHit?.(); return; }
+  const wid = win?.id || 'fanfare';
+  let buf; try { buf = await load(wid); } catch { try { buf = await load('fanfare'); win = null; } catch { onHit?.(); return; } } // 고른 승리곡이 없으면 기본 빵빠레
+  const hit = win ? win.hit ?? 0 : FANFARE.hit; const tv = Math.max(0.0001, (win?.vol ?? 100) / 100);
   const a = n.a; const src = a.createBufferSource(); src.buffer = buf; const g = a.createGain(); src.connect(g).connect(n.vol);
   const t0 = a.currentTime + 0.06; const end = t0 + Math.min(sec, buf.duration); const fo = Math.min(2, sec * 0.25);
-  g.gain.setValueAtTime(1, t0); g.gain.setValueAtTime(1, end - fo); g.gain.exponentialRampToValueAtTime(0.0001, end); src.start(t0); src.stop(end + 0.05);
+  g.gain.setValueAtTime(tv, t0); g.gain.setValueAtTime(tv, end - fo); g.gain.exponentialRampToValueAtTime(0.0001, end); src.start(t0, wid === 'fanfare' ? 0 : win?.cue || 0); src.stop(end + 0.05);
   const me = { src, g, end }; P.fan = me; src.onended = () => { if (P.fan === me) P.fan = null; };
-  if (onHit) setTimeout(onHit, (t0 - a.currentTime + FANFARE.hit) * 1000);
+  if (onHit) setTimeout(onHit, (t0 - a.currentTime + hit) * 1000);
 }
 export function stopFanfare(fade = 0.8) { const f = P.fan; P.fan = null; if (f) fadeStop(f.src, f.g, fade); }
 

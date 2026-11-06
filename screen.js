@@ -1,10 +1,15 @@
 // 대형 화면 (프로젝터·TV)
-import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg, setSfxVolume } from './client.js';
+import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg, setSfxVolume, quickKey } from './client.js';
 import * as BGM from './bgm.js';
 import { V, leaderOf } from './screen-games.js';
 import './screen-n.js';
 import './screen-n2.js';
 import './screen-n3.js';
+import './screen-n4.js';
+import { mountDemo, demoText } from './preview.js';
+// 노트북에서 직접 실행(localhost)하면 폰은 localhost로 못 들어오므로, 참가 QR에는 이 노트북의 같은 와이파이 주소를 씀
+let localBase = '';
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) fetch('/api/info').then((r) => r.json()).then((r) => { if (r.lan?.[0]) localBase = r.lan[0]; }).catch(() => {});
 
 const params = new URLSearchParams(location.search);
 const code = (params.get('e') || '').toUpperCase();
@@ -23,6 +28,11 @@ const ctx = { now: () => live.now(), get teams() { return S.teams; }, team, sfx:
 
 // 소리 켜기 (브라우저 자동재생 제한 때문에 한 번 클릭 필요)
 const gate = $('#gate');
+// 혼자 테스트·미리보기 안에 넣은 화면: 안내 덮개 없이, 바깥 화면에서 '시작'을 누르면 소리 켜기 (iframe allow=autoplay)
+if (new URLSearchParams(location.search).has('embed')) {
+  gate.classList.add('hidden'); document.body.classList.add('embed');
+  addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'unlock') { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); } });
+}
 gate.addEventListener('click', () => { audioUnlock(); BGM.preloadAll(); setTimeout(audioSync, 50); gate.classList.add('hidden'); try { document.documentElement.requestFullscreen?.(); } catch { /* */ } say('아이키키 팀 대항 오락실을 시작합니다', voiceOn()); });
 addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
@@ -30,6 +40,7 @@ addEventListener('keydown', (e) => {
   // 진행자 단축키 (관리자 로그인 상태에서만)
   const tok = store('ikiki:admin');
   if (!tok || !S) return;
+  if (quickKey(e, S, tok)) return; // 프로젝터 전체 화면 그대로 퀵 점수 (화면에 조작 버튼은 안 보임)
   if (e.key === 'm' || e.key === 'M') { e.preventDefault(); api(`/api/events/${S.event.id}/update`, { settings: { duck: !S.settings.duck } }, tok).catch((err) => flash(err.message)); return; }
   const op = { ' ': 'next', p: 'pause', P: 'pause', e: 'endNow', E: 'endNow' }[e.key];
   if (!op) return;
@@ -37,6 +48,11 @@ addEventListener('keydown', (e) => {
   if (e.repeat || (window.__lastKey && window.__lastKey.op === op && Date.now() - window.__lastKey.at < 700)) return; // 연타·누르고 있기 = 한 번
   window.__lastKey = { op, at: Date.now() };
   const real = op === 'pause' && S.paused ? 'resume' : op;
+  // 게임 중 끝내기는 실수 방지: 2초 안에 한 번 더 눌러야 끝남 (빔 화면이라 확인 창 대신 안내 글)
+  if ((real === 'endNow' || (real === 'next' && S.phase === 'playing')) && ['playing', 'countdown'].includes(S.phase)) {
+    if (!window.__endArm || Date.now() - window.__endArm > 2000) { window.__endArm = Date.now(); window.__lastKey = null; flash('한 번 더 누르면 게임을 끝내요'); return; }
+    window.__endArm = 0;
+  }
   api(`/api/events/${S.event.id}/command`, { op: real, seq: S.seq }, tok).catch((err) => flash(err.message));
 });
 
@@ -44,7 +60,7 @@ if (!code) { stage.innerHTML = ''; stage.append(h('div', { class: 'center' }, h(
 else live = new Live({ t: 'hello', role: 'screen', code }, onMsg, (st) => document.body.classList.toggle('offline', st === 'offline'));
 
 function onMsg(m) {
-  if (m.t === 'state') { const prev = S; S = m; joinUrl = (S.settings.joinUrl || location.origin) + '/play.html?e=' + S.event.code; render(prev); return; }
+  if (m.t === 'state') { const prev = S; S = m; joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
   if (m.t === 'live' && cur?.inst && S?.phase === 'playing' && m.run === S.run?.id) {
     const vals = cur.inst.update(m.s);
     if (vals) overtake(vals);
@@ -53,6 +69,22 @@ function onMsg(m) {
   if (m.t === 'err') flash(m.msg);
 }
 
+// 진행자 퀵 점수: 프로젝터에는 조작 버튼 없이 '팀 +3' 알림과 팀 점수판만 잠깐 보여 줌
+let qfxSeen = null;
+function quickFx(prev) {
+  const f = S.quickFx;
+  if (qfxSeen == null) { qfxSeen = f ? f.id : 0; return; } // 처음 연 화면에서는 예전 알림을 다시 띄우지 않음
+  if (!f) return;
+  if (f.id === qfxSeen || Date.now() - f.at > 6000) return; qfxSeen = f.id;
+  const t = teamOf(S, f.team); sfx(f.delta > 0 ? 'good' : 'bad', S.settings.sfx);
+  let box = document.querySelector('.qfx'); if (!box) { box = h('div', { class: 'qfx' }); document.body.append(box); }
+  const tot = Object.fromEntries((S.standings.rows || []).map((r) => [r.id, r]));
+  box.innerHTML = '';
+  box.append(h('div', { class: 'qfxbig', style: { '--tc': t.color } }, h('span', {}, `${t.icon} ${t.name}`), h('b', {}, `${f.delta > 0 ? '+' : ''}${f.delta}`), f.undo ? h('small', {}, '정정') : null),
+    h('div', { class: 'qfxrank' }, ...S.teams.slice().sort((a, b) => (tot[a.id]?.rank ?? 99) - (tot[b.id]?.rank ?? 99)).map((tm) => h('div', { class: `qfxr ${tm.id === f.team ? 'on' : ''}`, style: { '--tc': tm.color } }, h('i', {}, `${tot[tm.id]?.rank ?? '-'}위`), h('span', {}, `${tm.icon} ${tm.name}`), h('b', {}, `${tot[tm.id]?.total ?? 0}`)))));
+  box.classList.remove('show'); void box.offsetWidth; box.classList.add('show');
+  clearTimeout(quickFx.t); quickFx.t = setTimeout(() => box.classList.remove('show'), 3200);
+}
 function flash(msg) { const t = h('div', { class: 'toast' }, msg); document.body.append(t); setTimeout(() => t.remove(), 3000); }
 
 function overtake(vals) {
@@ -79,7 +111,7 @@ function render(prev) {
     ({ lobby, intro, countdown, playing, results, ceremony, ended })[S.phase]?.(prev);
   } else if (S.phase === 'lobby') {
     // 대기 화면에서 설정(연령 모드·행사 이름·참가 주소)이 바뀌면 바로 다시 그림
-    const lk = `${S.settings.mode}|${S.event.name}|${joinUrl}`;
+    const lk = `${S.settings.mode}|${S.event.name}|${joinUrl}|${S.settings.device}`;
     if (lk !== render.lobbyKey) { stage.innerHTML = ''; lobby(); } else updateLobby();
   }
   // 화면을 새로 그린 뒤에 덮개를 올려야 지워지지 않음 (전에는 일시정지 표시가 바로 지워졌음)
@@ -91,6 +123,8 @@ function render(prev) {
 // ---------------- 배경음악 ----------------
 let customList = [];
 BGM.listCustom().then((l) => { customList = l; });
+// 사회자 화면(같은 브라우저)에서 곡을 넣거나 지우거나 이름·음량을 바꾸면 바로 반영
+try { new BroadcastChannel('ikiki-music').onmessage = () => BGM.listCustom().then((l) => { customList = l; if (S) audioSync(); }); } catch { /* */ }
 const trackNow = () => { const g = S.run?.game || S.item?.game; return g ? BGM.pick(S.settings, g, customList) : null; };
 function audioLevels() {
   BGM.setVolume((S.settings.bgmVol ?? 70) / 100); setSfxVolume((S.settings.sfxVol ?? 80) / 100);
@@ -137,7 +171,7 @@ function trophy(color) {
   const t = h('div', { class: 'trophy', style: { '--tc': color } }, h('div', { class: 'tray' }), h('div', { class: 'tcup' }, '🏆'));
   document.body.append(t); setTimeout(() => t.remove(), 4200);
 }
-function unmount() { if (cur?.inst?.unmount) cur.inst.unmount(); cur = null; clearInterval(render.t); }
+function unmount() { if (cur?.inst?.unmount) cur.inst.unmount(); cur = null; clearInterval(render.t); render.demo?.stop?.(); render.demo = null; }
 
 function topbar(extra) {
   return h('div', { class: 'topbar' }, h('div', { class: 'logo' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), h('b', {}, '팀 대항 오락실')), h('div', { class: 'evn' }, S.event.name), extra || null,
@@ -146,8 +180,14 @@ function topbar(extra) {
 
 // ---------------- 대기 ----------------
 function lobby() {
-  render.lobbyKey = `${S.settings.mode}|${S.event.name}|${joinUrl}`;
+  render.lobbyKey = `${S.settings.mode}|${S.event.name}|${joinUrl}|${S.settings.device}`;
   const qr = qrImg(joinUrl, 'qr');
+  if (S.settings.device === 'nophone') {
+    // 휴대폰 없이 진행: QR 대신 팀 소개·진행 방법
+    const left2 = h('div', { class: 'lleft nophone' }, h('div', { class: 'lt' }, '📋 휴대폰 없이 진행해요'), h('div', { class: 'npbig' }, '🙌'), h('div', { class: 'npnote' }, '큰 화면을 보고 팀끼리 함께! 점수는 진행자 선생님이 넣어요'), h('div', { class: 'npnote small' }, '골든벨: 팀마다 종이·보드에 답을 가려 적고 "공개!"에 맞춰 동시에 들어요'));
+    stage.append(topbar(h('div', { class: 'mode' }, MODE[S.settings.mode])), h('div', { class: 'lobbyv' }, left2, h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }))));
+    return updateLobby();
+  }
   const left = h('div', { class: 'lleft' }, h('div', { class: 'lt' }, '📱 QR을 찍고 참가하세요!'), qr, h('div', { class: 'lurl' }, joinUrl.replace(/^https?:\/\//, '')), h('div', { class: 'lcode' }, '참가 코드 ', h('b', {}, S.event.code)));
   const right = h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }));
   stage.append(topbar(h('div', { class: 'mode' }, MODE[S.settings.mode])), h('div', { class: 'lobbyv' }, left, right));
@@ -175,10 +215,23 @@ function updateLobby() {
 function intro() {
   const it = S.item; if (!it) return;
   const cnt = h('div', { class: 'icount' });
-  stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv' },
-    h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name), h('div', { class: 'ir' }, it.rule),
-    h('div', { class: 'ih' }, it.howto), h('div', { class: 'ichips' }, it.durSec ? h('span', { class: 'chip' }, `⏱ ${it.durSec}초`) : h('span', { class: 'chip' }, '🔁 라운드제'), it.weight !== 1 ? h('span', { class: 'chip hot' }, `🔥 점수 ${it.weight}배`) : null, it.team ? h('span', { class: 'chip' }, '🤝 팀 협동') : null, nowPlaying()), cnt));
-  sayV(`${it.name}! ${it.rule}`);
+  const tx = demoText(it.game, S.settings.mode);
+  const chips = h('div', { class: 'ichips' }, it.durSec ? h('span', { class: 'chip' }, `⏱ ${it.durSec}초`) : h('span', { class: 'chip' }, '🔁 라운드제'), it.weight !== 1 ? h('span', { class: 'chip hot' }, `🔥 점수 ${it.weight}배`) : null, it.team ? h('span', { class: 'chip' }, '🤝 팀 협동') : null, it.host ? h('span', { class: 'chip' }, '🎯 진행자 점수') : null, nowPlaying());
+  if (S.settings.preview !== false && tx) {
+    // 시범 미리보기 (점수·게임 시간은 아직 시작 안 함) + 팀 목표·이기는 방법·점수 기준
+    const demo = h('div', { class: 'idemo' });
+    stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv2' },
+      demo,
+      h('div', { class: 'iinfo' }, h('div', { class: 'in' }, `${it.emoji} GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name),
+        h('div', { class: 'igoal' }, h('b', {}, '🏆 팀 목표 '), tx.goal), h('div', { class: 'iscore' }, h('b', {}, '📊 점수 '), tx.score), chips, h('div', { class: 'ipv' }, '👀 시범 보기 — 아직 점수와 시간은 시작 안 했어요'), cnt)));
+    render.demo = mountDemo(demo, it.game, { mode: S.settings.mode, sec: S.settings.previewSec || 6, big: true, h });
+    sayV(`${it.name}! ${tx.goal}`);
+  } else {
+    stage.append(topbar(h('div', { class: 'mode' }, `GAME ${S.idx + 1} / ${S.total}`)), h('div', { class: 'introv' },
+      h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name), h('div', { class: 'ir' }, it.rule),
+      tx ? h('div', { class: 'igoal' }, h('b', {}, '🏆 '), tx.goal) : h('div', { class: 'ih' }, it.howto), chips, cnt));
+    sayV(`${it.name}! ${it.rule}`);
+  }
   render.t = setInterval(() => { cnt.textContent = S.phaseEnd && !S.paused ? `${Math.max(0, Math.ceil((S.phaseEnd - live.now()) / 1000))}초 뒤 시작` : '진행자가 시작 버튼을 누르면 시작해요'; }, 250);
 }
 
@@ -250,11 +303,13 @@ function results(prev) {
     });
     wrap.append(list);
     const w = lr.teams[0];
+    // 이긴 이유: 1위 기록과 2위와의 차이 (팀이 무엇으로 이겼는지 한 줄로)
+    if (w && lr.teams[1]) { const t1 = team(w.id), w2 = lr.teams[1]; const gap = Math.round((w.metric - w2.metric) * 10) / 10; wrap.append(h('div', { class: 'rwhy', style: { '--tc': t1.color } }, `🏆 ${t1.icon} ${t1.name} 승리 — ${w.label || `기록 ${w.metric}`}${gap > 0 ? ` · 2위와 ${gap} 차이` : ' · 동점 (먼저 앞선 순서)'}`)); }
     if (w) { const t = team(w.id); const run = S.run?.id ?? lr.runId; setTimeout(() => {
       if (S.phase !== 'results' || (S.lastResult?.runId ?? run) !== lr.runId) return;
       // 빵빠레 첫 타격 순간에 트로피·꽃가루가 함께 터짐
       const boom = () => { trophy(t.color); fx([t.color, '#ffd43b', '#fff'], 200); };
-      if (audioReady()) BGM.fanfare(S.settings.fanfareSec ?? 12, boom); else { sfx('win', sfxOn()); boom(); }
+      if (audioReady()) BGM.fanfare(S.settings.fanfareSec ?? 12, boom, BGM.winTrack(S.settings, customList)); else { sfx('win', sfxOn()); boom(); }
       sayV(`${lr.label}, 1위는 ${t.name}!`);
     }, lr.teams.length * 250 + 900); }
   }
@@ -289,9 +344,9 @@ function ceremony() {
   if (step === 0) { BGM.stopFanfare(0.5); sfx('drum', sfxOn()); sayV('지금부터 시상식을 시작합니다!'); }
   if (step >= 1 && step <= 2) { const k = 4 - step; const rs = byRank(k); sfx('win', sfxOn()); if (rs.length) sayV(`${k}위는 ${rs.map((r) => team(r.id).name).join(', ')}!`); }
   if (step === 3) { const w = byRank(1)[0]; const col = w ? team(w.id).color : '#ffd43b'; const boom = () => { trophy(col); fx([col, '#ffd43b', '#fff', '#ff4d6d'], 300); };
-    if (audioReady()) BGM.fanfare(Math.max(S.settings.fanfareSec ?? 12, 15), boom); else { sfx('fanfare', sfxOn()); boom(); }
+    if (audioReady()) BGM.fanfare(Math.max(S.settings.fanfareSec ?? 12, 15), boom, BGM.winTrack(S.settings, customList)); else { sfx('fanfare', sfxOn()); boom(); }
     const rs = byRank(1); if (rs.length) sayV(`1위는 ${rs.map((r) => team(r.id).name).join(', ')}!`); }
-  if (step === 4) { const w = byRank(1)[0]; if (w) fx([team(w.id).color, '#ffd43b', '#fff', '#ff4d6d'], 300); if (audioReady() && !BGM.status().fanfare) BGM.fanfare(S.settings.fanfareSec ?? 12); }
+  if (step === 4) { const w = byRank(1)[0]; if (w) fx([team(w.id).color, '#ffd43b', '#fff', '#ff4d6d'], 300); if (audioReady() && !BGM.status().fanfare) BGM.fanfare(S.settings.fanfareSec ?? 12, null, BGM.winTrack(S.settings, customList)); }
   if (step >= 5) BGM.stopFanfare(1.5);
   if (step === 4) { const w = byRank(1)[0]; if (w) { const t = team(w.id); stage.append(h('div', { class: 'winner', style: { '--tc': t.color } }, h('div', { class: 'wi' }, t.icon), h('div', { class: 'wn' }, t.name), h('div', { class: 'ws' }, '최종 우승!'))); } }
   if (step >= 5) { stage.innerHTML = ''; ended(); }

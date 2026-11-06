@@ -17,7 +17,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js',
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'solo.html', 'solo.js', 'solo.css',
   'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 
@@ -69,7 +69,7 @@ export function createServer(opts = {}) {
     const ev = new Event(hub, row); ev.ownerId = row.owner_id ?? MASTER_ID; events.set(eid, ev); return ev;
   };
   // 강사별 음악 설정(게임별 BGM·음량·빵빠레 길이) 기억 → 새 행사에 자동 적용
-  const AUDIO_KEYS = ['bgm', 'bgmVol', 'sfxVol', 'fanfareSec'];
+  const AUDIO_KEYS = ['bgm', 'bgmVol', 'sfxVol', 'fanfareSec', 'winTrack'];
   const audioPref = (uid) => { try { return JSON.parse(db.getKV('audio:' + uid) || '{}'); } catch { return {}; } };
   const saveAudioPref = (uid, st) => { const o = {}; for (const k of AUDIO_KEYS) if (st[k] != null) o[k] = st[k]; db.setKV('audio:' + uid, JSON.stringify(o)); };
   const newEvent = (user, data) => {
@@ -78,6 +78,12 @@ export function createServer(opts = {}) {
     db.run('UPDATE events SET owner_id=? WHERE id=?', user.id, id);
     const ev = events.get(id); if (ev) ev.ownerId = user.id;
     return id;
+  };
+  const removeEvent = (id) => {
+    const ev = events.get(id); if (ev) { ev.clearTimer(); ev.stopTicker(); }
+    db.run('UPDATE events SET deleted=1 WHERE id=?', id); db.run('DELETE FROM players WHERE event_id=?', id);
+    events.delete(id);
+    for (const ws of sockets.get(id) || []) ws.close(4004, 'deleted');
   };
   const byCode = (code) => { const row = db.get('SELECT id FROM events WHERE code=? AND deleted=0', String(code || '').toUpperCase().slice(0, 8)); return row ? getEvent(row.id) : null; };
 
@@ -103,7 +109,7 @@ export function createServer(opts = {}) {
     const ip = req.socket.remoteAddress;
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     try {
       if (url.pathname.startsWith('/api/')) return await api(req, res, url, ip);
       return serveStatic(req, res, url);
@@ -128,7 +134,7 @@ export function createServer(opts = {}) {
       res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Cache-Control': ext === '.html' ? 'no-cache' : ext === '.mp3' ? 'public, max-age=604800' : 'public, max-age=60', 'Content-Length': st.size,
-        'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; media-src 'self' data: blob:; frame-ancestors 'none'",
+        'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; media-src 'self' data: blob:; frame-ancestors 'self'",
       });
       fs.createReadStream(file).pipe(res);
     });
@@ -262,7 +268,7 @@ export function createServer(opts = {}) {
     if (a === 'league' && method === 'GET') {
       const name = String(url.searchParams.get('name') || '').trim(); if (!name) throw new Err('리그 이름이 없어요');
       const master = user.role === 'master';
-      const evs = db.all(`SELECT id, name, created_at, settings FROM events WHERE deleted=0 ${master ? '' : 'AND owner_id=?'} ORDER BY created_at`, ...(master ? [] : [user.id])).filter((e) => { try { return (JSON.parse(e.settings).league || '') === name; } catch { return false; } });
+      const evs = db.all(`SELECT id, name, created_at, settings FROM events WHERE deleted=0 ${master ? '' : 'AND owner_id=?'} ORDER BY created_at`, ...(master ? [] : [user.id])).filter((e) => { try { const st = JSON.parse(e.settings); return !st.test && (st.league || '') === name; } catch { return false; } });
       const T = new Map(); const list = [];
       for (const e of evs) {
         const teams = db.all('SELECT id, name, icon, color FROM teams WHERE event_id=?', e.id);
@@ -284,7 +290,22 @@ export function createServer(opts = {}) {
     if (a === 'events' && !b && method === 'GET') {
       const master = user.role === 'master';
       const rows = db.all(`SELECT e.id, e.code, e.name, e.created_at, e.ended_at, e.settings, e.owner_id, u.name owner, (SELECT COUNT(*) FROM players p WHERE p.event_id=e.id) players FROM events e LEFT JOIN users u ON u.id=e.owner_id WHERE e.deleted=0 ${master ? "" : "AND e.owner_id=?"} ORDER BY e.created_at DESC LIMIT 300`, ...(master ? [] : [user.id]));
-      return json(res, 200, { events: rows.map((r) => ({ ...r, mode: JSON.parse(r.settings).mode, settings: undefined, phase: events.get(r.id)?.phase ?? null })) });
+      // 혼자 테스트·미리보기 행사는 목록에서 빼고, 하루 지난 것은 정리
+      const isTest = (r) => { try { return !!JSON.parse(r.settings).test; } catch { return false; } };
+      for (const r of rows) if (isTest(r) && Date.now() - r.created_at > 86400000) removeEvent(r.id);
+      return json(res, 200, { events: rows.filter((r) => !isTest(r)).map((r) => ({ ...r, mode: JSON.parse(r.settings).mode, settings: undefined, phase: events.get(r.id)?.phase ?? null })) });
+    }
+    // ---- 🎮 혼자 테스트하기 / 게임 미리보기: 홍팀(나) vs 청팀(컴퓨터) 테스트 행사 (실제 행사 기록과 분리)
+    if (a === 'solo' && method === 'POST') {
+      const list = (Array.isArray(body.games) ? body.games : []).filter((g) => typeof g === 'string' && GAME_LIST.some((x) => x.id === g)).slice(0, 40);
+      if (!list.length) throw new Err('테스트할 게임을 골라 주세요');
+      const mode = ['baby', 'kid', 'elem', 'mid', 'high', 'adult'].includes(body.mode) ? body.mode : 'elem';
+      const dur = (g) => (Number.isInteger(body.dur?.[g]) && body.dur[g] >= 5 && body.dur[g] <= 300 ? { dur: body.dur[g] } : {});
+      const id = newEvent(user, { name: body.watch ? '👀 게임 미리보기' : '🎮 혼자 테스트', settings: { test: true, mode, teamCount: 2, teamAssign: 'choose', scoring: 'avg', auto: body.auto !== false, introSec: 6, resultSec: 8, previewSec: 5, voice: false, playlist: list.map((g) => ({ game: g, weight: 1, ...dur(g) })), ...(body.bgm && typeof body.bgm === 'object' ? { bgm: body.bgm } : {}) } });
+      const ev = getEvent(id);
+      ev.teams[0] = { ...ev.teams[0], name: '홍팀', icon: '🔴', color: '#ff4d6d' }; ev.teams[1] = { ...ev.teams[1], name: '청팀', icon: '🔵', color: '#3d8bff' };
+      db.tx(() => { for (const t of ev.teams) db.run('UPDATE teams SET name=?, icon=?, color=? WHERE event_id=? AND id=?', t.name, t.icon, t.color, id, t.id); });
+      return json(res, 200, { id, code: ev.code, teams: ev.teams });
     }
     if (a === 'events' && !b && method === 'POST') {
       const id = newEvent(user, { name: body.name, settings: body.settings });
@@ -301,15 +322,12 @@ export function createServer(opts = {}) {
         ne.teams = ev.teams.map((t) => ({ ...t }));
         return json(res, 200, { id });
       }
-      if (c === 'delete' && method === 'POST') {
-        ev.clearTimer(); ev.stopTicker();
-        db.run('UPDATE events SET deleted=1 WHERE id=?', ev.id); db.run('DELETE FROM players WHERE event_id=?', ev.id);
-        events.delete(ev.id);
-        for (const ws of sockets.get(ev.id) || []) ws.close(4004, 'deleted');
-        return json(res, 200, { ok: true });
-      }
+      if (c === 'delete' && method === 'POST') { removeEvent(ev.id); return json(res, 200, { ok: true }); }
+      if (c === 'player' && d === 'add' && method === 'POST') { const p = ev.hostAdd(body); ev.broadcastState(); return json(res, 200, { id: p.id, name: p.name }); }
       if (c === 'player' && method === 'POST') { playerOp(ev, d, body); return json(res, 200, { ok: true }); }
       if (c === 'autoassign' && method === 'POST') { autoAssign(ev); return json(res, 200, { ok: true }); }
+      if (c === 'quick' && method === 'POST') return json(res, 200, ev.quick(Number(body.team), Number(body.delta), body.op ? String(body.op) : null));
+      if (c === 'undo' && method === 'POST') { ev.undoQuick(body.id); return json(res, 200, { ok: true }); }
       if (c === 'adjust' && method === 'POST') { ev.adjust(Number(body.team), Number(body.delta), body.reason); return json(res, 200, { ok: true }); }
       if (c === 'log' && method === 'GET') {
         return json(res, 200, {
@@ -351,7 +369,12 @@ export function createServer(opts = {}) {
     if (body.settings) {
       const s = sanitizeSettings(body.settings);
       const busy = ['countdown', 'playing'].includes(ev.phase);
-      if (busy && s.playlist) delete s.playlist; // 진행 중에는 게임 순서 변경 불가
+      // 게임 중에는 이미 했거나 지금 하는 게임까지는 못 바꿈 (그 뒤 게임의 시간·판 수 등은 바꿀 수 있음 → 지연 시 다음 게임 단축)
+      if (busy && s.playlist) {
+        const cur = ev.settings.playlist; const n = ev.state.idx + 1;
+        const same = s.playlist.length >= n && cur.slice(0, n).every((p, i) => JSON.stringify(p) === JSON.stringify(s.playlist[i]));
+        if (!same) throw new Err('게임 중에는 지금 게임과 이미 한 게임은 바꿀 수 없어요');
+      }
       Object.assign(ev.settings, s);
       if (ev.state.idx > ev.settings.playlist.length) ev.state.idx = ev.settings.playlist.length;
       if (s.teamCount && s.teamCount !== ev.teams.length) setTeamCount(ev, s.teamCount);
@@ -560,7 +583,7 @@ function exportCSV(ev) {
   row(); row('[게임별 결과]'); row('순서', '게임', '배점', '팀', '게임 기록', '게임 순위', '순위 포인트');
   for (const r of db.all("SELECT r.seq, r.label, r.weight, tr.team_id, tr.metric, tr.rank, tr.points FROM runs r JOIN team_results tr ON tr.run_id=r.id WHERE r.event_id=? AND r.status='done' ORDER BY r.id, tr.rank", ev.id)) row(r.seq, r.label, r.weight, team[r.team_id], r.metric, r.rank, r.points);
   row(); row('[보너스·수동 조정 기록]'); row('시각', '팀', '점수', '종류', '사유');
-  const kind = { manual: '관리자 수정', luck: '운 보너스', cheer: '응원 이벤트' };
+  const kind = { manual: '관리자 수정', luck: '운 보너스', cheer: '응원 이벤트', quick: '퀵 점수(응원·수동)' };
   for (const a of db.all('SELECT * FROM adjustments WHERE event_id=? ORDER BY id', ev.id)) row(new Date(a.at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }), team[a.team_id], a.delta, kind[a.kind] || a.kind, a.reason);
   row(); row('[개인 기록]'); row('게임', '이름', '팀', '기록', '환산점수(0~100)');
   for (const r of db.all("SELECT r.label, p.name, p.team_id, ps.raw, ps.norm FROM player_scores ps JOIN runs r ON r.id=ps.run_id JOIN players p ON p.id=ps.player_id WHERE r.event_id=? AND r.status='done' ORDER BY r.id, ps.norm DESC", ev.id)) row(r.label, r.name, team[r.team_id], r.raw, r.norm);

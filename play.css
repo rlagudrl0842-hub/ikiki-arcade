@@ -363,3 +363,56 @@ body.ingame::after{content:'📱 폰을 세로로 돌려 주세요';display:none
 .jumpbtn,.shtap,.rlbtn,.rhk,.bgk,.spc,.bopt,.dopt,.firew,.hdbtn,.pc,.pw,.pclr{touch-action:none}
 body.ingame{overscroll-behavior:none}
 .shmeter{height:clamp(110px,28vh,260px)}
+.bellsent { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 16px; border-radius: 18px; background: var(--card); border: 3px dashed var(--line); text-align: center; }
+.bellsent b { font-size: 28px; }
+.bellsent small { color: var(--mut, #9aa3c7); font-size: 15px; }
+/* ---- 새 터치게임 4종 ---- */
+.blw, .bpw, .bsw, .tww { display: flex; flex-direction: column; gap: 8px; height: calc(100dvh - 120px); min-height: 420px; }
+.blhd { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: var(--card); font-size: 22px; }
+.blsw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; flex: none; }
+.blhd .bltime { margin-left: auto; font-size: 14px; color: var(--mut, #9aa3c7); }
+.blcv { flex: 1; width: 100%; border-radius: 16px; touch-action: none; min-height: 300px; }
+.blinfo { display: flex; justify-content: space-between; align-items: center; font-size: 18px; } .blinfo b { font-size: 26px; }
+.bphd { font-size: 22px; font-weight: 900; text-align: center; padding: 10px; border-radius: 14px; background: var(--card); }
+.bphd.hot { background: #ff4d6d; color: #fff; }
+.bpbomb { font-size: 110px; text-align: center; line-height: 1; } .bpbomb.shake { animation: bpsh .12s infinite alternate; }
+@keyframes bpsh { from { transform: rotate(-8deg) scale(1.02); } to { transform: rotate(8deg) scale(1.08); } }
+.bpfuse { height: 16px; border-radius: 8px; background: #ffffff22; overflow: hidden; } .bpfuse i { display: block; height: 100%; background: linear-gradient(90deg, #ffd43b, #ff922b); transition: width .1s linear; } .bpfuse.low i { background: #ff4d6d; }
+.bpsay { text-align: center; font-size: 22px; display: flex; gap: 8px; align-items: center; justify-content: center; } .bpsw { width: 26px; height: 26px; border-radius: 50%; display: inline-block; }
+.bpbtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; flex: 1; max-height: 180px; }
+.bpbtn { border-radius: 18px; background: var(--bc); color: #111; font-size: 24px; font-weight: 900; border: 4px solid #ffffff55; min-height: 96px; touch-action: none; }
+.bpstat { text-align: center; }
+.bshd { font-size: 20px; font-weight: 900; text-align: center; }
+.bshp { position: relative; height: 34px; border-radius: 12px; background: #ffffff22; overflow: hidden; } .bshp i { display: block; height: 100%; background: linear-gradient(90deg, #ff4d6d, #ff922b); transition: width .3s; } .bshp b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.bsgrid { display: grid; gap: 10px; flex: 1; } .bsgrid.n2 { grid-template-columns: repeat(2, 1fr); } .bsgrid.n3 { grid-template-columns: repeat(3, 1fr); }
+.bscell { border-radius: 18px; background: #2a335c; border: 3px solid #ffffff22; font-size: 42px; min-height: 70px; touch-action: none; transition: background .08s; }
+.bscell.weak { background: #ffd43b; border-color: #fff; box-shadow: 0 0 24px #ffd43b; }
+.bscell.hitme { transform: scale(.94); }
+.bsmsg { text-align: center; font-size: 22px; font-weight: 900; min-height: 30px; }
+.twhd { font-size: 20px; font-weight: 900; text-align: center; padding: 8px; border-radius: 14px; background: var(--card); } .twhd.go { background: var(--tc); color: #111; }
+.twcv { flex: 1; width: 100%; border-radius: 16px; touch-action: none; min-height: 240px; }
+.twbtn { min-height: 84px; border-radius: 18px; background: #ffd43b; color: #111; font-size: 26px; font-weight: 900; border: 4px solid #fff; touch-action: none; }
+.twwait { text-align: center; font-size: 18px; }
+.twbtn:disabled { background: #2a335c; color: #9aa3c7; border-color: #ffffff22; }
+.bpw > *, .bsw > *, .blw > *, .tww > * { width: 100%; align-self: stretch; }
+/* 시범 미리보기 · 도움 버튼 */
+.introdemo { width: 100%; height: 330px; }
+.intro .igoal { font-size: 17px; font-weight: 800; padding: 8px 12px; border-radius: 12px; background: #ffd43b22; text-align: center; }
+.demo { display: flex; flex-direction: column; gap: 6px; height: 100%; }
+.demo-cv { flex: 1; width: 100%; min-height: 0; }
+.demo-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.demo-steps li { font-size: 14px; font-weight: 700; padding: 4px 8px; border-radius: 8px; background: #ffffff10; opacity: .6; }
+.demo-steps li.on { opacity: 1; background: #ffd43b33; }
+.gtop { display: flex; align-items: center; gap: 8px; } .gtop .gtimer { flex: 1; }
+.helpbtn { margin-left: auto; flex: none; width: 44px; height: 44px; border-radius: 50%; background: #ffffff22; border: 2px solid #ffffff55; font-size: 22px; touch-action: manipulation; }
+.helpsheet { position: fixed; inset: 0; z-index: 80; background: #000a; display: flex; align-items: flex-end; }
+.hsbox { width: 100%; max-height: 92dvh; background: var(--bg, #0b0e24); border-radius: 18px 18px 0 0; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.hsbox > div:nth-child(3) { height: 52dvh; }
+/* 게임 영역 밖으로 커지는 효과(줄넘기 박자 원 등)가 가로 스크롤을 만들지 않게 */
+.game { overflow-x: clip; }
+/* ❓ 도움 버튼: 맨 위 줄 ☰ 옆 */
+.top .helpbtn { width: 40px; height: 40px; border-radius: 12px; background: #ffffff14; border: 0; font-size: 18px; padding: 0; margin-right: 6px; flex: none; }
+.top .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 캔버스 픽셀 크기(고해상도 폰 = 2배)가 화면 높이를 밀어내지 않게: 남은 공간만 차지 */
+.blcv, .twcv { flex: 1 1 0; height: 0; min-height: 160px; }
+.blw, .bpw, .bsw, .tww { max-height: calc(100dvh - 120px); }

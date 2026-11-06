@@ -182,3 +182,25 @@ export function qrImg(url, cls) {
   load();
   return img;
 }
+
+// ---------------- 진행자 퀵 점수 단축키 (사회자 화면·대형 화면 창 공통) ----------------
+// 숫자 1~9 = 그 팀 +단위 · Shift+숫자 = −단위 · U = 마지막 퀵 점수 되돌리기
+// 글자를 입력하는 칸에 있을 때와 Ctrl·Alt·⌘를 누른 때는 동작하지 않음 (게임 조작·입력과 겹치지 않게)
+export function quickKey(e, S, token) {
+  if (!S || !token || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return false;
+  const el = document.activeElement; if (el && (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.isContentEditable)) return false;
+  const m = /^(Digit|Numpad)([1-9])$/.exec(e.code || '');
+  const base = `/api/events/${S.event.id}`;
+  if (m) {
+    const t = S.teams[+m[2] - 1]; if (!t) return false;
+    e.preventDefault();
+    const unit = S.settings.quickUnit || 1; const d = e.shiftKey ? -unit : unit;
+    api(`${base}/quick`, { team: t.id, delta: d, op: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }, token).catch(() => {});
+    return true;
+  }
+  if (e.key === 'u' || e.key === 'U') {
+    const last = (S.quickLog || []).find((x) => x.kind === 'quick'); if (!last) return false;
+    e.preventDefault(); api(`${base}/undo`, { id: last.id }, token).catch(() => {}); return true;
+  }
+  return false;
+}

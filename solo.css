@@ -1,0 +1,52 @@
+/* 혼자 테스트 · 게임 미리보기 */
+html, body { height: 100%; }
+body { background: #0b0e24; color: #fff; overflow: hidden; }
+#app { height: 100%; display: flex; flex-direction: column; }
+.sh { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: #121633; border-bottom: 1px solid #ffffff1a; flex-wrap: wrap; }
+.sh .vs { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 900; }
+.sh .vs .tr { color: #ff6b81; } .sh .vs .tb { color: #6ea8ff; } .sh .vs small { font-size: 13px; opacity: .8; font-weight: 700; }
+.sh .vs b { font-size: 34px; min-width: 52px; text-align: center; background: #ffffff10; border-radius: 10px; padding: 0 8px; }
+.sh .gi { display: flex; gap: 10px; align-items: center; font-weight: 800; font-size: 18px; flex: 1; min-width: 180px; } .sh .gt { color: #ffd43b; }
+.sh .chip { font-size: 13px; } .chip.test { background: #ffd43b22; }
+.sm { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 380px; gap: 10px; padding: 10px; }
+.stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: flex-start; }
+.airow { display: flex; gap: 10px; align-self: flex-start; }
+.scf { width: 100%; aspect-ratio: 16 / 9; max-height: calc(100% - 230px); border: 0; border-radius: 14px; background: #000; }
+.side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.pbox { display: flex; flex-direction: column; min-height: 0; background: #121633; border-radius: 14px; padding: 6px; }
+.pbox .pl { font-size: 13px; font-weight: 800; padding: 2px 4px 6px; }
+.pbox.me { flex: 1; } .pbox.me .pf { flex: 1; width: 100%; border: 0; border-radius: 10px; min-height: 0; }
+/* 컴퓨터 폰: 실제 360×640 화면을 작게 줄여 보여 줌 (게임이 실제 크기로 돌아가야 손가락 위치가 맞음) */
+.pbox.ai { flex: none; width: 128px; height: 222px; overflow: hidden; }
+.pbox.ai .pf { flex: none; width: 360px; height: 640px; border: 0; transform: scale(.32); transform-origin: 0 0; border-radius: 10px; }
+.sm.watch { grid-template-columns: 1fr; } .sm.watch .scf { max-height: calc(100% - 300px); } .sm.watch .pbox.ai { width: 170px; height: 300px; } .sm.watch .pbox.ai .pf { transform: scale(.44); }
+.sc { display: flex; gap: 8px; padding: 8px 12px 12px; flex-wrap: wrap; align-items: center; background: #121633; border-top: 1px solid #ffffff1a; }
+.sc .lvl { display: flex; gap: 4px; align-items: center; }
+.sc .danger { margin-left: auto; }
+.sover { position: fixed; inset: 0; background: #0b0e24f0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 20; text-align: center; padding: 16px; }
+.svs { display: flex; gap: 22px; align-items: center; font-size: 48px; font-weight: 900; } .svs .r { color: #ff6b81; } .svs .b { color: #6ea8ff; } .svs span { font-size: 30px; opacity: .7; }
+.sban { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); background: #ffd43b; color: #111; font-weight: 900; font-size: 26px; padding: 10px 24px; border-radius: 16px; z-index: 15; box-shadow: 0 10px 30px #0008; pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+.sban.pop { animation: sbpop .5s ease-out; } @keyframes sbpop { 0% { transform: translateX(-50%) scale(.6); } 70% { transform: translateX(-50%) scale(1.08); } 100% { transform: translateX(-50%) scale(1); } }
+.toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #000c; padding: 10px 16px; border-radius: 12px; z-index: 30; }
+/* 폰·좁은 화면: 내 폰 화면을 크게, 대형 화면은 위에 작게 */
+@media (max-width: 900px) {
+  .sm { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .stage .scf { max-height: 28vh; }
+  .stage { flex-direction: row; align-items: flex-start; } .stage .scf { width: calc(100% - 140px); } .airow { flex-direction: column; } .pbox.me { flex: 1; min-height: 60vh; }
+  .sh .vs b { font-size: 24px; min-width: 40px; } .sh .chip.test { display: none; }
+  .sban { font-size: 18px; top: 56px; }
+}
+@media (max-width: 600px) {
+  .sc { flex-wrap: nowrap; overflow-x: auto; padding: 6px 8px; gap: 6px; -webkit-overflow-scrolling: touch; }
+  .sc .btn { flex: none; padding: 10px 12px; font-size: 14px; white-space: nowrap; }
+  .sc .btn.big { font-size: 15px; padding: 10px 14px; }
+  .sc .lvl select { padding: 6px; font-size: 14px; }
+}
+.glive { font-weight: 900; color: #ffd43b; margin-left: 8px; white-space: nowrap; }
+.sh .gt, .sh .gn { white-space: nowrap; }
+@media (max-width: 600px) {
+  .sh .gi { font-size: 14px; gap: 6px; flex-wrap: wrap; min-width: 0; flex-basis: 100%; order: 3; }
+  .sh .gn { max-width: 52vw; overflow: hidden; text-overflow: ellipsis; }
+  .glive { margin-left: 0; }
+}
+@media (max-width: 600px) { .sh .chip { display: none; } }

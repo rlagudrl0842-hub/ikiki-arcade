@@ -45,14 +45,14 @@ const sum = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
 const lerp = (a, b, k) => a + (b - a) * k;
 
 // 오른쪽 팀 현황 패널 (값 막대 + 1등 왕관)
-export function teamPanel(ctx, title, fmt = (v) => Math.round(v)) {
+export function teamPanel(ctx, title, fmt = (v) => Math.round(v), gapFmt = fmt) {
   const el = h('div', { class: 'np' }, h('div', { class: 'npt' }, title));
   const rows = {};
-  for (const t of ctx.teams) { const fill = h('div', { class: 'npf', style: { background: t.color } }); const val = h('b', {}, '0'); const row = h('div', { class: 'npr' }, h('span', { class: 'npi' }, t.icon), h('div', { class: 'npn' }, h('div', {}, t.name), h('div', { class: 'npb' }, fill)), val); rows[t.id] = { row, fill, val }; el.append(row); }
+  for (const t of ctx.teams) { const fill = h('div', { class: 'npf', style: { background: t.color } }); const val = h('b', {}, '0'); const gap = h('small', { class: 'npg' }); const row = h('div', { class: 'npr' }, h('span', { class: 'npi' }, t.icon), h('div', { class: 'npn' }, h('div', {}, t.name, ' ', gap), h('div', { class: 'npb' }, fill)), val); rows[t.id] = { row, fill, val, gap }; el.append(row); }
   el.set = (vals, max) => {
     const arr = Object.entries(vals || {}); const m = max || Math.max(1, ...arr.map((x) => x[1])); const best = Math.max(...arr.map((x) => x[1]));
     const order = arr.slice().sort((a, b) => b[1] - a[1]).map((x) => +x[0]);
-    for (const [id, v] of arr) { const r = rows[id]; if (!r) continue; r.fill.style.width = `${Math.max(2, Math.min(100, (v / m) * 100))}%`; r.val.textContent = fmt(v); r.row.classList.toggle('lead', v > 0 && v === best); r.row.style.order = order.indexOf(+id); }
+    for (const [id, v] of arr) { const r = rows[id]; if (!r) continue; r.fill.style.width = `${Math.max(2, Math.min(100, (v / m) * 100))}%`; r.val.textContent = fmt(v); r.row.classList.toggle('lead', v > 0 && v === best); r.row.style.order = order.indexOf(+id); r.gap.textContent = v === best ? (best > 0 ? '👑 선두' : '') : `1위와 ${gapFmt(best - v)}`; }
   };
   return el;
 }
@@ -410,6 +410,7 @@ V.bell = {
   mount(root, ctx) { this.ctx = ctx; this.root = h('div', { class: 'bells' }); root.append(this.root); this.key = ''; this.t = setInterval(() => this.tick(), 200); },
   update(s) {
     this.s = s; this.at = performance.now();
+    if (s.board) return this.board(s);
     const key = `${s.qi}:${s.ph}`;
     if (key !== this.key) {
       this.key = key; const R = this.root; R.innerHTML = '';
@@ -422,13 +423,32 @@ V.bell = {
         h('div', { class: 'bellfoot' }));
     }
     const f = this.root.querySelector('.bellfoot'); f.innerHTML = '';
-    if (s.ph === 'q') f.append(h('div', { class: 'muted' }, `✍️ ${s.answered}명 답함`), this.aliveBar(s));
+    if (s.ph === 'q') f.append(h('div', { class: 'muted' }, `✍️ ${s.answered}명 제출 · 모두 내거나 시간이 끝나면 정답 공개`), this.aliveBar(s));
     else {
+      if (s.rate) f.append(h('div', { class: 'bellrate' }, h('b', {}, '🎯 팀별 정답률 '), ...this.ctx.teams.filter((t) => s.rate[t.id] != null).map((t) => h('span', { style: { background: t.color } }, `${t.icon} ${s.rate[t.id]}%`))));
       if (s.outN) f.append(h('div', { class: 'bellout' }, `😵 탈락 ${s.outN}명 `, ...s.out.map(([n, tm]) => h('span', { style: { color: this.ctx.team(tm).color } }, n))));
       if (s.revN) f.append(h('div', { class: 'bellrev' }, `🔥 부활 ${s.revN}명 `, ...s.rev.map(([n, tm]) => h('span', { style: { color: this.ctx.team(tm).color } }, n))));
       f.append(this.aliveBar(s));
     }
     return s.alive;
+  },
+  // 휴대폰 없이: 종이·보드에 가려 적기 → 하나 둘 셋 공개 → 정답 → 진행자가 맞힌 팀에 점수
+  board(s) {
+    const key = `b:${s.qi}:${s.ph}`;
+    if (key !== this.key) {
+      this.key = key; const R = this.root; R.innerHTML = '';
+      if (s.ph === 'q') this.ctx.say(s.text, 1.05); else if (s.ph === 'open') this.ctx.say('하나, 둘, 셋, 공개!', 1.1); else if (s.ph === 'reveal') this.ctx.sfx('good');
+      const msg = { q: '✍️ 팀마다 종이·보드에 답 번호를 가려서 적어요', open: '📢 하나 · 둘 · 셋 — 다 같이 공개!', reveal: '🎯 정답! 맞힌 팀에 진행자가 점수를 줘요' }[s.ph] || '';
+      R.append(
+        h('div', { class: 'bellhead' }, h('span', { class: 'chip big' }, `🔔 ${s.qi + 1} / ${s.N}`), h('span', { class: 'chip big' }, '📋 휴대폰 없이'), h('span', { class: 'bellclock' })),
+        h('div', { class: 'bellqs' }, s.text),
+        h('div', { class: `bellos n${s.opts.length}` }, s.opts.map((o, i) => h('div', { class: `bo ${s.ans != null ? (i === s.ans ? 'right' : 'dim') : ''}` }, h('b', {}, '①②③④'[i]), h('span', {}, o)))),
+        h('div', { class: `bellboard ${s.ph}` }, msg),
+        h('div', { class: 'bellfoot' }));
+    }
+    const f = this.root.querySelector('.bellfoot'); f.innerHTML = '';
+    f.append(h('div', { class: 'bellalive' }, h('b', {}, '팀 점수'), ...this.ctx.teams.map((t) => h('span', { class: s.flash && s.flash[0] === t.id ? 'pop' : '', style: { background: t.color } }, `${t.icon} ${s.pts[t.id] || 0}`))));
+    return s.pts;
   },
   aliveBar(s) { if (s.kid) return h('div'); return h('div', { class: 'bellalive' }, h('b', {}, `🔔 생존 ${s.aliveN}명`), ...this.ctx.teams.map((t) => h('span', { style: { background: t.color } }, `${t.icon} ${s.alive[t.id] || 0}`))); },
   tick() { const el = this.root.querySelector('.bellclock'); if (el && this.s) el.textContent = this.s.ph === 'q' ? `⏱ ${Math.max(0, Math.ceil(this.s.left - (performance.now() - this.at) / 1000))}` : ''; },
