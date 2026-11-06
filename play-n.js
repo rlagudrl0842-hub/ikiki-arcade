@@ -50,6 +50,162 @@ function joystick(api, onVec) {
   pad.stop = () => { clearInterval(iv); clearTimeout(tr); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('blur', off); document.removeEventListener('visibilitychange', vis); };
   return pad;
 }
+// ================================================================ 좀비 술래잡기 폰 화면 (전체 화면 · 카메라 추적 · 화면 밖 상대 화살표 · 미니맵)
+// 규칙·점수·서버 판정은 그대로, 폰에서 보이는 방식만 다룸
+const ZC = { zombie: '#ff3b4f', human: '#3d8bff' }; // 화살표·미니맵 색: 좀비 빨강 · 사람 파랑
+const UNIT_M = 40; // 경기장 40칸 = 1m (거리 표시용)
+const EMO = new Map();
+function emoImg(e, px) { const k = e + px; if (EMO.has(k)) return EMO.get(k); const S = Math.ceil(px * 1.4); const cv = document.createElement('canvas'); cv.width = cv.height = S; const c = cv.getContext('2d'); c.font = `${px}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(e, S / 2, S / 2 + px * 0.06); EMO.set(k, cv); return cv; }
+const lerpK = (dt, rate) => 1 - Math.exp(-dt * rate); // 화면 주사율과 상관없이 같은 빠르기로 따라감
+const ZOMBIE = {
+  mountZombie(root, api) {
+    const Z = this.Z = { ents: new Map(), rp: null, cam: null, lastF: performance.now(), burst: [], warnVib: 0, mm: null };
+    let mmOn = true; try { mmOn = localStorage.getItem('ikiki:zmm') !== '0'; } catch { /* */ }
+    Z.mmOn = mmOn;
+    const mmBtn = h('button', { class: `ztool ${mmOn ? 'on' : ''}`, title: '미니맵 보이기/숨기기', onclick: () => { Z.mmOn = !Z.mmOn; mmBtn.classList.toggle('on', Z.mmOn); try { localStorage.setItem('ikiki:zmm', Z.mmOn ? '1' : '0'); } catch { /* */ } } }, '🗺');
+    const fsOk = !!document.documentElement.requestFullscreen && document.fullscreenEnabled !== false;
+    const fsBtn = fsOk ? h('button', { class: 'ztool', title: '전체 화면', onclick: () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => api.toast('이 브라우저는 전체 화면을 지원하지 않아요')); } }, '⛶') : null;
+    const menuBtn = h('button', { class: 'ztool', title: '메뉴', onclick: () => document.querySelector('.top .menu')?.click() }, '☰');
+    const help = document.querySelector('.top .helpbtn'); const helpBtn = help ? h('button', { class: 'ztool', title: '게임 방법', onclick: () => help.click() }, '❓') : null;
+    this.zwarn = h('div', { class: 'zwarn' });
+    const chip = motionChip(api, '기울이기');
+    root.append(h('div', { class: 'arena k-zombie' }, h('div', { class: 'amapw' }, this.cv, this.fx, this.zwarn), h('div', { class: 'ztop' }, this.st, h('div', { class: 'ztools' }, mmBtn, fsBtn, helpBtn, menuBtn)), this.pad, chip ? h('div', { class: 'zchip' }, chip) : null));
+    document.body.classList.add('zgame');
+  },
+  unmountZombie() { document.body.classList.remove('zgame'); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); },
+  // 서버가 보내 준 주변 사람들 위치를 번호로 이어 받아, 순간이동하듯 튀지 않게 부드럽게 따라감
+  zTrack(v) {
+    const Z = this.Z; if (!Z || v.spectator) return; const now = performance.now();
+    const seen = new Set(); const n = v.near || [];
+    for (let i = 0; i + 3 < n.length; i += 4) {
+      const id = n[i + 3]; seen.add(id); const e = Z.ents.get(id);
+      if (!e || Math.hypot(e.x - n[i], e.y - n[i + 1]) > 260) Z.ents.set(id, { x: n[i], y: n[i + 1], tx: n[i], ty: n[i + 1], z: n[i + 2], at: now });
+      else { if (!e.z && n[i + 2]) Z.burst.push({ x: n[i], y: n[i + 1], at: now }); e.tx = n[i]; e.ty = n[i + 1]; e.z = n[i + 2]; e.at = now; }
+    }
+    for (const id of [...Z.ents.keys()]) if (!seen.has(id)) Z.ents.delete(id);
+    Z.opp = []; const o = v.opp || []; for (let i = 0; i + 2 < o.length; i += 3) Z.opp.push({ x: o[i], y: o[i + 1], id: o[i + 2] });
+    if (v.mm) Z.mm = v.mm;
+    Z.bt = v.bt || [];
+  },
+  drawZombie(c, W, H, d, now) {
+    const v = this.v; const Z = this.Z; const dt = Math.min(0.1, (now - Z.lastF) / 1000); Z.lastF = now;
+    if (v.spectator || v.x == null) return;
+    this.zLayout(W, H, d);
+    // 1) 내 위치: 서버 위치 + 지금 방향으로 아주 조금 예측 → 부드럽게 따라감 (튀지 않게)
+    const age = Math.min(0.25, (now - this.at) / 1000);
+    // 예측은 경기장 벽 안쪽까지만 (전에는 벽 쪽으로 계속 밀면 '나'가 벽 밖·화면 밖으로 그려졌음)
+    const tx = Math.max(14, Math.min(AW - 14, v.x + this.vec[0] * 330 * age * (v.stun ? 0 : 1))), ty = Math.max(14, Math.min(AH - 14, v.y + this.vec[1] * 330 * age * (v.stun ? 0 : 1)));
+    if (!Z.rp || Math.hypot(Z.rp[0] - tx, Z.rp[1] - ty) > 260) Z.rp = [tx, ty]; else { const k = lerpK(dt, 16); Z.rp[0] += (tx - Z.rp[0]) * k; Z.rp[1] += (ty - Z.rp[1]) * k; }
+    const [px, py] = Z.rp;
+    // 2) 보이는 범위: 화면 크기에 맞춰 넓이를 정하고(폰·태블릿 모두 비슷한 크기로 보임), 경기장보다 넓어지지 않게 → 경기장 밖은 안 보임
+    const cssW = W / d, cssH = H / d; const area = Math.max(300000, Math.min(640000, cssW * cssH * 1.7));
+    const k = Math.max(W / AW, H / AH, Math.sqrt((W * H) / area)); const VW = W / k, VH = H / k;
+    // 3) 카메라: 나를 화면 가운데보다 조금 위(조이스틱 위쪽)에 두고 부드럽게 따라감
+    const padTop = this.padTopFrac ?? 0.75; const wantY = Math.min(0.44, padTop * 0.55);
+    let cx = px, cy = py + VH * (0.5 - wantY);
+    if (!Z.cam) Z.cam = [cx, cy]; else { const kk = lerpK(dt, 7); Z.cam[0] += (cx - Z.cam[0]) * kk; Z.cam[1] += (cy - Z.cam[1]) * kk; }
+    Z.cam[0] = Math.max(VW / 2, Math.min(AW - VW / 2, Z.cam[0])); Z.cam[1] = Math.max(VH / 2, Math.min(AH - VH / 2, Z.cam[1]));
+    const X = (x) => (x - Z.cam[0] + VW / 2) * k, Y = (y) => (y - Z.cam[1] + VH / 2) * k;
+    Z.view = [k / d, VW, VH]; // 점검용: CSS 픽셀/칸, 보이는 너비·높이(칸)
+    // 바닥 · 격자 · 벽
+    c.fillStyle = v.z ? '#0f2416' : '#121845'; c.fillRect(0, 0, W, H);
+    c.strokeStyle = '#ffffff12'; c.lineWidth = 1; c.beginPath();
+    for (let x = Math.floor((Z.cam[0] - VW / 2) / 100) * 100; x <= Z.cam[0] + VW / 2; x += 100) { c.moveTo(X(x), 0); c.lineTo(X(x), H); }
+    for (let y = Math.floor((Z.cam[1] - VH / 2) / 100) * 100; y <= Z.cam[1] + VH / 2; y += 100) { c.moveTo(0, Y(y)); c.lineTo(W, Y(y)); }
+    c.stroke();
+    c.strokeStyle = '#ff4d6d'; c.lineWidth = 6 * d; c.strokeRect(X(0), Y(0), AW * k, AH * k);
+    // 4) 다른 사람들 (번호별로 부드럽게)
+    const kk = lerpK(dt, 12); const R0 = Math.max(10 * d, 16 * k); // 몸 크기는 경기장 기준(반지름 16칸) → 화면 배율과 같이 커지고 작아짐
+    const zi = emoImg('🧟', Math.round(R0 * 1.3));
+    for (const e of Z.ents.values()) {
+      e.x += (e.tx - e.x) * kk; e.y += (e.ty - e.y) * kk;
+      const sx = X(e.x), sy = Y(e.y); if (sx < -30 || sx > W + 30 || sy < -30 || sy > H + 30) continue;
+      if (e.z) { c.fillStyle = '#56d364'; c.beginPath(); c.arc(sx, sy, R0, 0, 7); c.fill(); c.drawImage(zi, sx - zi.width / 2, sy - zi.height / 2); }
+      else { c.fillStyle = '#ffffffdd'; c.beginPath(); c.arc(sx, sy, R0 * 0.75, 0, 7); c.fill(); }
+    }
+    // 5) 잡기 순간 효과 (퍼지는 고리 + 반짝)
+    Z.burst = Z.burst.filter((b) => now - b.at < 700);
+    for (const b of Z.burst) { const t = (now - b.at) / 700; c.strokeStyle = `rgba(86,211,100,${1 - t})`; c.lineWidth = (b.mine ? 8 : 5) * d * (1 - t) + 1; c.beginPath(); c.arc(X(b.x), Y(b.y), R0 * (1 + t * (b.mine ? 4 : 2.5)), 0, 7); c.stroke(); }
+    for (let i = 0; i + 2 < (Z.bt || []).length; i += 3) { const ag = Z.bt[i + 2] + (now - this.at) / 1000; if (ag > 0.8) continue; const t = ag / 0.8; c.strokeStyle = `rgba(255,59,79,${0.8 * (1 - t)})`; c.lineWidth = 3 * d; c.beginPath(); c.arc(X(Z.bt[i]), Y(Z.bt[i + 1]), R0 * (1 + t * 2.5), 0, 7); c.stroke(); }
+    // 6) 나
+    const mx = X(px), my = Y(py); const pulse = 1 + 0.2 * Math.sin(now / 160);
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(mx, my, (R0 + 4 * d) * pulse, 0, 7); c.fill();
+    c.fillStyle = v.z ? '#2fbf4a' : this.api.team.color; c.beginPath(); c.arc(mx, my, R0, 0, 7); c.fill();
+    if (v.z) c.drawImage(zi, mx - zi.width / 2, my - zi.height / 2);
+    c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('나', mx, my - R0 * 2.1 < 10 * d ? my + R0 * 2.1 : my - R0 * 2.1);
+    // 7) 상대: 가장 가까운 상대 거리 → 좀비 접근 경고 / 잡을 수 있는 사람 표시
+    const opp = new Map(); for (const o of Z.opp || []) opp.set(o.id, { x: o.x, y: o.y, id: o.id });
+    for (const [id, e] of Z.ents) if (!!e.z !== !!v.z) opp.set(id, { x: e.x, y: e.y, id }); // 가까운 상대는 부드럽게 움직이는 위치로
+    const list = [...opp.values()].map((o) => ({ ...o, d: Math.hypot(o.x - px, o.y - py) })).sort((a, b) => a.d - b.d);
+    const near1 = list[0];
+    this.zDanger(near1, v, d, now, W, H, c);
+    // 8) 화면 밖 상대: 가장자리 화살표 (가까운 순 · 방향이 비슷하면 하나로 묶어 '×2' · 최대 3개)
+    this.zArrows(c, list, X, Y, W, H, d, v);
+    // 9) 미니맵 (오른쪽 위)
+    if (Z.mmOn) this.zMini(c, W, H, d, v, px, py, VW, VH, Z.cam);
+  },
+  // 화면 배치 재기 (크기가 바뀔 때만): 위 점수줄 아래·조이스틱 위쪽을 피해 화살표·미니맵을 놓음
+  zLayout(W, H, d) {
+    const Z = this.Z; if (Z.lay && Z.lay[0] === W && Z.lay[1] === H) return; Z.lay = [W, H];
+    const cr = this.cv.getBoundingClientRect(); const pr = this.pad.getBoundingClientRect(); const tr = this.cv.closest('.arena')?.querySelector('.ztop')?.getBoundingClientRect();
+    this.topPx = tr ? Math.max(0, tr.bottom - cr.top) * d : 56 * d;
+    this.padPx = Math.max(0, cr.bottom - pr.top + 8) * d;
+    this.padTopFrac = cr.height ? (pr.top - cr.top) / cr.height : 0.75;
+  },
+  zDanger(n, v, d, now, W, H, c) {
+    const Z = this.Z; const w = this.zwarn;
+    if (!n || v.stun) { if (w.textContent) { w.textContent = ''; w.className = 'zwarn'; } return; }
+    if (!v.z && n.d < 260) {
+      const a = Math.max(0, Math.min(1, 1 - (n.d - 60) / 200));
+      const g = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(255,0,40,0)'); g.addColorStop(1, `rgba(255,0,40,${0.18 + 0.35 * a * (0.75 + 0.25 * Math.sin(now / 90))})`); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const t = `⚠️ 좀비 접근! ${Math.max(1, Math.round(n.d / UNIT_M))}m`; if (w.textContent !== t) { w.textContent = t; w.className = 'zwarn on'; }
+      if (n.d < 170 && now - Z.warnVib > 1200) { Z.warnVib = now; vibrate(60); }
+    } else if (v.z && n.d < 220) {
+      const t = `🎯 사람이 가까워요! ${Math.max(1, Math.round(n.d / UNIT_M))}m`; if (w.textContent !== t) { w.textContent = t; w.className = 'zwarn on hunt'; }
+    } else if (w.textContent) { w.textContent = ''; w.className = 'zwarn'; }
+  },
+  zArrows(c, list, X, Y, W, H, d, v) {
+    const m = 30 * d; const topM = this.topPx ?? 56 * d; const botM = this.padPx ?? 0; // 위 점수줄·아래 조이스틱은 피함
+    const L = m, T = topM + m * 0.4, Rr = W - m, B = H - Math.max(m, botM);
+    const mx = X(this.Z.rp[0]), my = Y(this.Z.rp[1]);
+    const groups = [];
+    for (const o of list) {
+      const sx = X(o.x), sy = Y(o.y);
+      if (sx > 4 && sx < W - 4 && sy > 4 && sy < H - 4) continue; // 화면 안에 보이면 화살표 없음
+      const ang = Math.atan2(sy - my, sx - mx);
+      const g = groups.find((q) => Math.abs(Math.atan2(Math.sin(ang - q.ang), Math.cos(ang - q.ang))) < 0.42);
+      if (g) { g.n++; continue; }
+      if (groups.length >= 3) continue;
+      groups.push({ ang, d: o.d, n: 1 });
+    }
+    const col = v.z ? ZC.human : ZC.zombie; // 내가 좀비면 사람(파랑), 사람이면 좀비(빨강)
+    for (const g of groups) {
+      // 나에서 상대 쪽으로 쏜 선이 화면 안쪽 사각형 테두리와 만나는 곳
+      const dx = Math.cos(g.ang), dy = Math.sin(g.ang); let t = Infinity;
+      if (dx > 0) t = Math.min(t, (Rr - mx) / dx); if (dx < 0) t = Math.min(t, (L - mx) / dx); if (dy > 0) t = Math.min(t, (B - my) / dy); if (dy < 0) t = Math.min(t, (T - my) / dy);
+      let ax = Math.max(L, Math.min(Rr, mx + dx * t)), ay = Math.max(T, Math.min(B, my + dy * t));
+      const mb = this.Z.mmOn && this.Z.mmBox; if (mb && ax > mb[0] * d - m * 0.6 && ay < (mb[1] + mb[3]) * d + m * 0.6) ay = (mb[1] + mb[3]) * d + m * 0.8; // 미니맵 밑으로
+      const s = 15 * d; c.save(); c.translate(ax, ay); c.rotate(g.ang);
+      c.fillStyle = col; c.strokeStyle = '#fff'; c.lineWidth = 2 * d; c.beginPath(); c.moveTo(s, 0); c.lineTo(-s * 0.7, -s * 0.75); c.lineTo(-s * 0.35, 0); c.lineTo(-s * 0.7, s * 0.75); c.closePath(); c.fill(); c.stroke(); c.restore();
+      const lab = `${Math.max(1, Math.round(g.d / UNIT_M))}m${g.n > 1 ? ` ×${g.n}` : ''}`;
+      c.font = `900 ${12 * d}px sans-serif`; const tw = c.measureText(lab).width + 10 * d;
+      const lx = Math.max(L - m * 0.6 + tw / 2, Math.min(W - tw / 2 - 2, ax - dx * 26 * d)), ly = Math.max(T, Math.min(H - 10 * d, ay - dy * 26 * d));
+      c.fillStyle = '#000a'; c.beginPath(); c.roundRect(lx - tw / 2, ly - 9 * d, tw, 18 * d, 9 * d); c.fill();
+      c.fillStyle = col === ZC.zombie ? '#ff8a96' : '#9cc2ff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(lab, lx, ly + 0.5 * d);
+    }
+    this.Z.arrowsN = groups.length; this.Z.arrowsG = groups.map((g) => [+g.ang.toFixed(2), g.n]); // 점검용
+  },
+  zMini(c, W, H, d, v, px, py, VW, VH, cam) {
+    const Z = this.Z; const mw = Math.min(W * 0.34, 150 * d), mh = mw * AH / AW; const x0 = W - mw - 8 * d, y0 = (this.topPx ?? 56 * d) + 6 * d; const s = mw / AW;
+    c.fillStyle = '#0b0e24ee'; c.fillRect(x0, y0, mw, mh); c.strokeStyle = '#ffffff55'; c.lineWidth = 1.5 * d; c.strokeRect(x0, y0, mw, mh);
+    const mm = Z.mm;
+    if (mm?.pts) { for (let i = 0; i + 2 < mm.pts.length; i += 3) { c.fillStyle = mm.pts[i + 2] ? ZC.zombie : ZC.human; c.fillRect(x0 + mm.pts[i] * 10 * s - 1.5 * d, y0 + mm.pts[i + 1] * 10 * s - 1.5 * d, 3 * d, 3 * d); } }
+    else if (mm?.grid) { const cw = mw / mm.gx, ch = mh / mm.gy; for (let i = 0; i < mm.grid.length; i++) { const ch0 = mm.grid[i]; if (ch0 === '.') continue; c.fillStyle = ch0 === 'z' ? ZC.zombie + 'cc' : ch0 === 'h' ? ZC.human + 'cc' : '#c77dffcc'; c.fillRect(x0 + (i % mm.gx) * cw, y0 + Math.floor(i / mm.gx) * ch, cw, ch); } }
+    c.strokeStyle = '#ffffffaa'; c.lineWidth = 1 * d; c.strokeRect(x0 + (cam[0] - VW / 2) * s, y0 + (cam[1] - VH / 2) * s, VW * s, VH * s); // 지금 보이는 범위
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(x0 + px * s, y0 + py * s, 3.6 * d, 0, 7); c.fill(); c.fillStyle = v.z ? '#2fbf4a' : this.api.team.color; c.beginPath(); c.arc(x0 + px * s, y0 + py * s, 2.4 * d, 0, 7); c.fill();
+    Z.mmBox = [x0 / d, y0 / d, mw / d, mh / d]; // 점검용 (CSS 픽셀)
+  },
+};
 function arenaGame(kind) {
   return {
     mount(root, v, api) {
@@ -58,7 +214,8 @@ function arenaGame(kind) {
       this.st = h('div', { class: 'ast' });
       this.fx = h('div', { class: 'afx' });
       this.pad = joystick(api, (x, y) => { this.vec = [x, y]; });
-      root.append(h('div', { class: `arena k-${kind}` }, motionChip(api, '폰을 기울여 이동'), this.st, h('div', { class: 'amapw' }, this.cv, this.fx), this.pad));
+      if (kind === 'zombie') { this.mountZombie(root, api); }
+      else root.append(h('div', { class: `arena k-${kind}` }, motionChip(api, '폰을 기울여 이동'), this.st, h('div', { class: 'amapw' }, this.cv, this.fx), this.pad));
       this.lastT = [0, 0];
       this.tiv = setInterval(() => { if (!M.on || this.pad.classList.contains('on')) return; const [x, y] = M.tilt(); const v = [Math.round(x * 100) / 100, Math.round(y * 100) / 100]; this.vec = v; const lastT = this.lastT; if (Math.abs(v[0] - lastT[0]) < 0.08 && Math.abs(v[1] - lastT[1]) < 0.08) return; this.lastT = v; api.send({ a: 'mv', x: v[0], y: v[1] }); }, 100);
       this.update(v);
@@ -71,7 +228,8 @@ function arenaGame(kind) {
       if (kind === 'dodge') {
         st.append(h('b', {}, v.dead ? '💀 탈락! 친구들을 응원해요' : v.kid ? '⚡ 노란 원을 피해요!' : `❤️`.repeat(v.hp) + '🤍'.repeat(3 - v.hp)), h('span', {}, `남은 사람 ${v.alive}명`));
       } else if (kind === 'zombie') {
-        st.append(h('b', {}, v.z ? `🧟 나는 좀비! 사람을 잡아라 (${v.tags}명)` : '🙂 사람 — 좀비를 피해 도망!'), h('span', {}, `사람 ${v.humans} · 좀비 ${v.zs}`));
+        st.append(h('b', {}, v.z ? `🧟 나는 좀비 · ${v.tags}명 잡음` : '🙂 사람 · 도망!'), h('span', {}, `🙂${v.humans} · 🧟${v.zs}`));
+        this.zTrack(v, prev);
         document.body.classList.toggle('zmode', !!v.z);
         if (prev && !prev.z && v.z) { vibrate([200, 80, 200]); sfx('bad', this.api.sfxOn); }
       } else if (kind === 'gems') {
@@ -86,13 +244,15 @@ function arenaGame(kind) {
     reply(r) {
       if (r.hit) { vibrate([120, 60, 120]); sfx('boom', this.api.sfxOn); this.flash('hit', r.dead ? '💀 번개에 맞아 탈락!' : '⚡ 찌릿! 맞았어요'); }
       if (r.bitten) this.flash('bit', `🧟 ${r.by}에게 물렸다!`);
-      if (r.tag) { sfx('good', this.api.sfxOn); this.flash('tag', `🧟 ${r.who} 잡았다!`); }
+      if (r.tag) { sfx('good', this.api.sfxOn); vibrate([30, 40, 30]); this.flash('tag', `🧟 ${r.who} 잡았다!`); }
+      if (kind === 'zombie' && (r.tag || r.bitten) && r.x != null) (this.Z.burst ||= []).push({ x: r.x, y: r.y, at: performance.now(), mine: true });
       if (r.big) { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); this.flash('tag', '대형 보석 +5'); }
     },
     resync() { if (M.on && !this.pad.classList.contains('on')) this.lastT = [9, 9]; else this.pad.resync(); },
     flash(cls, text) { const f = h('div', { class: `aflash ${cls}` }, text); this.fx.append(f); setTimeout(() => f.remove(), 1200); },
     draw() {
       const v = this.v; const { W, H, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d');
+      if (kind === 'zombie') return this.drawZombie(c, W, H, d, performance.now());
       const sx = W / AW, sy = H / AH;
       c.clearRect(0, 0, W, H);
       c.fillStyle = '#121845'; c.fillRect(0, 0, W, H);
@@ -115,7 +275,6 @@ function arenaGame(kind) {
       }
       if (kind === 'gems') for (const [x, y, gv] of v.gems || []) { c.fillStyle = gv >= 5 ? '#ffd43b' : gv === 2 ? '#7cf3ff' : '#b06bff'; c.save(); c.translate(x * sx, y * sy); c.rotate(Math.PI / 4); const r = (gv >= 5 ? 10 : 6) * d; c.fillRect(-r, -r, r * 2, r * 2); c.restore(); }
       if (kind === 'crown' && v.z) { c.fillStyle = 'rgba(255,212,59,.22)'; c.beginPath(); c.arc(v.z[0] * sx, v.z[1] * sy, v.z[2] * sx, 0, 7); c.fill(); c.strokeStyle = '#ffd43b'; c.lineWidth = 3 * d; c.stroke(); }
-      if (kind === 'zombie') return this.drawZombie(c, W, H, d, now);
       // 내 위치 (서버 위치 + 지금 방향으로 살짝 예측)
       const dt = Math.min(0.25, (now - this.at) / 1000);
       const still = v.dead || v.stun;
@@ -127,36 +286,8 @@ function arenaGame(kind) {
       c.fillText(v.dead ? '💀' : v.z ? '🧟' : '', mx, my);
       c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 26 * d);
     },
-    // 좀비: 내 주변을 크게 보여 주는 카메라 화면 (전체 지도에선 내 주변만 받아서 멀리 있는 좀비가 깜빡 사라졌음)
-    drawZombie(c, W, H, d, now) {
-      const v = this.v; const VW = 800, VH = 430; const k = W / VW;
-      const dt = Math.min(0.25, (now - this.at) / 1000);
-      const px = v.x + this.vec[0] * 330 * dt * (v.stun ? 0 : 1), py = v.y + this.vec[1] * 330 * dt * (v.stun ? 0 : 1);
-      const cx = Math.max(VW / 2, Math.min(AW - VW / 2, px)), cy = Math.max(VH / 2, Math.min(AH - VH / 2, py));
-      const X = (x) => (x - cx + VW / 2) * k, Y = (y) => (y - cy + VH / 2) * k;
-      c.fillStyle = v.z ? '#0f2416' : '#121845'; c.fillRect(0, 0, W, H);
-      c.strokeStyle = '#ffffff12'; c.lineWidth = 1; c.beginPath(); for (let x = 0; x <= AW; x += 100) { c.moveTo(X(x), 0); c.lineTo(X(x), H); } for (let y = 0; y <= AH; y += 100) { c.moveTo(0, Y(y)); c.lineTo(W, Y(y)); } c.stroke();
-      c.strokeStyle = '#ff4d6d'; c.lineWidth = 4 * d; c.strokeRect(X(0), Y(0), AW * k, AH * k); // 경기장 끝 벽
-      const n = v.near || []; const arrows = [];
-      for (let i = 0; i < n.length; i += 3) {
-        const sx2 = X(n[i]), sy2 = Y(n[i + 1]); const z = n[i + 2];
-        if (sx2 < -10 || sx2 > W + 10 || sy2 < -10 || sy2 > H + 10) { if (z !== (v.z ? 1 : 0)) arrows.push([sx2, sy2, z]); continue; }
-        if (z) { c.fillStyle = '#56d364'; c.beginPath(); c.arc(sx2, sy2, 13 * d, 0, 7); c.fill(); c.font = `${16 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🧟', sx2, sy2); }
-        else { c.fillStyle = '#ffffffcc'; c.beginPath(); c.arc(sx2, sy2, 9 * d, 0, 7); c.fill(); }
-      }
-      // 화면 밖에서 다가오는 상대: 가장자리 화살표
-      for (const [ax, ay, z] of arrows) {
-        const mx0 = X(px), my0 = Y(py); const a = Math.atan2(ay - my0, ax - mx0);
-        const ex = Math.max(16 * d, Math.min(W - 16 * d, ax)), ey = Math.max(16 * d, Math.min(H - 16 * d, ay));
-        c.save(); c.translate(ex, ey); c.rotate(a); c.fillStyle = z ? '#56d364' : '#ffffff'; c.beginPath(); c.moveTo(12 * d, 0); c.lineTo(-8 * d, -8 * d); c.lineTo(-8 * d, 8 * d); c.closePath(); c.fill(); c.restore();
-      }
-      const mx = X(px), my = Y(py); const pulse = 1 + 0.25 * Math.sin(now / 160);
-      c.fillStyle = '#fff'; c.beginPath(); c.arc(mx, my, 17 * d * pulse, 0, 7); c.fill();
-      c.fillStyle = v.z ? '#2fbf4a' : this.api.team.color; c.beginPath(); c.arc(mx, my, 13 * d, 0, 7); c.fill();
-      c.font = `${18 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; if (v.z) c.fillText('🧟', mx, my);
-      c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 28 * d < 10 * d ? my + 28 * d : my - 28 * d); // 위쪽 끝이면 '나' 글자를 아래에
-    },
-    unmount() { stopLoop(this); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); },
+    unmount() { stopLoop(this); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); if (kind === 'zombie') this.unmountZombie(); },
+    ...(kind === 'zombie' ? ZOMBIE : {}),
   };
 }
 G.dodge = arenaGame('dodge');

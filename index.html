@@ -13,6 +13,10 @@ main{max-width:480px;width:100%;padding:28px;display:flex;flex-direction:column;
 .bolt{animation:bounce 1.6s infinite}
 h1{font-size:32px;margin:0}h1 b{color:var(--y)}
 a.btn{display:block;text-decoration:none;font-size:22px;padding:18px}
+#code{font-size:30px;text-align:center;letter-spacing:8px;text-transform:uppercase;padding:14px;width:100%;box-sizing:border-box}
+#go{font-size:22px;padding:16px;width:100%}
+#msg{min-height:1.4em;color:#ff8fa3;font-weight:700}
+.or{color:var(--muted);font-size:14px}
 </style>
 </head>
 <body>
@@ -20,8 +24,15 @@ a.btn{display:block;text-decoration:none;font-size:22px;padding:18px}
 <div class="bolt"><span class="ikl" style="height:150px;padding:10px 16px;border-radius:24px"><img src="/logo.png" alt="아이키키"></span></div>
 <h1><b>팀 대항 오락실</b></h1>
 <p class="muted">QR로 들어오는 실시간 팀 대항 미니게임</p>
-<a class="btn" href="/play.html">📱 참가하기 (코드 입력)</a>
+<!-- QR이 안 되는 기기: 이 주소만 입력하고 큰 화면의 참가 코드 6자리를 넣으면 바로 그 행사로 (옛 브라우저도 되도록 단순한 스크립트) -->
+<form id="f" autocomplete="off">
+<input id="code" class="inp" maxlength="80" placeholder="참가 코드 6자리" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text">
+<div id="msg" role="status"></div>
+<button id="go" class="btn" type="submit">📱 입장하기</button>
+</form>
+<p class="or">큰 화면에 보이는 참가 코드를 넣어요 · 앱 설치·가입 필요 없음</p>
 <a class="btn ghost" href="/admin.html">🎤 진행자 화면</a>
 </main>
+<script src="/home.js"></script>
 </body>
 </html>

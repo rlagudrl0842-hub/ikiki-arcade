@@ -7,7 +7,7 @@ import './play-n2.js';
 import './play-n3.js';
 import { mountDemo, demoText } from './preview.js';
 
-const app = $('#app');
+const app = $('#app'); window.__appOk = true; // 이 줄까지 실행되면 최신 문법을 아는 브라우저 (play.html의 안내 숨김)
 const params = new URLSearchParams(location.search);
 const code = (params.get('e') || params.get('code') || '').toUpperCase();
 // 혼자 테스트하기: ?join=이름&team=1 → 바로 참가 / ?ai=난이도 → 컴퓨터 참가자 (같은 브라우저 안에서도 저장 칸을 따로 씀)
@@ -48,10 +48,19 @@ if (aiLv) import('./ai.js').then(({ AI }) => { aiBot = new AI({ level: aiLv, sen
 
 function renderCodeEntry() {
   app.innerHTML = '';
-  const inp = h('input', { class: 'inp code', maxlength: 6, placeholder: '참가 코드 6자리', autocapitalize: 'characters', autocomplete: 'off' });
-  const go = () => { const v = inp.value.trim().toUpperCase(); if (v.length >= 4) location.href = '/play.html?e=' + encodeURIComponent(v); };
-  inp.addEventListener('keydown', (e) => e.key === 'Enter' && go());
-  app.append(h('main', { class: 'join' }, logo(), h('p', { class: 'muted' }, 'QR을 찍거나 큰 화면의 참가 코드를 입력하세요'), inp, h('button', { class: 'btn wide', onclick: go }, '입장하기')));
+  const inp = h('input', { class: 'inp code', maxlength: 80, placeholder: '참가 코드 6자리', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' });
+  const msg = h('div', { class: 'err' }); const btn = h('button', { class: 'btn wide' }, '입장하기');
+  // 코드를 넣으면 먼저 서버에 확인 → 맞으면 그 행사로, 없거나 끝난 행사면 바로 이 자리에서 안내 (주소를 붙여 넣어도 코드만 뽑아 씀)
+  const go = async () => {
+    let v = inp.value.trim().toUpperCase(); const m = v.match(/[?&]E=([A-Z0-9]+)/) || v.match(/\/J\/([A-Z0-9]+)/); if (m) v = m[1]; v = v.replace(/[^A-Z0-9]/g, '');
+    msg.textContent = '';
+    if (v.length < 4) { msg.textContent = '참가 코드 6자리를 넣어 주세요'; return; }
+    btn.disabled = true;
+    try { const r = await api('/api/public/' + encodeURIComponent(v)); if (r.phase === 'ended') { msg.textContent = `이미 끝난 행사예요 (${r.name})`; btn.disabled = false; return; } location.href = '/play.html?e=' + encodeURIComponent(v); }
+    catch (e) { btn.disabled = false; msg.textContent = e.status === 404 ? `없는 참가 코드예요. 큰 화면의 코드를 다시 확인해 주세요${/[01OI]/.test(inp.value.toUpperCase()) ? ' (코드에는 숫자 0·1, 영어 O·I가 없어요)' : ''}` : '인터넷 연결을 확인하고 다시 눌러 주세요'; }
+  };
+  inp.addEventListener('keydown', (e) => e.key === 'Enter' && go()); btn.onclick = go;
+  app.append(h('main', { class: 'join' }, logo(), h('p', { class: 'muted' }, 'QR을 찍거나 큰 화면의 참가 코드를 입력하세요'), inp, msg, btn));
 }
 function logo() { return h('div', { class: 'brand big' }, h('span', { class: 'ikl' }, h('img', { src: '/logo.png', alt: '아이키키' })), h('div', {}, h('b', {}, '팀 대항 오락실'))); }
 

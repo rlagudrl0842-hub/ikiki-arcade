@@ -141,13 +141,45 @@ export const zombie = {
     for (const p of order.slice(0, nz)) { p.z = true; p.zT = 0; p.first = true; }
     const bites = []; // 화면 연출
     const R = 34;
+    // 폰 화면용 짧은 번호 (부드러운 움직임: 같은 사람을 이어서 그림)
+    let nid = 0; const sid = (p) => (p.sid ??= ++nid);
+    // 미니맵: 전체 위치 (80명 이하는 점 하나하나 · 많으면 칸별로 묶어서 1초마다)
+    let mm = null, mmV = 0, mmAt = -1;
+    const mmBuild = (now) => {
+      const act = [...A.P.values()].filter((p) => p.active || p.z);
+      const big = act.length > 80;
+      if (mm && now - mmAt < (big ? 1000 : 180)) return;
+      mmAt = now; mmV++;
+      if (!big) { const o = []; for (const p of act) o.push(Math.round(p.x / 10), Math.round(p.y / 10), p.z ? 1 : 0); mm = { pts: o }; return; }
+      const GX = 40, GY = 20; const c = new Uint8Array(GX * GY);
+      for (const p of act) { const i = Math.min(GY - 1, Math.floor(p.y / AH * GY)) * GX + Math.min(GX - 1, Math.floor(p.x / AW * GX)); c[i] |= p.z ? 2 : 1; }
+      mm = { grid: Array.from(c, (v) => '.hzm'[v]).join(''), gx: GX, gy: GY };
+    };
+    // 같은 편끼리 한 점에 겹쳐 서 있지 않게 살짝 밀어 냄 (좀비-사람 사이는 그대로 → 잡기 판정에 영향 없음)
+    const SEP = 24;
+    const separate = () => {
+      const G = new Map(); const k = (x, y) => `${Math.floor(x / SEP)},${Math.floor(y / SEP)}`;
+      for (const p of A.P.values()) { if (!p.active) continue; const kk = k(p.x, p.y); if (!G.has(kk)) G.set(kk, []); G.get(kk).push(p); }
+      for (const p of A.P.values()) {
+        if (!p.active) continue; const cx = Math.floor(p.x / SEP), cy = Math.floor(p.y / SEP);
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const q of G.get(`${cx + dx},${cy + dy}`) || []) {
+          if (q === p || q.z !== p.z || q.sid < p.sid) continue;
+          let ex = q.x - p.x, ey = q.y - p.y; let d = Math.hypot(ex, ey); if (d >= SEP) continue;
+          if (d < 0.01) { const a = ((p.sid * 7 + q.sid * 13) % 360) * Math.PI / 180; ex = Math.cos(a); ey = Math.sin(a); d = 1; } else { ex /= d; ey /= d; }
+          const push = (SEP - d) / 2;
+          p.x = clamp(p.x - ex * push, 14, AW - 14); p.y = clamp(p.y - ey * push, 14, AH - 14); q.x = clamp(q.x + ex * push, 14, AW - 14); q.y = clamp(q.y + ey * push, 14, AH - 14);
+        }
+      }
+    };
+    for (const p of A.P.values()) sid(p);
     return {
-      addPlayer(p) { if (!A.P.has(p.id)) A.spawn(p, A.T); },
+      addPlayer(p) { if (!A.P.has(p.id)) sid(A.spawn(p, A.T)); },
       input(pid, m) { A.move(pid, m); },
       shift: A.shift,
       tick(now) {
         const d = A.dt(now); const T = A.T;
         A.step(d, (p) => (p.z ? SPEED * 1.06 : SPEED));
+        separate(); separate(); separate(); // 여러 명이 한 곳으로 몰려도 겹치지 않게 3번 나눠 밀어 냄
         // 격자로 가까운 사람만 검사 (300명도 가볍게)
         const G = new Map(); const key = (x, y) => `${Math.floor(x / 80)},${Math.floor(y / 80)}`;
         for (const p of A.P.values()) if (!p.z && p.active) { const k = key(p.x, p.y); if (!G.has(k)) G.set(k, []); G.get(k).push(p); }
@@ -160,8 +192,8 @@ export const zombie = {
               if (Math.hypot(h.x - z.x, h.y - z.y) <= R) {
                 h.z = true; h.zT = T; z.tags++;
                 bites.push({ x: Math.round(h.x), y: Math.round(h.y), at: T, name: h.name, by: z.name, team: h.team });
-                ctx.sendTo(h.id, { run: ctx.runId, r: { bitten: true, by: z.name } });
-                ctx.sendTo(z.id, { run: ctx.runId, r: { tag: true, who: h.name } });
+                ctx.sendTo(h.id, { run: ctx.runId, r: { bitten: true, by: z.name, x: Math.round(h.x), y: Math.round(h.y) } });
+                ctx.sendTo(z.id, { run: ctx.runId, r: { tag: true, who: h.name, x: Math.round(h.x), y: Math.round(h.y) } });
               }
             }
           }
@@ -169,18 +201,27 @@ export const zombie = {
         for (const p of A.P.values()) if (!p.z && p.active) p.humanT += d;
         while (bites.length && T - bites[0].at > 2.5) bites.shift();
         const act = [...A.P.values()].filter((p) => p.active);
-        if (act.length >= 3 && act.every((p) => p.z)) ctx.endEarly();
+        // 사람이 모두 잡히면 바로 끝 (전에는 3명 이상일 때만 → 2명 대결·미리보기에서는 다 잡혀도 시간이 끝날 때까지 기다렸음)
+        if (act.length >= 2 && bites.length + [...A.P.values()].reduce((n, p) => n + p.tags, 0) > 0 && act.every((p) => p.z)) ctx.endEarly();
+        mmBuild(now);
         A.viewTick(now);
       },
       view(pid) {
         const p = A.P.get(pid); if (!p) return { g: 'zombie', spectator: true };
+        if (!mm) mmBuild(Date.now());
         // 폰 화면(내 주변 800×430)보다 넓게(±560×±330) 가까운 순으로 최대 70명 — 화면 밖 좀비는 가장자리 화살표로 표시
         const cand = [];
         for (const q of A.P.values()) { if (q === p || !q.active) continue; const dx = q.x - p.x, dy = q.y - p.y; if (Math.abs(dx) < 560 && Math.abs(dy) < 330) cand.push([dx * dx + dy * dy - (q.z !== p.z ? 40000 : 0), q]); }
         cand.sort((a, b) => a[0] - b[0]);
-        const near = []; for (const [, q] of cand.slice(0, 70)) near.push(Math.round(q.x), Math.round(q.y), q.z ? 1 : 0);
+        // near: [x, y, 좀비?, 번호] 반복
+        const near = []; for (const [, q] of cand.slice(0, 70)) near.push(Math.round(q.x), Math.round(q.y), q.z ? 1 : 0, sid(q));
+        // opp: 경기장 어디에 있든 가장 가까운 상대편 4명 [x, y, 번호] — 화면 밖 방향 화살표·컴퓨터 추격/도망용
+        const opp = []; { const o = []; for (const q of A.P.values()) { if (q === p || !q.active || q.z === p.z) continue; o.push([(q.x - p.x) ** 2 + (q.y - p.y) ** 2, q]); } o.sort((a, b) => a[0] - b[0]); for (const [, q] of o.slice(0, 4)) opp.push(Math.round(q.x), Math.round(q.y), sid(q)); }
         let humans = 0, zs = 0; for (const q of A.P.values()) { if (!q.active && !q.z) continue; if (q.z) zs++; else humans++; }
-        return { g: 'zombie', x: Math.round(p.x), y: Math.round(p.y), z: p.z, tags: p.tags, near, humans, zs };
+        const bt = []; for (const b of bites) if (Math.abs(b.x - p.x) < 600 && Math.abs(b.y - p.y) < 400) bt.push(b.x, b.y, round1(A.T - b.at));
+        const out = { g: 'zombie', x: Math.round(p.x), y: Math.round(p.y), z: p.z, tags: p.tags, me: sid(p), near, opp, humans, zs, bt };
+        if (p._mmV !== mmV) { p._mmV = mmV; out.mm = mm; } // 미니맵은 바뀌었을 때만
+        return out;
       },
       screen() {
         const humans = teamCount(A.P, (p) => !p.z && p.active, ctx.teams);

@@ -166,6 +166,15 @@ export async function api(path, body, token) {
 export function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { return null; } }
 
 // 참가 QR 그림: 서버에서 받아 화면에 직접 넣음 (서버가 잠깐 재시작 중이어도 자동으로 다시 시도)
+// QR에 넣을 짧은 참가 주소: https://주소/J/코드 — 대문자로만 쓰면 QR 칸 수가 줄어 같은 크기에서 점이 커지고 잘 읽힘
+// (주소의 http·도메인은 대소문자를 가리지 않고, /J/는 서버가 대소문자 없이 받음) · 경로가 붙은 주소는 그대로 소문자 유지
+export function qrJoinUrl(base, code) {
+  const b = String(base || location.origin).replace(/\/+$/, '');
+  const simple = /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(b);
+  return simple ? `${b}/J/${code}`.toUpperCase() : `${b}/j/${code}`;
+}
+// 사람이 읽고 입력할 주소: https:// 를 뺀 사이트 주소만 (예: ikiki-arcade.onrender.com)
+export const shortHost = (base) => String(base || location.origin).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 export function qrImg(url, cls) {
   const img = h('img', { class: cls, alt: '참가 QR' });
   const src = `/api/qr?text=${encodeURIComponent(url)}`;

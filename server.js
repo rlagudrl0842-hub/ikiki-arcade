@@ -17,7 +17,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
   'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 
@@ -124,7 +124,10 @@ export function createServer(opts = {}) {
     let p;
     try { p = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
-    if (/^\/(join|j)\/?$/.test(p)) p = '/play.html';
+    if (/^\/(join|j)\/?$/i.test(p)) p = '/play.html';
+    // 짧은 참가 주소 /j/참가코드 (QR용) → 그 행사 참가 화면으로
+    const jm = p.match(/^\/j\/([A-Za-z0-9]{4,8})\/?$/i);
+    if (jm) { res.writeHead(302, { Location: `/play.html?e=${jm[1].toUpperCase()}`, 'Cache-Control': 'no-store' }); return res.end(); }
     const name = p.replace(/^\/+/, '');
     if (!PUBLIC_FILES.has(name)) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
     const file = path.join(PUB, name);
@@ -155,9 +158,10 @@ export function createServer(opts = {}) {
     if (a === 'games' && method === 'GET') return json(res, 200, { games: GAME_LIST });
     if (a === 'qr' && method === 'GET') {
       const text = String(url.searchParams.get('text') || '').slice(0, 300);
-      if (!/^https?:\/\//.test(text)) throw new Err('주소 오류');
-      if (b === 'png') { const buf = await QRCode.toBuffer(text, { width: 1024, margin: 2, errorCorrectionLevel: 'M' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="ikiki-qr.png"' }); return res.end(buf); }
-      const svg = await QRCode.toString(text, { type: 'svg', width: 600, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0e24', light: '#ffffff' } });
+      if (!/^https?:\/\//i.test(text)) throw new Err('주소 오류');
+      if (b === 'png') { const buf = await QRCode.toBuffer(text, { width: 1024, margin: 4, errorCorrectionLevel: 'M' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="ikiki-qr.png"' }); return res.end(buf); }
+      // 흰 여백 2칸 + 순수 검정/흰색 + 짧은 주소(칸 수↓) → 같은 크기에서 점이 커져 구형 폰·태블릿도 잘 읽음 (전에는 여백 1칸·남색·긴 주소)
+      const svg = await QRCode.toString(text, { type: 'svg', width: 600, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=300' }); return res.end(svg);
     }
     if (a === 'info' && method === 'GET') return json(res, 200, { lan: lanAddrs().map((h) => `http://${h}:${server.address().port}`) });

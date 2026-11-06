@@ -52,7 +52,8 @@ a.btn { text-decoration: none; display: inline-block; }
 .stack { display: flex; flex-direction: column; gap: 10px; } .stack.center { align-items: center; text-align: center; }
 .amodal { position: fixed; inset: 0; background: #000b; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 30px 12px; overflow: auto; }
 .abox { width: 100%; max-width: 760px; } .mh { display: flex; align-items: center; justify-content: space-between; } .mh h2 { margin: 0; }
-.qrimg { width: 300px; height: 300px; background: #fff; border-radius: 16px; padding: 10px; }
+.qrimg { width: min(78vw, 420px); height: auto; aspect-ratio: 1; background: #fff; border-radius: 8px; padding: 0; image-rendering: pixelated; }
+.joincode { font-size: 22px; font-weight: 800; } .joincode b { font-size: 40px; letter-spacing: 6px; color: var(--y); margin-left: 6px; }
 .big { font-size: 26px; font-weight: 900; }
 code { background: #0007; padding: 4px 8px; border-radius: 6px; word-break: break-all; }
 .qadd { display: grid; grid-template-columns: 100px 1fr 120px 110px auto; gap: 6px; } @media (max-width: 700px) { .qadd { grid-template-columns: 1fr 1fr; } }

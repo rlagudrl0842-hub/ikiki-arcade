@@ -65,10 +65,25 @@ export class AI {
               const w = v2.warn.map((q) => [q, Math.hypot(q[0] - v2.x, q[1] - v2.y)]).sort((a, b) => a[1] - b[1])[0];
               if (w && w[1] < w[0][2] + 60 && Math.random() < sk) { const l = w[1] || 1; x = (v2.x - w[0][0]) / l; y = (v2.y - w[0][1]) / l; }
             }
-            if (g === 'zombie' && v2.near?.length) {
-              let best = null; for (let i = 0; i < v2.near.length; i += 3) { const z = v2.near[i + 2]; if (v2.z ? z : !z) continue; const d = Math.hypot(v2.near[i] - v2.x, v2.near[i + 1] - v2.y); if (!best || d < best[2]) best = [v2.near[i], v2.near[i + 1], d]; }
-              if (best && Math.random() < 0.4 + sk * 0.6) { const l = best[2] || 1; const s = v2.z ? 1 : -1; x = s * (best[0] - v2.x) / l; y = s * (best[1] - v2.y) / l; }
+            if (g === 'zombie' && Math.random() < 0.4 + sk * 0.6) {
+              // 상대 위치: 경기장 전체에서 가장 가까운 상대(opp) — 예전엔 내 주변(near)만 봐서 멀리 있는 상대를 못 찾고 헤맸음
+              const opp = []; const o = v2.opp || []; for (let i = 0; i + 2 < o.length; i += 3) opp.push([o[i], o[i + 1], Math.hypot(o[i] - v2.x, o[i + 1] - v2.y)]);
+              if (!opp.length && v2.near) for (let i = 0; i + 3 < v2.near.length; i += 4) { const z = v2.near[i + 2]; if (v2.z ? z : !z) continue; opp.push([v2.near[i], v2.near[i + 1], Math.hypot(v2.near[i] - v2.x, v2.near[i + 1] - v2.y)]); }
+              opp.sort((a, b) => a[2] - b[2]);
+              if (v2.z && opp.length) { const t = opp[0]; const l = t[2] || 1; x = (t[0] - v2.x) / l; y = (t[1] - v2.y) / l; } // 좀비: 가장 가까운 사람 쫓기
+              else if (!v2.z && opp.length && opp[0][2] < 520) {
+                // 사람: 가까운 좀비들에게서 멀어지는 방향 + 벽에서 떨어지는 힘 (구석에 몰려 끼지 않게)
+                let fx = 0, fy = 0; for (const [zx, zy, d] of opp) { if (d > 520) continue; const w = 1 / Math.max(40, d) ** 2; fx += (v2.x - zx) / (d || 1) * w; fy += (v2.y - zy) / (d || 1) * w; }
+                const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
+                const wall = (p, max) => (p < 140 ? (140 - p) / 140 : p > max - 140 ? -(p - (max - 140)) / 140 : 0);
+                const wx = wall(v2.x, AW), wy = wall(v2.y, AH); fx += wx * 1.6; fy += wy * 1.6;
+                // 벽에 막혀 거의 못 움직이면 벽을 따라 옆으로 빠져나감
+                if (Math.hypot(fx, fy) < 0.35) { const zx = opp[0][0] - v2.x, zy = opp[0][1] - v2.y; fx = -zy; fy = zx; if ((v2.x < AW / 2) !== (fx > 0)) { fx = -fx; fy = -fy; } }
+                const l = Math.hypot(fx, fy) || 1; x = fx / l; y = fy / l;
+              }
             }
+            // 벽에 끼임 감지: 1.5초 동안 거의 안 움직였으면 경기장 가운데 쪽으로 방향을 새로 잡음
+            if (g === 'zombie') { const st = this.zst ||= { x: v2.x, y: v2.y, at: Date.now() }; if (Math.hypot(v2.x - st.x, v2.y - st.y) > 30) { st.x = v2.x; st.y = v2.y; st.at = Date.now(); } else if (Date.now() - st.at > 1500) { ang = Math.atan2(AH / 2 - v2.y, AW / 2 - v2.x) + R(-0.6, 0.6); x = Math.cos(ang); y = Math.sin(ang); st.at = Date.now(); } }
             if (g === 'gems' && v2.gems?.length && Math.random() < 0.3 + sk * 0.7) { const b = v2.gems.slice().sort((a, b2) => Math.hypot(a[0] - v2.x, a[1] - v2.y) - Math.hypot(b2[0] - v2.x, b2[1] - v2.y))[0]; const l = Math.hypot(b[0] - v2.x, b[1] - v2.y) || 1; x = (b[0] - v2.x) / l; y = (b[1] - v2.y) / l; }
             if (g === 'crown' && v2.z && Math.random() < 0.3 + sk * 0.7) { const l = Math.hypot(v2.z[0] - v2.x, v2.z[1] - v2.y); if (l > 40) { x = (v2.z[0] - v2.x) / l; y = (v2.z[1] - v2.y) / l; } else { x *= 0.3; y *= 0.3; } }
             if (v2.x < 60) x = Math.abs(x); if (v2.x > AW - 60) x = -Math.abs(x); if (v2.y < 60) y = Math.abs(y); if (v2.y > AH - 60) y = -Math.abs(y);

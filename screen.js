@@ -1,5 +1,5 @@
 // 대형 화면 (프로젝터·TV)
-import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg, setSfxVolume, quickKey } from './client.js';
+import { $, h, Live, api, store, sfx, say, audioUnlock, audioReady, teamOf, confetti, MODE, qrImg, qrJoinUrl, shortHost, setSfxVolume, quickKey } from './client.js';
 import * as BGM from './bgm.js';
 import { V, leaderOf } from './screen-games.js';
 import './screen-n.js';
@@ -185,14 +185,15 @@ function topbar(extra) {
 // ---------------- 대기 ----------------
 function lobby() {
   render.lobbyKey = `${S.settings.mode}|${S.event.name}|${joinUrl}|${S.settings.device}`;
-  const qr = qrImg(joinUrl, 'qr');
+  const base = S.settings.joinUrl || localBase || location.origin;
+  const qr = qrImg(qrJoinUrl(base, S.event.code), 'qr');
   if (S.settings.device === 'nophone') {
     // 휴대폰 없이 진행: QR 대신 팀 소개·진행 방법
     const left2 = h('div', { class: 'lleft nophone' }, h('div', { class: 'lt' }, '📋 휴대폰 없이 진행해요'), h('div', { class: 'npbig' }, '🙌'), h('div', { class: 'npnote' }, '큰 화면을 보고 팀끼리 함께! 점수는 진행자 선생님이 넣어요'), h('div', { class: 'npnote small' }, '골든벨: 팀마다 종이·보드에 답을 가려 적고 "공개!"에 맞춰 동시에 들어요'));
     stage.append(topbar(h('div', { class: 'mode' }, MODE[S.settings.mode])), h('div', { class: 'lobbyv' }, left2, h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }))));
     return updateLobby();
   }
-  const left = h('div', { class: 'lleft' }, h('div', { class: 'lt' }, '📱 QR을 찍고 참가하세요!'), qr, h('div', { class: 'lurl' }, joinUrl.replace(/^https?:\/\//, '')), h('div', { class: 'lcode' }, '참가 코드 ', h('b', {}, S.event.code)));
+  const left = h('div', { class: 'lleft' }, h('div', { class: 'lt' }, '📱 카메라로 QR을 찍으세요'), qr, h('div', { class: 'lalt' }, 'QR이 안 되면 ', h('b', {}, shortHost(base)), ' 접속 후'), h('div', { class: 'lcode' }, '참가 코드 ', h('b', {}, S.event.code)));
   const right = h('div', { class: 'lright' }, h('div', { id: 'lteams' }), h('div', { id: 'lnext' }), h('div', { id: 'lnote' }));
   stage.append(topbar(h('div', { class: 'mode' }, MODE[S.settings.mode])), h('div', { class: 'lobbyv' }, left, right));
   updateLobby();
