@@ -4,6 +4,7 @@ import { G } from './play-games.js';
 import { fruitSchedule, fruitPos, fruitLife, fruitR, FRUITS, ropeBeats } from './gen2.js';
 import { M, motionChip } from './play-motion.js';
 import * as S3 from './scene3d.js';
+import { off3d, paint3d } from './x3d.js'; // 화면 배치는 그대로 두고 3D를 2D 캔버스에 옮겨 그림
 
 const AW = 1600, AH = 860;
 function onPress(el, fn) { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; }
@@ -109,8 +110,10 @@ const ZOMBIE = {
     const X = (x) => (x - Z.cam[0] + VW / 2) * k, Y = (y) => (y - Z.cam[1] + VH / 2) * k;
     Z.view = [k / d, VW, VH]; // 점검용: CSS 픽셀/칸, 보이는 너비·높이(칸)
     // 바닥 · 격자 · 벽
-    S3.paint(c, W, H, 'zombie', now / 1000); if (!v.z) { c.fillStyle = '#12184566'; c.fillRect(0, 0, W, H); } // 3D 경기장 바닥 (사람일 땐 조금 푸르게)
-    c.strokeStyle = '#ffffff12'; c.lineWidth = 1; c.beginPath();
+    const floor3 = this.r3 && paint3d(this, c, W, H, { cx: Z.cam[0], cy: Z.cam[1], VW, VH, t: now / 1000 }); // 3D 폐허 바닥 (같은 범위를 위에서)
+    if (!floor3) S3.paint(c, W, H, 'zombie', now / 1000);
+    if (!v.z) { c.fillStyle = '#12184566'; c.fillRect(0, 0, W, H); } // 사람일 땐 조금 푸르게
+    c.strokeStyle = floor3 ? '#ffffff08' : '#ffffff12'; c.lineWidth = 1; c.beginPath();
     for (let x = Math.floor((Z.cam[0] - VW / 2) / 100) * 100; x <= Z.cam[0] + VW / 2; x += 100) { c.moveTo(X(x), 0); c.lineTo(X(x), H); }
     for (let y = Math.floor((Z.cam[1] - VH / 2) / 100) * 100; y <= Z.cam[1] + VH / 2; y += 100) { c.moveTo(0, Y(y)); c.lineTo(W, Y(y)); }
     c.stroke();
@@ -215,8 +218,17 @@ function arenaGame(kind) {
       this.st = h('div', { class: 'ast' });
       this.fx = h('div', { class: 'afx' });
       this.pad = joystick(api, (x, y) => { this.vec = [x, y]; });
-      if (kind === 'zombie') { this.mountZombie(root, api); }
-      else root.append(h('div', { class: `arena k-${kind}` }, motionChip(api, '폰을 기울여 이동'), this.st, h('div', { class: 'amapw' }, this.cv, this.fx), this.pad));
+      if (kind === 'zombie') { this.mountZombie(root, api); off3d(this, this.cv, () => import('./zomb3d.js').then((m) => m.createZomb3D)); } // 좀비: 바닥 장면만 3D (사람·화살표·미니맵은 그대로)
+      else {
+        const mw = h('div', { class: 'amapw' }, this.cv, this.fx);
+        root.append(h('div', { class: `arena k-${kind}` }, motionChip(api, '폰을 기울여 이동'), this.st, mw, this.pad));
+        // 3D 경기장 (WebGL 되고 화질 '가벼움'이 아닐 때만 · 실패·느림이면 원래 2D로 자동 복귀)
+        if (S3.quality() !== 'low' && !/[?&]r3d=0/.test(location.search)) {
+          const cv3 = h('canvas', { class: 'amap3', 'aria-hidden': 'true' }); mw.prepend(cv3); this.cv.classList.add('on3'); // 자리를 처음부터 잡아 둠 (불러온 뒤 조이스틱이 밀리지 않게)
+          this.drop3d = (why) => { try { this.r3?.dispose(); } catch { /* */ } this.r3 = null; cv3.remove(); this.cv.classList.remove('on3'); window.__r3d = `2d:${why}`; };
+          import('./arena3d.js').then((m) => { if (this.dead) return cv3.remove(); const r = m.createArena3D(cv3, { kind, color: api.team.color, teamColor: (i) => api.teamColor(i), quality: S3.quality(), onSlow: (why) => this.drop3d(why) }); if (r) { this.r3 = r; this.cv.classList.add('on3'); window.__r3d = '3d'; } else this.drop3d('nogl'); }).catch(() => this.drop3d('load'));
+        }
+      }
       this.lastT = [0, 0];
       this.tiv = setInterval(() => { if (!M.on || this.pad.classList.contains('on')) return; const [x, y] = M.tilt(); const v = [Math.round(x * 100) / 100, Math.round(y * 100) / 100]; this.vec = v; const lastT = this.lastT; if (Math.abs(v[0] - lastT[0]) < 0.08 && Math.abs(v[1] - lastT[1]) < 0.08) return; this.lastT = v; api.send({ a: 'mv', x: v[0], y: v[1] }); }, 100);
       this.update(v);
@@ -254,6 +266,11 @@ function arenaGame(kind) {
     draw() {
       const v = this.v; const { W, H, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d');
       if (kind === 'zombie') return this.drawZombie(c, W, H, d, performance.now());
+      if (this.r3) { // 3D: 경기장은 3D로, 2D 캔버스에는 '나' 글자만
+        let p = null; try { p = this.r3.render({ v, vec: this.vec, age: (performance.now() - this.at) / 1000, grid: this.grid, t: performance.now() / 1000 }); } catch (e) { console.error(e); this.drop3d('err'); }
+        c.clearRect(0, 0, W, H); if (p) { c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.font = `900 ${13 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(v.dead ? '💀 나' : '나', p.sx * W, p.sy * H); c.shadowBlur = 0; }
+        return;
+      }
       const sx = W / AW, sy = H / AH;
       c.clearRect(0, 0, W, H);
       S3.paint(c, W, H, kind, performance.now() / 1000); // 게임별 3D 경기장 바닥
@@ -287,7 +304,7 @@ function arenaGame(kind) {
       c.fillText(v.dead ? '💀' : v.z ? '🧟' : '', mx, my);
       c.fillStyle = '#fff'; c.font = `bold ${12 * d}px sans-serif`; c.fillText('나', mx, my - 26 * d);
     },
-    unmount() { stopLoop(this); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); if (kind === 'zombie') this.unmountZombie(); },
+    unmount() { stopLoop(this); this.drop3d?.('end'); clearInterval(this.tiv); this.pad.stop(); document.body.classList.remove('zmode'); if (kind === 'zombie') this.unmountZombie(); },
     ...(kind === 'zombie' ? ZOMBIE : {}),
   };
 }
@@ -310,7 +327,11 @@ G.mugung = {
     this.btn.addEventListener('pointerdown', on); this.btn.addEventListener('pointerup', off); this.btn.addEventListener('pointercancel', off); this.btn.addEventListener('lostpointercapture', off);
     this.btn.addEventListener('contextmenu', (e) => e.preventDefault());
     this.info = h('div', { class: 'ginfo' });
-    root.append(h('div', { class: 'gwrap mg' }, this.ban, this.track, this.info, this.btn));
+    this.cv3 = h('canvas', { class: 'mg3', style: { display: 'none' } }); // 3D 운동장 (준비되면 트랙 대신)
+    root.append(h('div', { class: 'gwrap mg' }, this.ban, this.track, this.cv3, this.info, this.btn));
+    off3d(this, this.cv3, () => import('./mug3d.js').then((m) => m.createMug3D), { color: api.team.color });
+    // 3D를 시도하면 처음부터 자리를 잡아 둠 (불러온 뒤에 생기면 버튼이 밀려 누르던 손가락이 빗나감)
+    if (this.drop3d) { this.cv3.style.display = ''; this.track.style.display = 'none'; this.try3d = true; }
     this.update(v);
     loop(this, () => this.draw());
   },
@@ -329,6 +350,8 @@ G.mugung = {
   },
   draw() {
     const v = this.v; const b = this.ban;
+    if (this.r3) { if (this.cv3.style.display === 'none') { this.cv3.style.display = ''; this.track.style.display = 'none'; } const { W, H } = fitCanvas(this.cv3); const c = this.cv3.getContext('2d'); if (!paint3d(this, c, W, H, { v, holding: this.holding, t: performance.now() / 1000 })) c.clearRect(0, 0, W, H); }
+    else if (this.no3d && this.cv3.style.display !== 'none') { this.cv3.style.display = 'none'; this.track.style.display = ''; } // 3D가 안 되거나 꺼지면 원래 트랙으로
     if (v.ph === 'sing') {
       const k = Math.max(0, Math.min(1, 1 - (v.until - this.api.now()) / (v.dur * 1000)));
       const n = Math.max(1, Math.ceil(k * SONG.length));
@@ -336,7 +359,7 @@ G.mugung = {
     } else if (v.ph === 'turn') { if (b.className !== 'mgban turn') { b.textContent = '😮 돌아본다!'; b.className = 'mgban turn'; } }
     else if (b.className !== 'mgban look') { b.textContent = '👀 멈춰!!'; b.className = 'mgban look'; }
   },
-  unmount() { stopLoop(this); if (this.holding) this.api.send({ a: 'go', on: false }); },
+  unmount() { stopLoop(this); this.drop3d?.('end'); if (this.holding) this.api.send({ a: 'go', on: false }); },
 };
 
 // ================================================================ 단체 줄넘기
@@ -350,6 +373,7 @@ G.rope = {
       api.send({ a: 'j', ts: Math.round(api.now()) }); vibrate(12); this.btn.classList.remove('hit'); void this.btn.offsetWidth; this.btn.classList.add('hit'); this.jumpAt = performance.now();
     });
     root.append(h('div', { class: 'gwrap rope2' }, this.info, this.cv, this.msg, this.btn));
+    off3d(this, this.cv, () => import('./rope3d.js').then((m) => m.createRope3D), { color: api.team.color }); // 3D 운동장 줄넘기 (안 되면 2D)
     this.update(v);
     loop(this, () => this.draw());
   },
@@ -368,6 +392,7 @@ G.rope = {
     let k = b.findIndex((x) => x > now); if (k < 0) k = b.length - 1;
     const prev = k > 0 ? b[k - 1] : b[0] - (this.v.prm.p0); const per = b[k] - prev;
     const ph = Math.max(0, Math.min(1, (now - prev) / per)); // 0: 바닥 → 1: 다음 바닥
+    if (paint3d(this, c, W, H, { ph, jumpAge: this.jumpAt ? (performance.now() - this.jumpAt) / 1000 : 9, t: performance.now() / 1000 })) { const rest = (b[k] - now) / per; this.btn.style.setProperty('--ring', `${Math.max(0, Math.min(1, rest))}`); this.btn.classList.toggle('now', Math.abs(now - b[k]) < this.v.win || Math.abs(now - prev) < this.v.win); return; }
     const ang = ph * Math.PI * 2; const cx = W / 2, top = H * 0.12, floor = H * 0.86;
     // 줄 (위아래로 도는 모양)
     const yMid = top + (floor - top) * (0.5 + 0.5 * Math.cos(ang));
@@ -381,7 +406,7 @@ G.rope = {
     ring.style.setProperty('--ring', `${Math.max(0, Math.min(1, rest))}`);
     ring.classList.toggle('now', Math.abs(now - b[k]) < this.v.win || Math.abs(now - prev) < this.v.win);
   },
-  unmount() { stopLoop(this); },
+  unmount() { stopLoop(this); this.drop3d?.('end'); },
 };
 
 // ================================================================ 불꽃놀이
@@ -401,6 +426,7 @@ G.fire = {
     const wrap = h('div', { class: 'firew' }, this.cv, this.res);
     onPress(wrap, pop);
     root.append(h('div', { class: 'gwrap fire2' }, this.dots, wrap, h('div', { class: 'muted' }, '화면 아무 데나 톡! = 펑!')));
+    this.bl = []; off3d(this, this.cv, () => import('./fire3d.js').then((m) => m.createFire3D)); // 3D 밤 강가 불꽃놀이 (톡은 어디든 그대로)
     this.update(v);
     loop(this, () => this.draw());
   },
@@ -420,13 +446,15 @@ G.fire = {
   },
   burst(x, now) {
     const y = this.rocketY(x, now) ?? 1; const col = `hsl(${x.hue},95%,62%)`;
+    (this.bl ||= []).push({ x: x.x, y: y * 0.8 + 0.08, hue: x.hue, at: performance.now() }); if (this.bl.length > 6) this.bl.shift(); // 3D 화면용 터짐 기록
     for (let i = 0; i < 46; i++) { const a = (i / 46) * Math.PI * 2; const sp = 0.35 + Math.random() * 0.25; this.parts.push({ x: x.x, y: 1 - y * 0.8 - 0.08, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, at: performance.now(), col }); }
     sfx('boom', this.api.sfxOn);
   },
   draw() {
     const { W, H, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d');
-    c.fillStyle = 'rgba(8,10,30,0.35)'; c.fillRect(0, 0, W, H);
     const now = this.api.now(); const R = this.v.R || [];
+    if (this.r3) { const rk = []; for (let i = 0; i < R.length; i++) { const x = R[i]; if (this.mine[i] != null && this.mine[i] !== 'wait') continue; const y = this.rocketY(x, now); if (y != null) rk.push({ x: x.x, y }); } if (paint3d(this, c, W, H, { rockets: rk, bursts: this.bl, t: performance.now() / 1000 })) return; }
+    c.fillStyle = 'rgba(8,10,30,0.35)'; c.fillRect(0, 0, W, H);
     for (let i = 0; i < R.length; i++) {
       const x = R[i]; if (this.mine[i] != null && this.mine[i] !== 'wait') continue;
       const y = this.rocketY(x, now); if (y == null) continue;
@@ -439,7 +467,7 @@ G.fire = {
     for (const p of this.parts) { const k = (t - p.at) / 1000; c.globalAlpha = Math.max(0, 1 - k / 1.4); c.fillStyle = p.col; c.beginPath(); c.arc((p.x + p.vx * k) * W, (p.y + p.vy * k * 0.6 + 0.15 * k * k) * H, 3.5 * d, 0, 7); c.fill(); }
     c.globalAlpha = 1;
   },
-  unmount() { stopLoop(this); },
+  unmount() { stopLoop(this); this.drop3d?.('end'); },
 };
 
 // ================================================================ 과일 베기
@@ -456,6 +484,7 @@ G.fruit = {
     const up = () => { down = false; this.flush(); };
     box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
     root.append(h('div', { class: 'gwrap fruit2' }, box));
+    off3d(this, this.cv, () => import('./fruit3d.js').then((m) => m.createFruit3D)); // 3D 과일 (위에서 똑바로 보는 화면이라 자르는 자리 그대로)
     this.update(v);
     this.iv = setInterval(() => this.flush(), 120);
     loop(this, () => this.draw());
@@ -490,8 +519,18 @@ G.fruit = {
   draw() {
     const { W, H, d } = fitCanvas(this.cv); const c = this.cv.getContext('2d');
     c.clearRect(0, 0, W, H);
-    const sec = this.now(); const hh = H / W;
+    const sec = this.now(); const hh = H / W; this.drawSec = sec; // 점검용: 이 그림의 게임 시각
     c.textAlign = 'center'; c.textBaseline = 'middle';
+    if (this.r3) { // 3D: 과일·자른 조각은 3D, 손가락 궤적만 2D로 위에
+      const items = []; for (const f of this.sched) { if (this.cut.has(f.id)) continue; const [x, y0, dt] = fruitPos(f, sec); if (dt < 0 || dt > fruitLife(f)) continue; items.push({ id: f.id, x, y: y0 / 1.5 * hh, rot: dt * f.spin, f, r: fruitR(f) * 1.1 }); }
+      const tt = performance.now(); this.halves = this.halves.filter((x) => tt - x.at < 700);
+      const hv = this.halves.map((o) => ({ key: o.f.id, f: o.f, x: o.x, y: o.y, k: (tt - o.at) / 700, ang: o.ang, r: fruitR(o.f) * 1.1 }));
+      if (paint3d(this, c, W, H, { items, halves: hv })) {
+        this.trail = this.trail.filter((p) => tt - p[2] < 160);
+        if (this.trail.length > 1) { c.strokeStyle = '#fff'; c.shadowColor = '#9fe8ff'; c.shadowBlur = 12 * d; c.lineWidth = 6 * d; c.lineCap = 'round'; c.beginPath(); this.trail.forEach((p, i) => (i ? c.lineTo(p[0] * W, p[1] * W) : c.moveTo(p[0] * W, p[1] * W))); c.stroke(); c.shadowBlur = 0; }
+        return;
+      }
+    }
     for (const f of this.sched) {
       if (this.cut.has(f.id)) continue;
       const [x, y0, dt] = fruitPos(f, sec); if (dt < 0 || dt > fruitLife(f)) continue;
@@ -512,7 +551,7 @@ G.fruit = {
     this.trail = this.trail.filter((p) => t - p[2] < 160);
     if (this.trail.length > 1) { c.strokeStyle = '#fff'; c.lineWidth = 6 * d; c.lineCap = 'round'; c.beginPath(); this.trail.forEach((p, i) => (i ? c.lineTo(p[0] * W, p[1] * W) : c.moveTo(p[0] * W, p[1] * W))); c.stroke(); }
   },
-  unmount() { stopLoop(this); clearInterval(this.iv); this.flush(); },
+  unmount() { stopLoop(this); this.drop3d?.('end'); clearInterval(this.iv); this.flush(); },
 };
 
 // ================================================================ 골든벨 서바이벌

@@ -307,6 +307,7 @@ canvas.fx { z-index: 60; }
 .hlq { font-size: 64px; font-weight: 900; color: #ffd43b; }
 .hlhist { display: flex; gap: 10px; justify-content: center; } .hlhist span { background: #ffffff18; border-radius: 10px; padding: 6px 14px; font-size: 26px; font-weight: 800; }
 .hdmain { width: 1300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
+.hdmain canvas { width: 1300px; height: 600px; } .hdmain .hdn { font-size: 120px !important; }
 .hdban { text-align: center; font-size: 40px; font-weight: 800; } .hdn { font-size: 260px; font-weight: 900; line-height: 1; color: #ffd43b; text-shadow: 0 10px 40px #ffd43b55; }
 .hdtrickS { font-size: 64px; font-weight: 900; padding: 20px 40px; border-radius: 26px; opacity: 0; transition: opacity .15s; } .hdtrickS.on { opacity: 1; background: #ffd43b; color: #111; animation: npop .3s; }
 .pesb{display:flex;flex-direction:column;gap:12px;flex:1;min-width:280px;max-width:420px;padding:12px}

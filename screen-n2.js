@@ -17,6 +17,85 @@ const THEME = {
   flappy: ['#2c5fc0', '#122150', '🐤', '개'], stairs: ['#4f63c9', '#151a45', '🪜', '칸'], bridge: ['#7a3a5a', '#24122e', '🌉', '칸'], eggs: ['#8a5a2a', '#2a1a0a', '🥚', '개'],
   fishing: ['#0e4d8f', '#05172f', '🎣', '점'], spot: ['#2a2350', '#0c0a22', '🔍', '개'],
 };
+// ---------------------------------------------------------------- 팀별 실시간 연출 (폰 안에서 도는 게임을 대형 화면에서 보이게)
+// 실제 팀 점수(평균)와 점수가 오른 순간(pulse)으로 팀마다 대표 캐릭터 1명이 움직임 — 폰 데이터는 더 받지 않음
+const rr = (c, x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+const ease = (a) => 1 - (1 - a) ** 3;
+function liveScene(id, c, w, h, col, v, age, t) {
+  // age: 마지막 점수 오른 뒤 지난 시간(ms) · t: 시계(초) · 바닥선 gy
+  const gy = h * 0.82, s = Math.min(w, h) * 0.17, hit = age < 900, a = Math.min(1, age / 900);
+  const run = (x, y, k = 1) => figure(c, x, y, s * k, col, { ph: (t * 1.6) % 1 });
+  if (id === 'runner') { // 달리는 선수 + 다가오는 장애물 · 점수 오르면 점프
+    c.fillStyle = '#ffffff22'; for (let i = 0; i < 8; i++) { const x = ((i * w) / 6 - (t * 260) % (w / 6)); c.fillRect(x, gy + 6, w / 14, 4); }
+    const ox = w - ((t * 260) % (w * 1.2)); c.fillStyle = '#ff6b6b'; rr(c, ox, gy - s * 0.7, s * 0.35, s * 0.7, 6); c.fill();
+    figure(c, w * 0.3, gy, s, col, { ph: (t * 2.2) % 1, air: hit ? Math.sin(a * Math.PI) : 0 });
+  } else if (id === 'flappy') { // 파이프 사이를 나는 새 · 점수 오르면 날갯짓
+    for (let i = 0; i < 3; i++) { const x = w - ((t * 140 + i * w / 2.6) % (w * 1.15)); const gap = h * (0.3 + 0.18 * Math.sin(i * 2.3 + Math.floor((t * 140 + i * w / 2.6) / (w * 1.15)))); c.fillStyle = '#3fbf5f'; c.fillRect(x, 0, s * 0.6, gap - s * 0.7); c.fillRect(x, gap + s * 0.7, s * 0.6, h); }
+    const by = h * 0.45 + Math.sin(t * 3) * s * 0.4 - (hit ? (1 - a) * s * 0.6 : 0); const bx = w * 0.3;
+    c.fillStyle = col; c.beginPath(); c.ellipse(bx, by, s * 0.42, s * 0.34, 0, 0, 7); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.arc(bx + s * 0.18, by - s * 0.1, s * 0.1, 0, 7); c.fill(); c.fillStyle = '#111'; c.beginPath(); c.arc(bx + s * 0.21, by - s * 0.1, s * 0.05, 0, 7); c.fill();
+    c.fillStyle = '#ffb02e'; c.beginPath(); c.moveTo(bx + s * 0.38, by); c.lineTo(bx + s * 0.62, by + s * 0.06); c.lineTo(bx + s * 0.38, by + s * 0.14); c.fill();
+    c.fillStyle = '#ffffffcc'; c.beginPath(); c.ellipse(bx - s * 0.12, by + s * 0.04, s * 0.22, s * (hit ? 0.04 + 0.16 * Math.abs(Math.sin(t * 20)) : 0.1), -0.3, 0, 7); c.fill();
+  } else if (id === 'stairs') { // 계단을 오르는 선수 (점수만큼 올라감)
+    const n = 7, sw = w / (n + 1), sh = h * 0.09; const step = Math.floor(v) % n;
+    for (let i = 0; i < n; i++) { c.fillStyle = i % 2 ? '#ffffff30' : '#ffffff20'; c.fillRect(i * sw + sw * 0.3, gy - i * sh, sw, h); }
+    const k = hit ? ease(a) : 1; const i0 = Math.max(0, step - 1); const x = (i0 + (step - i0) * k) * sw + sw * 0.8, y = gy - (i0 + (step - i0) * k) * sh;
+    figure(c, x, y, s * 0.9, col, { ph: hit ? (t * 3) % 1 : 0, air: hit ? Math.sin(a * Math.PI) * 0.5 : 0 });
+  } else if (id === 'bridge') { // 유리 징검다리를 건너뛰는 선수
+    const n = 6, tw = w / n; for (let i = 0; i < n; i++) { c.fillStyle = '#9fe6ff55'; rr(c, i * tw + tw * 0.12, gy - 4, tw * 0.76, 12, 4); c.fill(); c.strokeStyle = '#d8f6ff'; c.lineWidth = 2; c.stroke(); }
+    c.fillStyle = '#00000044'; c.fillRect(0, gy + 14, w, h);
+    const p = Math.floor(v) % (n - 1); const k = hit ? ease(a) : 1; const x = (Math.max(0, p - 1) + (p - Math.max(0, p - 1)) * k) * tw + tw / 2;
+    figure(c, x, gy - 4, s * 0.9, col, { air: hit ? Math.sin(a * Math.PI) : 0, arms: hit ? 0.8 : 0.1 });
+  } else if (id === 'fishing') { // 물 위 찌 · 점수 오르면 물고기가 튀어 오름
+    c.fillStyle = '#1e6fb8aa'; c.fillRect(0, h * 0.55, w, h); c.strokeStyle = '#bfe6ff66'; c.lineWidth = 2; c.beginPath(); for (let x = 0; x <= w; x += 12) c.lineTo(x, h * 0.55 + Math.sin(x / 30 + t * 2) * 3); c.stroke();
+    figure(c, w * 0.18, h * 0.55, s * 0.9, col, { arms: hit ? 1 : 0.4 });
+    const fx = w * 0.62, fy = h * 0.55 + Math.sin(t * 3) * 3 + (hit ? 0 : Math.max(0, Math.sin(t * 5)) * 4);
+    c.strokeStyle = '#ffffffaa'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(w * 0.18 + s * 0.3, h * 0.55 - s * 1.5); c.quadraticCurveTo(w * 0.45, h * 0.15, fx, fy); c.stroke();
+    c.fillStyle = '#ff4d4d'; c.beginPath(); c.arc(fx, fy, 6, Math.PI, 0); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.arc(fx, fy, 6, 0, Math.PI); c.fill();
+    if (hit) { const yy = h * 0.55 - Math.sin(a * Math.PI) * h * 0.35; c.save(); c.translate(fx + (a - 0.5) * s, yy); c.rotate(-0.6 + a * 1.2); c.fillStyle = '#ffd43b'; c.beginPath(); c.ellipse(0, 0, s * 0.45, s * 0.2, 0, 0, 7); c.fill(); c.beginPath(); c.moveTo(-s * 0.4, 0); c.lineTo(-s * 0.65, -s * 0.18); c.lineTo(-s * 0.65, s * 0.18); c.fill(); c.restore(); }
+  } else if (id === 'eggs') { // 바구니로 떨어지는 달걀 받기
+    const bx = w * 0.5 + Math.sin(t * 1.7) * w * 0.3; c.fillStyle = '#c98a4b'; rr(c, bx - s * 0.6, gy - s * 0.45, s * 1.2, s * 0.45, 8); c.fill(); c.fillStyle = '#8a5a2a'; c.fillRect(bx - s * 0.6, gy - s * 0.3, s * 1.2, 4);
+    for (let i = 0; i < 3; i++) { const p = (t * 0.5 + i / 3) % 1; const ex = w * (0.2 + 0.3 * i) + Math.sin(i * 4) * 20; c.fillStyle = i === 1 ? '#ffd43b' : '#fff6e6'; c.beginPath(); c.ellipse(ex, p * gy, s * 0.16, s * 0.21, 0, 0, 7); c.fill(); }
+    if (hit) { c.fillStyle = `rgba(255,212,59,${1 - a})`; c.font = `900 ${s * 0.5}px sans-serif`; c.textAlign = 'center'; c.fillText('+1', bx, gy - s * 0.8 - a * s); }
+  } else if (id === 'tuho' || id === 'basket') { // 던진 화살/공이 항아리·골대로 쏙
+    const tx = w * 0.72, ty = id === 'tuho' ? gy - s * 0.6 : h * 0.35;
+    if (id === 'tuho') { c.fillStyle = '#7a4a2a'; c.beginPath(); c.ellipse(tx, gy - s * 0.3, s * 0.45, s * 0.6, 0, 0, 7); c.fill(); c.fillStyle = '#2a1608'; c.beginPath(); c.ellipse(tx, ty, s * 0.22, s * 0.08, 0, 0, 7); c.fill(); }
+    else { c.fillStyle = '#ffffffcc'; c.fillRect(tx + s * 0.3, ty - s * 0.9, 6, h); c.fillStyle = '#ffffffdd'; c.fillRect(tx - s * 0.1, ty - s * 0.9, s * 0.5, s * 0.6); c.strokeStyle = '#ff6b35'; c.lineWidth = 4; c.beginPath(); c.ellipse(tx, ty, s * 0.35, s * 0.08, 0, 0, 7); c.stroke(); }
+    figure(c, w * 0.18, gy, s, col, { arms: hit && a < 0.25 ? 1 : 0.2 });
+    const p = hit ? a : (t * 0.6) % 1; const sx = w * 0.2, sy = gy - s * 1.5; const x = sx + (tx - sx) * p, y = sy + (ty - sy) * p - Math.sin(p * Math.PI) * h * 0.35;
+    if (id === 'tuho') { c.save(); c.translate(x, y); c.rotate(Math.atan2((ty - sy) - Math.cos(p * Math.PI) * h * 0.35 * Math.PI, tx - sx)); c.strokeStyle = '#f2e6c9'; c.lineWidth = 3; c.beginPath(); c.moveTo(-s * 0.4, 0); c.lineTo(s * 0.2, 0); c.stroke(); c.fillStyle = col; c.beginPath(); c.moveTo(s * 0.3, 0); c.lineTo(s * 0.15, -5); c.lineTo(s * 0.15, 5); c.fill(); c.restore(); }
+    else { c.fillStyle = '#ff8a3d'; c.beginPath(); c.arc(x, y, s * 0.2, 0, 7); c.fill(); c.strokeStyle = '#7a3410'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x - s * 0.2, y); c.lineTo(x + s * 0.2, y); c.stroke(); }
+    if (!hit) c.globalAlpha = 1;
+  } else if (id === 'dalgona') { // 달고나 모양을 바늘로 따라 긁음 (점수만큼 선이 이어짐)
+    const cx = w * 0.5, cy = h * 0.52, R = Math.min(w, h) * 0.32; c.fillStyle = '#d99a3e'; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill(); c.fillStyle = '#e8b25a55'; c.beginPath(); c.arc(cx - R * 0.2, cy - R * 0.2, R * 0.6, 0, 7); c.fill();
+    const N = 5, pts = Array.from({ length: N * 2 }, (_, i) => { const r = i % 2 ? R * 0.28 : R * 0.62, an = -Math.PI / 2 + (i * Math.PI) / N; return [cx + Math.cos(an) * r, cy + Math.sin(an) * r]; });
+    c.strokeStyle = '#7a4a1a'; c.lineWidth = 3; c.setLineDash([6, 6]); c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.stroke(); c.setLineDash([]);
+    const prog = ((t * 0.12) % 1); const m = prog * pts.length; c.strokeStyle = '#fff7e0'; c.lineWidth = 5; c.beginPath(); c.moveTo(...pts[0]); let px = pts[0][0], py = pts[0][1];
+    for (let i = 1; i <= m; i++) { const q = pts[i % pts.length]; c.lineTo(...q); px = q[0]; py = q[1]; } const f = m % 1, q0 = pts[Math.floor(m) % pts.length], q1 = pts[(Math.floor(m) + 1) % pts.length]; px = q0[0] + (q1[0] - q0[0]) * f; py = q0[1] + (q1[1] - q0[1]) * f; c.lineTo(px, py); c.stroke();
+    c.strokeStyle = '#d8dde8'; c.lineWidth = 3; c.beginPath(); c.moveTo(px, py); c.lineTo(px + s * 0.5, py - s * 0.6); c.stroke();
+    if (hit) { c.strokeStyle = `rgba(255,212,59,${1 - a})`; c.lineWidth = 6; c.beginPath(); c.arc(cx, cy, R * (1 + a * 0.3), 0, 7); c.stroke(); }
+  } else if (id === 'spot') { // 두 그림을 번갈아 보며 다른 곳에 동그라미
+    const pw = w * 0.4, ph = h * 0.55, y = h * 0.2; for (const x of [w * 0.06, w * 0.54]) { c.fillStyle = '#f4efe2'; rr(c, x, y, pw, ph, 8); c.fill(); c.fillStyle = '#7fc8f8'; c.fillRect(x + 6, y + 6, pw - 12, ph * 0.45); c.fillStyle = '#5fae4a'; c.fillRect(x + 6, y + ph * 0.5, pw - 12, ph * 0.5 - 6); c.fillStyle = '#ffd43b'; c.beginPath(); c.arc(x + pw * 0.75, y + ph * 0.22, ph * 0.1, 0, 7); c.fill(); c.fillStyle = '#c0392b'; c.fillRect(x + pw * 0.25, y + ph * 0.4, pw * 0.2, ph * 0.25); }
+    const mx = w * 0.54 + pw * 0.75, my = y + ph * 0.22; c.strokeStyle = col; c.lineWidth = 5; c.beginPath(); c.arc(mx, my, ph * 0.16 * (hit ? 1 + (1 - a) * 0.5 : 1), 0, 7 * (hit ? ease(a) : 1)); c.stroke();
+    const lx = w * 0.5 + Math.sin(t * 1.3) * w * 0.35; c.strokeStyle = '#ffffffcc'; c.lineWidth = 4; c.beginPath(); c.arc(lx, h * 0.48, s * 0.3, 0, 7); c.moveTo(lx + s * 0.21, h * 0.48 + s * 0.21); c.lineTo(lx + s * 0.45, h * 0.48 + s * 0.45); c.stroke();
+  } else run(w * 0.4, gy);
+}
+function liveGrid(c, W, H, ctx, id, get, unit, t, scene = liveScene) {
+  // 팀 수에 맞춰 칸 나누기 (2팀 1줄 · 4팀 2×2 · 6팀 3×2 · 그 이상 4열)
+  const teams = ctx.teams, n = teams.length; const cols = n <= 2 ? n : n <= 4 ? 2 : n <= 6 ? 3 : 4, rows = Math.ceil(n / cols); const gap = 14;
+  const cw = (W - gap * (cols + 1)) / cols, ch = (H - gap * (rows + 1)) / rows;
+  const vv = new Map(teams.map((tm) => [tm.id, Math.round(get(tm).v)])); const rank = new Map(teams.map((tm) => [tm.id, 1 + teams.filter((o) => vv.get(o.id) > vv.get(tm.id)).length])); // 같은 점수면 같은 순위
+  teams.forEach((tm, i) => {
+    const x = gap + (i % cols) * (cw + gap), y = gap + Math.floor(i / cols) * (ch + gap); const { v, age } = get(tm);
+    c.save(); rr(c, x, y, cw, ch, 18); c.clip();
+    const g = c.createLinearGradient(0, y, 0, y + ch); g.addColorStop(0, '#0b1030cc'); g.addColorStop(1, tm.color + '33'); c.fillStyle = g; c.fillRect(x, y, cw, ch);
+    c.translate(x, y + ch * 0.18); try { scene === liveScene ? liveScene(id, c, cw, ch * 0.82, tm.color, v, age, t / 1000) : scene(c, cw, ch * 0.82, tm.color, v, age, t / 1000); } catch { /* */ } c.restore();
+    c.save(); rr(c, x, y, cw, ch, 18); c.lineWidth = age < 600 ? 6 : 3; c.strokeStyle = age < 600 ? '#ffd43b' : tm.color + 'aa'; c.stroke(); c.restore();
+    const fs = Math.max(18, Math.min(40, ch * 0.11)); c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#fff'; c.font = `900 ${fs}px sans-serif`;
+    c.fillText(`${rank.get(tm.id)}위  ${tm.icon} ${tm.name}`, x + 16, y + fs * 0.9);
+    c.textAlign = 'right'; c.font = `900 ${fs * 1.5}px sans-serif`; c.fillStyle = age < 600 ? '#ffd43b' : '#fff'; c.fillText(`${Math.round(v)}${unit}`, x + cw - 16, y + fs * 1.05);
+  });
+}
+
 function skillScreen(id) {
   const [c1, c2, ic, unit] = THEME[id];
   return {
@@ -35,23 +114,9 @@ function skillScreen(id) {
       return avg;
     },
     draw(t) {
-      const c = this.cv.getContext('2d'); const W = 1300, H = 880; P3(c, W, H, id, 0.42); // 게임 장면 위에 팀 진행판 (글자가 잘 보이게 살짝 어둡게)
-      c.fillStyle = '#ffffff06'; for (let i = 0; i < 14; i++) { const x = ((i * 137 + t * 0.02 * (i % 3 + 1)) % (W + 200)) - 100; c.beginPath(); c.arc(x, (i * 211) % H, 40 + (i % 4) * 20, 0, 7); c.fill(); }
-      const teams = this.ctx.teams; const lh = Math.min(140, (H - 40) / teams.length); const y0 = (H - lh * teams.length) / 2;
-      const x0 = 70, x1 = W - 170;
-      teams.forEach((tm, i) => {
-        const y = y0 + i * lh; const v = this.vals[tm.id] || 0; this.shown[tm.id] = (this.shown[tm.id] ?? 0) + (v - (this.shown[tm.id] ?? 0)) * 0.08; const sv = this.shown[tm.id];
-        c.fillStyle = i % 2 ? '#ffffff08' : '#ffffff10'; c.fillRect(0, y, W, lh - 6);
-        const k = Math.min(1, sv / (this.max * 1.05)); const X = x0 + (x1 - x0) * k;
-        const grd = c.createLinearGradient(x0, 0, X, 0); grd.addColorStop(0, tm.color + '00'); grd.addColorStop(1, tm.color + 'aa'); c.fillStyle = grd; c.fillRect(x0, y + lh * 0.3, X - x0, lh * 0.34);
-        const moving = performance.now() - (this.pulse[tm.id] || 0) < 1200;
-        figure(c, X, y + lh * 0.8, lh * 0.32, tm.color, { ph: moving ? (t / 380) % 1 : 0, arms: moving ? 0 : 0.2 });
-        c.font = `${lh * 0.32}px sans-serif`; c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#fff'; c.fillText(tm.icon, 16, y + lh * 0.45);
-        c.font = `800 ${Math.min(26, lh * 0.2)}px sans-serif`; c.fillText(tm.name, x0, y + lh * 0.16);
-        c.textAlign = 'right'; c.font = `900 ${Math.min(52, lh * 0.38)}px sans-serif`; c.fillText(`${Math.round(sv)}`, W - 30, y + lh * 0.42);
-        c.font = `700 ${Math.min(20, lh * 0.15)}px sans-serif`; c.fillStyle = '#ffffffaa'; c.fillText(`팀 평균 ${unit}`, W - 30, y + lh * 0.75);
-      });
-      c.textAlign = 'left'; c.globalAlpha = 0.1; c.font = '260px sans-serif'; c.fillText(ic, W - 360, H - 140); c.globalAlpha = 1;
+      const c = this.cv.getContext('2d'); const W = 1300, H = 880; P3(c, W, H, id, 0.35); // 게임 장면 위에 팀별 실시간 연출
+      const now = performance.now();
+      liveGrid(c, W, H, this.ctx, id, (tm) => { const v = this.vals[tm.id] || 0; this.shown[tm.id] = (this.shown[tm.id] ?? 0) + (v - (this.shown[tm.id] ?? 0)) * 0.08; return { v: this.shown[tm.id], age: now - (this.pulse[tm.id] || -1e9) }; }, unit, t);
     },
     unmount() { stop(this); },
   };
@@ -199,11 +264,27 @@ V.hilo = roundScreen('hilo');
 
 // ---------------------------------------------------------------- 손 떼면 탈락
 V.hold = {
-  mount(root, ctx) { this.ctx = ctx; this.seen = new Set(); this.ban = h('div', { class: 'hdban' }); this.trick = h('div', { class: 'hdtrickS' }); this.panel = teamPanel(ctx, '팀별 버티는 사람'); this.feed = feed(); root.append(h('div', { class: 'nar' }, h('div', { class: 'hdmain' }, this.ban, this.trick), h('div', { class: 'nside' }, this.panel, this.feed))); },
+  mount(root, ctx) {
+    this.ctx = ctx; this.seen = new Set(); this.alive = {}; this.outAt = {}; this.ban = h('div', { class: 'hdban' }); this.trick = h('div', { class: 'hdtrickS' }); this.panel = teamPanel(ctx, '팀별 버티는 사람'); this.feed = feed();
+    this.cv = canvas(1300, 600); // 팀별 실시간 연출: 버튼을 꾹 누르고 버티는 선수들 (손 뗀 사람은 쓰러짐)
+    root.append(h('div', { class: 'nar' }, h('div', { class: 'hdmain' }, this.ban, this.cv, this.trick), h('div', { class: 'nside' }, this.panel, this.feed))); loop(this, (t) => this.draw(t));
+  },
+  draw(t) {
+    const c = this.cv.getContext('2d'); const W = 1300, H = 600; c.clearRect(0, 0, W, H); const now = performance.now();
+    liveGrid(c, W, H, this.ctx, 'hold', (tm) => ({ v: this.alive[tm.id] || 0, age: now - (this.outAt[tm.id] || -1e9) }), '명', t, (c2, w, h2, col, v, age, tt) => {
+      const n = Math.min(8, Math.round(v)); const gy = h2 * 0.85, s = Math.min(w / 9, h2 * 0.28); const glow = 0.5 + 0.5 * Math.sin(tt * 4);
+      c2.fillStyle = `rgba(255,212,59,${0.25 + glow * 0.35})`; c2.beginPath(); c2.ellipse(w / 2, gy + 4, w * 0.42, 10, 0, 0, 7); c2.fill();
+      for (let i = 0; i < n; i++) { const x = w * (0.5 + (i - (n - 1) / 2) * (0.84 / Math.max(n, 4))); figure(c2, x, gy, s, col, { arms: 0.15 + 0.05 * Math.sin(tt * 6 + i) }); }
+      if (age < 1200) { const a = age / 1200; c2.save(); c2.globalAlpha = 1 - a; c2.translate(w * 0.85, gy); c2.rotate(-a * 1.4); figure(c2, 0, 0, s, '#888', {}); c2.restore(); }
+      if (v > 8) { c2.fillStyle = '#fff'; c2.font = `900 ${s * 0.5}px sans-serif`; c2.textAlign = 'right'; c2.fillText(`+${Math.round(v) - 8}`, w - 10, gy - s * 1.6); }
+    });
+  },
+  unmount() { stop(this); },
   update(s) {
     this.ban.innerHTML = `<div class="hdn">${s.aliveN}</div><div>명이 버티는 중 · ${Math.floor(s.T)}초</div>`;
     if (s.trick !== this.lt) { this.lt = s.trick; this.trick.textContent = s.trick || ''; this.trick.classList.toggle('on', !!s.trick); if (s.trick) this.ctx.sfx('hurry'); }
     for (const [n, tm] of s.out || []) { const k = n + tm; if (this.seen.has(k)) continue; this.seen.add(k); this.feed.push(h('div', { class: 'nfi' }, h('b', { style: { color: this.ctx.team(tm).color } }, n), ' 손을 뗐다!')); this.ctx.sfx('bad'); }
+    for (const [k, n] of Object.entries(s.alive || {})) { if (this.alive[k] != null && n < this.alive[k]) this.outAt[k] = performance.now(); this.alive[k] = n; }
     this.panel.set(s.alive); return s.alive;
   },
 };

@@ -157,7 +157,10 @@ function groundSide(c, W, H, gy, th, tn, r) {
 
 // ---------------- 정적인 층 캐시 ----------------
 const cache = new Map();
-function staticLayer(W, H, id, sc, tn) {
+// 배경 그림은 최대 약 50만 화소로만 그려서 늘려 붙임 (폰 메모리 아낌 — 큰 캔버스를 여러 장 쥐고 있으면 안드로이드에서 화면이 하얗게/까맣게 비는 문제)
+const MAXPX = 1300000; // 대형 화면처럼 아주 큰 캔버스만 줄여서 그림 (폰 화면 크기는 그대로 → 늘려 붙이는 비용 없음)
+function staticLayer(W0, H0, id, sc, tn) {
+  const k = Math.min(1, Math.sqrt(MAXPX / Math.max(1, W0 * H0))); const W = Math.max(2, Math.round(W0 * k)), H = Math.max(2, Math.round(H0 * k));
   const key = `${id}|${sc.t}|${W}x${H}|${tn}`; if (cache.has(key)) { const v = cache.get(key); cache.delete(key); cache.set(key, v); return v; }
   const th = T[sc.t] || T.arcade; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
   const r = rnd(id.length * 977 + sc.t.length * 31);
@@ -173,7 +176,7 @@ function staticLayer(W, H, id, sc, tn) {
     glow(c, W / 2, -H * 0.1, H * 0.9, th.light, 0.12);
     const v = c.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.35, W / 2, H * 0.55, Math.max(W, H) * 0.8); v.addColorStop(0, '#00000000'); v.addColorStop(1, tn === 'kid' ? '#00000044' : '#00000099'); c.fillStyle = v; c.fillRect(0, 0, W, H);
   } else floorTop(c, W, H, th, tn, r);
-  cache.set(key, cv); while (cache.size > 6) cache.delete(cache.keys().next().value); // 메모리: 최근 6장만
+  cv.addEventListener?.('contextlost', () => cache.delete(key)); /* 폰이 그림 메모리를 비우면 다음에 다시 그림 */ cache.set(key, cv); while (cache.size > 4) { const old = cache.keys().next().value; const oc = cache.get(old); cache.delete(old); oc.width = oc.height = 0; } // 메모리: 최근 4장만, 버린 그림은 바로 비움
   return cv;
 }
 
@@ -200,8 +203,9 @@ function motion(c, W, H, id, sc, t) {
 export function paint(c, W, H, id, t = performance.now() / 1000, opts = {}) {
   measure(performance.now());
   const sc = sceneOf(id, opts.pe); const tn = opts.tone || 'base';
-  c.drawImage(staticLayer(W, H, id, sc, tn), 0, 0);
-  if (Q === 'high') motion(c, W, H, id, sc, t);
+  // 화면이 아직 0 크기(창 안 작은 화면·전환 중)이거나 그리다 오류가 나도 게임 그리기는 절대 멈추지 않게: 배경만 건너뜀
+  if (!(W >= 2 && H >= 2)) return sc;
+  try { const L = staticLayer(W, H, id, sc, tn); if (L.width === W && L.height === H) c.drawImage(L, 0, 0); else c.drawImage(L, 0, 0, W, H); if (Q === 'high') motion(c, W, H, id, sc, t); } catch { try { c.fillStyle = '#10142e'; c.fillRect(0, 0, W, H); } catch { /* */ } }
   return sc;
 }
 // 화면 뒤에 까는 배경 캔버스 (안내·결과 화면용): 크기에 맞춰 그림. 움직임은 화질 '높음'에서만, 초당 30번까지
@@ -210,7 +214,7 @@ export function backdrop(cv, id, opts = {}) {
     raf = requestAnimationFrame(draw); measure(now); /* 매 프레임 잼 (30fps 제한 전에) */ if (now - lastT < 33) return; lastT = now;
     const r = cv.getBoundingClientRect(); const d = Math.min(1.5, devicePixelRatio || 1) * (Q === 'low' ? 0.6 : 1); const W = Math.max(2, Math.round(r.width * d)), H = Math.max(2, Math.round(r.height * d));
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-    const c = cv.getContext('2d'); paint(c, W, H, id, now / 1000, opts);
+    const c = cv.getContext('2d'); try { paint(c, W, H, id, now / 1000, opts); } catch { /* 배경 오류는 무시 */ }
     if (Q === 'low' || opts.still) { cancelAnimationFrame(raf); raf = 0; } // 가벼움·게임 중: 한 번만 그리고 멈춤 (게임 화면이 덮으므로)
   };
   raf = requestAnimationFrame(draw);
@@ -220,3 +224,4 @@ export const toneOf = (mode) => (['baby', 'kid'].includes(mode) ? 'kid' : ['high
 // 게임 고르기 화면용 작은 장면 그림 (한 번 그려서 그림 주소로)
 const thumbs = new Map();
 export function thumb(id, pe, w = 240, h = 135) { const k = `${id}|${w}`; if (thumbs.has(k)) return thumbs.get(k); const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const c = cv.getContext('2d'); c.drawImage(staticLayer(w, h, id, sceneOf(id, pe), 'base'), 0, 0); const u = cv.toDataURL('image/jpeg', 0.8); thumbs.set(k, u); return u; }
+export const memInfo = () => [...cache.values()].reduce((a, c) => a + c.width * c.height, 0); // 점검용: 배경 그림이 쥔 화소 수

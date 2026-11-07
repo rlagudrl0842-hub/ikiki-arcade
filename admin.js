@@ -667,6 +667,7 @@ const lvSelect = (v = 'normal') => select({ easy: '🟢 쉬움', normal: '🟡 �
 function tabPrep(body) {
   const locked = busyPh(); const played = S.standings.played > 0;
   const pl = S.playlist.map((p) => ({ ...p }));
+  const hasPE = pl.some((p) => games.find((g) => g.id === p.game)?.dev === 'none'); // 폰 없는 체육 게임이 있을 때만 '장소'를 보여 줌
   // 1) 행사 종류
   const mode = select({ baby: '영아 (보호자와 함께)', kid: '유아 (만 3~7세)', elem: '초등', mid: '중등', high: '고등', adult: '성인', mixed: '전 연령 혼합' }, S.settings.mode);
   mode.onchange = () => save({ settings: { mode: mode.value } }).then(() => toast('연령 모드를 바꿨어요'));
@@ -687,7 +688,7 @@ function tabPrep(body) {
   const F = pickF; const lvNow = LVMAP[S.settings.mode] ?? 2;
   const fAge = select({ all: '모든 연령', now: `지금 연령(${PE_AGE[lvNow]})에 맞는 것`, 0: '영아', 1: '유아', 2: '초등', 3: '중등', 4: '고등', 5: '성인' }, F.age);
   const fSpace = select({ all: '교실·체육관', class: '🏫 교실 가능', gym: '🏟️ 체육관' }, F.space);
-  const fType = select({ all: '모든 유형', phone: '📱 휴대폰 게임', pe: '🙌 폰 없는 체육 전체', ...Object.fromEntries(Object.entries(PE_TYPE).map(([k, v]) => [k, `🙌 ${v}`])) }, F.type);
+  const fType = select({ all: '모든 게임', phone: '📱 휴대폰 게임', pe: '🙌 폰 없는 체육 전체', ...Object.fromEntries(Object.entries(PE_TYPE).map(([k, v]) => [k, `🙌 ${v}`])) }, F.type);
   const fTime = select({ all: '모든 시간', s: '2분 이하', m: '2~3분', l: '3분 넘게' }, F.time);
   const fQ = h('input', { class: 'inp sm gsearch', placeholder: '🔍 게임 검색', value: F.q });
   const fFav = h('button', { class: `btn small ${F.fav ? 'yellow' : 'ghost'}`, onclick: () => { F.fav = !F.fav; formDirty = false; drawTab(); } }, F.fav ? '★ 즐겨찾기만' : '☆ 즐겨찾기');
@@ -721,7 +722,8 @@ function tabPrep(body) {
   const cnt = h('span', { class: 'muted small' });
   for (const [el, k] of [[fAge, 'age'], [fSpace, 'space'], [fType, 'type'], [fTime, 'time']]) el.onchange = () => { F[k] = el.value; paintGrid(); };
   fQ.oninput = () => { F.q = fQ.value; paintGrid(); };
-  const filters = h('div', { class: 'row wrap gfilt' }, fAge, fSpace, fType, fTime, fQ, fFav, cnt, h('button', { class: 'btn small blue', onclick: () => recommendModal() }, '🪄 추천 구성'));
+  const moreBtn = h('button', { class: 'btn small ghost', onclick: () => { F.more = !F.more; if (!F.more) { F.age = 'now'; F.space = 'all'; F.time = 'all'; } formDirty = false; drawTab(); } }, F.more ? '필터 접기' : '필터 더보기');
+  const filters = h('div', { class: 'row wrap gfilt' }, fType, fQ, fFav, ...(F.more ? [fAge, fSpace, fTime] : []), moreBtn, cnt, h('button', { class: 'btn small blue', onclick: () => recommendModal() }, '🪄 추천 구성'));
   paintGrid();
   // 4) 예상 시간
   const est = estSec(pl);
@@ -729,7 +731,7 @@ function tabPrep(body) {
   const lv = lvSelect();
   const soloBtn = h('button', { class: 'btn blue', disabled: !pl.length, onclick: () => soloStart(pl.map((p) => p.game), 'vs', lv.value) }, '🎮 혼자 테스트하기');
   body.append(h('div', { class: 'prep' },
-    h('div', { class: 'card stack' }, h('h3', {}, '1. 행사 종류'), h('div', { class: 'grid2' }, field('연령 모드', mode), field('장소', spaceSel, '교실은 뛰기·점프를 제자리 동작으로 바꿔요')), S.settings.mode === 'elem' ? field('초등 난이도', elemSel) : null, h('div', { class: 'muted small' }, '빠른 구성 (누르면 게임 순서가 바뀌어요)'), presets),
+    h('div', { class: 'card stack' }, h('h3', {}, '1. 행사 종류'), h('div', { class: 'grid2' }, field('연령 모드', mode), hasPE ? field('장소 (폰 없는 체육 게임만 해당)', spaceSel, '교실은 뛰기·점프를 제자리 동작으로 바꿔요') : null), S.settings.mode === 'elem' ? field('초등 난이도', elemSel) : null, h('div', { class: 'muted small' }, '빠른 구성 (누르면 게임 순서가 바뀌어요)'), presets),
     h('div', { class: 'card stack' }, h('h3', {}, '2. 팀 설정'), h('div', { class: 'grid2' }, field('팀 수', teamCount, played ? '점수가 생긴 뒤에는 바꿀 수 없어요' : null), field('팀 정하기', assign)), teamChips),
     h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('h3', {}, `3. 게임 선택 (${pl.length}개)`), h('span', { class: 'saveind muted small' }), h('button', { class: 'btn small ghost', onclick: () => goTab('playlist') }, '순서·시간·배점 → ② 게임 순서')),
       locked ? h('p', { class: 'err' }, '게임 중에는 바꿀 수 없어요') : null,

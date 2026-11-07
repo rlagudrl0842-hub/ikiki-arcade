@@ -3,6 +3,7 @@
 import { h, sfx, vibrate } from './client.js';
 import { G } from './play-games.js';
 import * as S3 from './scene3d.js';
+import { off3d, paint3d } from './x3d.js'; // 탑 쌓기 3D (화면 배치는 그대로)
 import { balloonCfg, balloonWave, balloonTarget, BALLOON_COLORS, bossCfg, bossCell } from './gen2.js';
 
 const press = (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; };
@@ -20,6 +21,7 @@ G.balloon = {
     const box = h('div', { class: 'gwrap blw' }, this.top, this.cv, this.info);
     root.append(box);
     press(this.cv, (e) => this.tap(e));
+    off3d(this, this.cv, () => import('./ball3d.js').then((m) => m.createBall3D)); // 3D 풍선 (위에서 똑바로 보는 화면이라 누르는 자리 그대로)
     this.update(v); loop(this, () => this.draw());
   },
   sec() { return this.v.t0 ? (this.api.now() - this.v.t0) / 1000 : -1; },
@@ -50,6 +52,15 @@ G.balloon = {
   },
   draw() {
     const [W, H, d] = fit(this.cv); const c = this.cv.getContext('2d'); const s = this.sec();
+    if (this.r3) { // 3D 풍선 + 2D로는 터지는 효과·점수 글자만
+      const list = s < 0 ? [] : this.live(s).map((b) => { const [x, y] = this.pos(b, s); return { id: b.id, c: b.c, x, y, sw: b.sw }; });
+      if (s >= 0 && (this._p = (this._p || 0) + 1) % 15 === 0) this.paint();
+      if (paint3d(this, c, W, H, { list, R: 0.085, t: performance.now() / 1000 })) {
+        const R = W * 0.085; const now = performance.now(); this.fx = this.fx.filter((f) => now - f.at < 500);
+        for (const f of this.fx) { const k = (now - f.at) / 500; c.strokeStyle = f.c; c.globalAlpha = 1 - k; c.lineWidth = 4 * d; for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.28; c.beginPath(); c.moveTo(f.x * W + Math.cos(a) * R * (0.4 + k), f.y * H + Math.sin(a) * R * (0.4 + k)); c.lineTo(f.x * W + Math.cos(a) * R * (0.8 + k * 1.5), f.y * H + Math.sin(a) * R * (0.8 + k * 1.5)); c.stroke(); } if (f.txt) { c.fillStyle = f.ok ? '#2fd27a' : '#ff4d6d'; c.font = `900 ${26 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(f.txt, f.x * W, f.y * H - k * 40 * d); } c.globalAlpha = 1; }
+        return;
+      }
+    }
     S3.paint(c, W, H, 'balloon', performance.now() / 1000); // 하늘 3D 배경
     if (s < 0) return;
     if ((this._p = (this._p || 0) + 1) % 15 === 0) this.paint();
@@ -71,7 +82,7 @@ G.balloon = {
     if (r.c != null) this.v = { ...this.v, combo: r.c };
     this.paint();
   },
-  unmount() { this.dead = true; cancelAnimationFrame(this.raf); },
+  unmount() { this.drop3d?.('end'); this.dead = true; cancelAnimationFrame(this.raf); },
 };
 
 // ---------------------------------------------------------------- 폭탄 패스
@@ -153,6 +164,7 @@ G.towerup = {
     press(this.btn, () => this.drop()); press(this.cv, () => this.drop());
     root.append(h('div', { class: 'gwrap tww', style: { '--tc': api.team.color } }, this.hd, this.cv, this.btn, this.wait, this.me));
     this.blocks = []; this.update(v); loop(this, () => this.draw());
+    off3d(this, this.cv, () => import('./tower3d.js').then((m) => m.createTower3D), { color: api.team.color });
   },
   T() { return this.v.T + (this.api.now() - this.v.at) / 1000; },
   xNow() { const v = this.v; const span = 1 - v.w; const q = ((this.T() * v.spd + v.ph) % 2 + 2) % 2; return (q < 1 ? q : 2 - q) * span; },
@@ -166,6 +178,7 @@ G.towerup = {
   },
   draw() {
     const [W, H, d] = fit(this.cv); const c = this.cv.getContext('2d'); const v = this.v; if (!v) return;
+    if (paint3d(this, c, W, H, { v, xNow: v.me ? this.xNow() : 0, t: performance.now() / 1000 })) { c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.font = `900 ${20 * d}px sans-serif`; c.textAlign = 'left'; c.fillText(`${v.h}층`, 10 * d, 26 * d); c.shadowBlur = 0; return; }
     S3.paint(c, W, H, 'towerup', performance.now() / 1000); // 밤 도시 3D 배경
     const bh = H * 0.1; const baseY = H - bh * 0.6; const show = 5; const col = this.api.team.color;
     c.fillStyle = '#ffffff22'; c.fillRect(0, baseY, W, H - baseY);
@@ -176,5 +189,5 @@ G.towerup = {
     c.fillStyle = '#fff'; c.font = `900 ${20 * d}px sans-serif`; c.textAlign = 'left'; c.fillText(`${v.h}층`, 10 * d, 26 * d);
   },
   reply(r) { if (r.turn) { sfx('count', this.api.sfxOn); vibrate([60, 30, 60]); } if (r.perfect) sfx('fanfare', this.api.sfxOn); else if (r.ok) sfx('good', this.api.sfxOn); else if (r.miss) sfx('bad', this.api.sfxOn); },
-  unmount() { this.dead = true; cancelAnimationFrame(this.raf); },
+  unmount() { this.dead = true; this.drop3d?.('end'); cancelAnimationFrame(this.raf); },
 };

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
@@ -17,8 +18,9 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'scene3d.js', 'fx.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'scene3d.js', 'fx.js', 'run3d.js', 'g3d.js', 'tuho3d.js', 'fish3d.js', 'curl3d.js', 'pen3d.js', 'flap3d.js', 'stair3d.js', 'bridge3d.js', 'eggs3d.js', 'bask3d.js', 'arena3d.js', 'x3d.js', 'rope3d.js', 'tower3d.js', 'mug3d.js', 'fruit3d.js', 'ball3d.js', 'fire3d.js', 'dalg3d.js', 'zomb3d.js', 'three-0.160.0.min.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
   'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
+const GZ = new Map(); // 압축해 둔 큰 파일
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 
 export function createServer(opts = {}) {
@@ -134,6 +136,13 @@ export function createServer(opts = {}) {
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
       const ext = path.extname(file);
+      // 3D 엔진(Three.js, 버전이 이름에 박힌 큰 파일): 압축해서 보내고 폰에 1년 보관 → 와이파이에서 30명이 받아도 가벼움
+      if (name.startsWith('three-')) {
+        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+        const body = gz ? (GZ.get(name) || (GZ.set(name, zlib.gzipSync(fs.readFileSync(file), { level: 9 })), GZ.get(name))) : null;
+        res.writeHead(200, { 'Content-Type': MIME[ext], 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Length': gz ? body.length : st.size, ...(gz ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}) });
+        return gz ? res.end(body) : fs.createReadStream(file).pipe(res);
+      }
       res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Cache-Control': ext === '.html' ? 'no-cache' : ext === '.mp3' ? 'public, max-age=604800' : 'public, max-age=60', 'Content-Length': st.size,

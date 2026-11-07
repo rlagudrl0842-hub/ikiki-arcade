@@ -172,7 +172,7 @@ function header() {
   const p = active(); const me = ME[p?.pid]?.me; const t = teamOf(S, me?.team ?? p?.team);
   top.innerHTML = '';
   top.style.setProperty('--tc', t.color);
-  top.append(h('div', { class: 'tm' }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name)), h('div', { class: 'nm' }, me?.name || p?.name || '', me?.rep ? h('span', { class: 'rep' }, '👑대표') : null),
+  top.append(h('div', { class: 'tm' }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name)), h('div', { class: 'nm' }, h('div', {}, me?.name || p?.name || '', me?.rep ? h('span', { class: 'rep' }, '👑대표') : null), h('div', { class: 'hrk' })), /* 이름 아래 작은 줄: 게임 중에도 팀·내 순위 (조작 칸을 밀지 않게 머리줄 안에) */
     (['playing', 'countdown'].includes(S.phase) && DEMO_OK(VIEW[p?.pid]?.g)) ? h('button', { class: 'helpbtn', 'aria-label': '하는 방법 다시 보기', onclick: () => helpSheet(VIEW[active().pid]?.g, t.color) }, '❓') : null,
     h('button', { class: 'menu', onclick: openMenu }, '☰'));
   rankStrip();
@@ -292,7 +292,8 @@ function rankTexts() {
 }
 function rankStrip() {
   const el = $('#rk'); if (!el || !S) return;
-  const rt = rankTexts(); const { team, mine } = rt; const key = `${team}|${mine}`; if (el.dataset.k === key) return; el.dataset.k = key; el.innerHTML = '';
+  const rt = rankTexts(); const { team, mine } = rt;
+  const hk = $('.top .hrk'); if (hk) { const { tr, pr } = rt; const t2 = [tr?.started ? `종합 ${tr.tie ? '공동 ' : ''}${tr.rank}위 ${tr.rank === 1 ? (tr.tie ? '동점' : '선두') : `−${tr.gap}`}` : null, pr && !pr.none ? (pr.few ? `나 ${pr.games}/${pr.need}판` : pr.rank != null ? `나 ${pr.tie ? '공동 ' : ''}${pr.rank}위` : null) : null].filter(Boolean).join(' · '); /* 짧게: 팀 2위 −30 · 나 3위 */ if (hk.textContent !== t2) hk.textContent = t2; } const key = `${team}|${mine}`; if (el.dataset.k === key) return; el.dataset.k = key; el.innerHTML = '';
   // 우리 팀 순위가 바뀌면 크게 알림 (처음 그릴 때는 빼고)
   const nr = rt.tr?.started ? rt.tr.rank : null; if (nr && rankStrip.prev && nr !== rankStrip.prev && !aiLv) FX.banner(nr < rankStrip.prev ? `▲ 우리 팀 ${nr}위로 올라감!` : `▼ 우리 팀 ${nr}위`, nr < rankStrip.prev ? 'up' : 'down'); if (nr) rankStrip.prev = nr;
   if (team) el.append(h('span', {}, h('i', {}, '팀'), team));

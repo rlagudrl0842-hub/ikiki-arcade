@@ -11,6 +11,18 @@ function fit(cv) { const r = cv.getBoundingClientRect(); const d = Math.min(2, d
 const lf = (api, until) => Math.max(0, Math.ceil((until - api.now()) / 1000));
 const rr = (c, x, y, w, hh, r) => { c.beginPath(); c.roundRect(x, y, w, hh, r); };
 
+// 진짜 3D 화면 붙이기 (지원하는 게임만): WebGL이 되고 화질이 '가벼움'이 아닐 때만. 실패·느림이면 원래 2D 화면으로 자동 복귀
+// self.r3가 있으면 3D로 그리고(2D 캔버스는 글자만), 없으면 원래 2D 그리기
+function attach3d(self, box, loader, api) {
+  if (!loader || S3.quality() === 'low' || /[?&]r3d=0/.test(location.search)) return;
+  const cv3 = h('canvas', { class: 'skcv sk3d', 'aria-hidden': 'true' }); box.prepend(cv3);
+  self.drop3d = (why) => { try { self.r3?.dispose(); } catch { /* */ } self.r3 = null; cv3.remove(); window.__r3d = `2d:${why}`; };
+  loader().then((make) => {
+    if (self.dead) return cv3.remove();
+    const r = make(cv3, { color: api.team.color, quality: S3.quality(), onSlow: (why) => self.drop3d(why) });
+    if (r) { self.r3 = r; window.__r3d = '3d'; } else self.drop3d('nogl');
+  }).catch(() => self.drop3d('load'));
+}
 // ---------------------------------------------------------------- 손맛 게임 공용 틀
 // game: { init(S), step(S, dt), draw(S, c, W, H, d), down(S, x, y), up(S, x, y), move(S, x, y) }  x,y는 0~1
 function skillUI(g, opts = {}) {
@@ -25,13 +37,14 @@ function skillUI(g, opts = {}) {
       const box = h('div', { class: `skw sk-${opts.cls || ''}` }, this.cv, this.sc, this.rk);
       const pos = (e) => { const r = this.cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
       let down = false;
-      box.addEventListener('pointerdown', (e) => { e.preventDefault(); down = true; box.setPointerCapture?.(e.pointerId); g.down?.(S, ...pos(e)); });
+      box.addEventListener('pointerdown', (e) => { e.preventDefault(); down = true; box.setPointerCapture?.(e.pointerId); S.evT = e.timeStamp; g.down?.(S, ...pos(e)); }); /* evT: 손가락이 실제로 닿은 시각 (화면이 바빠 처리 늦어져도 던지는 세기가 약해지지 않게) */
       box.addEventListener('pointermove', (e) => { if (down) g.move?.(S, ...pos(e)); });
-      const up = (e) => { if (!down) return; down = false; g.up?.(S, ...pos(e)); };
+      const up = (e) => { if (!down) return; down = false; S.evT = e.timeStamp; g.up?.(S, ...pos(e)); };
       box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
       const extra = opts.buttons ? opts.buttons(S, g) : null;
       const chip = opts.motion ? motionChip(api, opts.motion) : null;
       root.append(h('div', { class: 'gwrap skg' }, chip, box, extra));
+      attach3d(this, box, opts.view3d, api);
       this.unsub = M.sub((ev) => { if (M.on && g.motion && !window.__paused && this.S.v.t0 && api.now() >= this.S.v.t0) g.motion(S, ev); });
       g.init(S);
       let last = performance.now();
@@ -39,7 +52,8 @@ function skillUI(g, opts = {}) {
         if (this.dead) return; const now = performance.now(); const dt = Math.min(0.05, (now - last) / 1000); last = now;
         // 진행자가 일시정지하면 내 폰 게임도 멈춤 (전에는 '잠시 멈춤' 화면 뒤에서 혼자 계속 진행돼 새가 떨어지거나 장애물에 부딪혔음)
         if (this.S.v.t0 && api.now() >= this.S.v.t0 && !window.__paused) { S.t += dt; if (M.on && g.tilt) g.tilt(S, M.tilt()); g.step(S, dt); }
-        const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); c.clearRect(0, 0, W, H); g.draw(S, c, W, H, d);
+        const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); c.clearRect(0, 0, W, H);
+        if (this.r3 && g.overlay) { try { this.r3.render(S); } catch { this.drop3d('err'); } g.overlay(S, c, W, H, d); } else g.draw(S, c, W, H, d);
         if (S.msg && now - S.msgAt < 900) { c.globalAlpha = 1 - (now - S.msgAt) / 900; c.fillStyle = '#fff'; c.font = `900 ${26 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = '#000'; c.shadowBlur = 8 * d; c.fillText(S.msg, W / 2, H * 0.32 - ((now - S.msgAt) / 900) * 30 * d); c.shadowBlur = 0; c.globalAlpha = 1; }
         this.sc.textContent = `${S.score}${opts.unit || ''}`;
         this.raf = requestAnimationFrame(loop);
@@ -51,7 +65,7 @@ function skillUI(g, opts = {}) {
     update(v) { this.S.v = v; this.rk.textContent = v.rank ? `우리 팀 ${v.tie ? '공동 ' : ''}${v.rank}위 / ${v.n}` : ''; },
     resync() { this.S.sent = NaN; }, // 재개·재연결 뒤: 멈춘 사이 서버가 버린 점수를 다시 보냄
     reply() {},
-    unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); clearInterval(this.iv); if (this.S.score !== this.S.sent) this.S.api.send({ a: 'sc', v: this.S.score }); },
+    unmount() { this.dead = true; this.drop3d?.('end'); this.unsub?.(); cancelAnimationFrame(this.raf); clearInterval(this.iv); if (this.S.score !== this.S.sent) this.S.api.send({ a: 'sc', v: this.S.score }); },
   };
 }
 // 게임별 3D 배경 (scene3d.js) — 이전의 단색 그라데이션 대신
@@ -93,17 +107,26 @@ G.dalgona = skillUI({
     for (let i = 0; i < S.crack; i++) { c.strokeStyle = '#3a1f08'; c.lineWidth = 2 * d; c.beginPath(); c.moveTo(cx + (i - 1) * 30 * d, cy - R); c.lineTo(cx + (i - 1) * 40 * d + 10, cy - R * 0.4); c.stroke(); }
     c.fillStyle = '#ffffffaa'; c.font = `${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(`${S.k + 1}번째 달고나 · 금 ${S.crack}/3`, cx, H - 16 * d);
   },
-}, { cls: 'tall', unit: '점' });
+  // 3D 화면일 때: 달고나·양철 판은 3D, 모양 선·그은 선·금·글자는 2D (손가락과 정확히 같은 자리)
+  overlay(S, c, W, H, d) {
+    S.W = W; S.H = H; const cx = W * 0.5, cy = H * 0.5, R = W * 0.36;
+    c.setLineDash([6 * d, 6 * d]); c.strokeStyle = '#6a3a10'; c.lineWidth = 3 * d; c.beginPath(); S.pts.forEach((p, i) => { const X = cx + p[0] * R, Y = cy + p[1] * R; i ? c.lineTo(X, Y) : c.moveTo(X, Y); }); c.closePath(); c.stroke(); c.setLineDash([]);
+    c.strokeStyle = '#fff6d8'; c.shadowColor = '#00000066'; c.shadowBlur = 3 * d; c.lineWidth = 6 * d; c.lineCap = 'round';
+    for (let i = 0; i < 120; i++) if (S.cov[i] && S.cov[(i + 1) % 120]) { const a = S.pts[i], b = S.pts[(i + 1) % 120]; c.beginPath(); c.moveTo(cx + a[0] * R, cy + a[1] * R); c.lineTo(cx + b[0] * R, cy + b[1] * R); c.stroke(); }
+    c.shadowBlur = 0; for (let i = 0; i < S.crack; i++) { c.strokeStyle = '#3a1f08'; c.lineWidth = 2.5 * d; c.beginPath(); c.moveTo(cx + (i - 1) * 30 * d, cy - R); c.lineTo(cx + (i - 1) * 40 * d + 10, cy - R * 0.4); c.stroke(); }
+    c.fillStyle = '#ffffffcc'; c.shadowColor = '#000'; c.shadowBlur = 4 * d; c.font = `700 ${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(`${S.k + 1}번째 달고나 · 금 ${S.crack}/3`, cx, H - 16 * d); c.shadowBlur = 0;
+  },
+}, { cls: 'tall', unit: '점', view3d: () => import('./dalg3d.js').then((m) => (cv, o) => { const r = m.createDalg3D(cv, o); return r && { render: (S) => r.render({ k: S.k, crack: S.crack, done: S.done }), dispose: r.dispose }; }) });
 
 // ---------------- 투호 / 버저비터 (위로 밀어 던지기)
 function throwGame(kind) {
-  return skillUI({
+  const g = {
     init(S) { S.obj = null; S.cool = 0; S.wind = 0; S.newWind = () => { S.wind = kind === 'tuho' && S.lv >= 2 ? (S.r() - 0.5) * 0.5 : 0; }; S.newWind(); },
     target(S) { const sp = [0.25, 0.35, 0.5, 0.6, 0.65, 0.7][S.lv]; return 0.5 + Math.sin(S.t * sp * 2) * 0.32; },
     motion(S, ev) { if (ev.type !== 'swing' || S.obj || S.cool > 0) return; S.obj = { x: 0.5, y: 0.92, vx: ev.tx * 0.55, vy: 1.15 + ev.power * 1.35, t: 0 }; vibrate(15); sfx('pass', S.api.sfxOn); },
-    down(S, x, y) { S.st = [x, y, performance.now()]; },
+    down(S, x, y) { S.st = [x, y, S.evT ?? performance.now()]; },
     up(S, x, y) {
-      if (!S.st || S.obj || S.cool > 0) return; const [x0, y0, t0] = S.st; const dt = Math.max(60, performance.now() - t0) / 1000;
+      if (!S.st || S.obj || S.cool > 0) return; const [x0, y0, t0] = S.st; const dt = Math.max(60, (S.evT ?? performance.now()) - t0) / 1000;
       const vy = (y0 - y) / dt; if (vy < 0.6) return; const vx = (x - x0) / dt;
       S.obj = { x: 0.5, y: 0.92, vx: vx * 0.35, vy: Math.min(2.6, vy * 0.9), t: 0 }; vibrate(10); sfx('pass', S.api.sfxOn);
     },
@@ -135,7 +158,17 @@ function throwGame(kind) {
       if (o) { const X = o.x * W, Y = o.y * H; if (kind === 'tuho') { c.strokeStyle = '#e8d6b0'; c.lineWidth = 4 * d; c.beginPath(); c.moveTo(X, Y); c.lineTo(X - o.vx * 20 * d, Y + 40 * d); c.stroke(); c.fillStyle = '#ff4d6d'; c.beginPath(); c.moveTo(X, Y - 8 * d); c.lineTo(X - 5 * d, Y + 4 * d); c.lineTo(X + 5 * d, Y + 4 * d); c.fill(); } else { const s = 1 - (0.92 - o.y) * 0.5; c.fillStyle = '#f28c28'; c.beginPath(); c.arc(X, Y, 20 * d * s, 0, 7); c.fill(); c.strokeStyle = '#4a2208'; c.lineWidth = 2 * d; c.beginPath(); c.arc(X, Y, 20 * d * s, 0, 7); c.moveTo(X - 20 * d * s, Y); c.lineTo(X + 20 * d * s, Y); c.stroke(); } }
       else if (S.cool <= 0) { const X = W / 2, Y = H * 0.9; if (kind === 'tuho') { c.strokeStyle = '#e8d6b0'; c.lineWidth = 4 * d; c.beginPath(); c.moveTo(X, Y - 30 * d); c.lineTo(X, Y + 20 * d); c.stroke(); } else { c.fillStyle = '#f28c28'; c.beginPath(); c.arc(X, Y, 22 * d, 0, 7); c.fill(); } c.fillStyle = '#ffffff88'; c.font = `${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText('↑ 위로 휙 밀어 던지기', X, Y - 46 * d); }
     },
-  }, { cls: 'tall', unit: '점', motion: '폰을 앞으로 휘둘러 던지기 · 기울여 조준' });
+    // 3D 화면일 때 위에 얹는 글자 (바람·던지기 안내)
+    overlay(S, c, W, H, d) {
+      c.textAlign = 'center'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.fillStyle = '#fff';
+      if (S.wind) { c.font = `800 ${15 * d}px sans-serif`; c.fillText(`바람 ${S.wind > 0 ? '→' : '←'} ${Math.abs(Math.round(S.wind * 20))}`, W / 2, 26 * d); }
+      if (!S.obj && S.cool <= 0) { c.font = `800 ${15 * d}px sans-serif`; c.fillStyle = '#ffffffdd'; c.fillText('↑ 위로 휙 밀어 던지기', W / 2, H - 18 * d); }
+      c.shadowBlur = 0;
+    },
+  };
+  // 투호만 3D 화면 (항아리 위치는 판정과 같은 target(S)로)
+  const view3d = kind === 'tuho' ? () => import('./tuho3d.js').then((m) => (cv, o) => m.createTuho3D(cv, { ...o, target: (S) => g.target(S) })) : () => import('./bask3d.js').then((m) => (cv, o) => m.createBask3D(cv, { ...o, target: (S) => g.target(S) }));
+  return skillUI(g, { cls: 'tall', unit: '점', motion: '폰을 앞으로 휘둘러 던지기 · 기울여 조준', view3d });
 }
 G.tuho = throwGame('tuho');
 G.basket = throwGame('basket');
@@ -170,7 +203,12 @@ G.runner = skillUI({
     c.fillStyle = '#ffe2c6'; c.beginPath(); c.arc(px, py - 50 * d, 9 * d, 0, 7); c.fill(); c.globalAlpha = 1;
     c.fillStyle = '#ffffff99'; c.font = `${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText('화면을 톡 → 점프', W / 2, H - 14 * d);
   },
-}, { cls: 'tall', unit: 'm', motion: '폰을 위로 확 들어 올리면 점프' });
+  // 3D 화면일 때 위에 얹는 글자 (판정에 쓰는 러너 키 S.bh는 2D와 같은 방식으로 계산 → 규칙 그대로)
+  overlay(S, c, W, H, d) {
+    S.bh = (59 * d) / (H * 0.55);
+    c.fillStyle = '#ffffffcc'; c.font = `800 ${14 * d}px sans-serif`; c.textAlign = 'center'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.fillText('화면을 톡 → 점프', W / 2, H - 14 * d); c.shadowBlur = 0;
+  },
+}, { cls: 'tall', unit: 'm', motion: '폰을 위로 확 들어 올리면 점프', view3d: () => import('./run3d.js').then((m) => m.createRunner3D) });
 
 // ---------------- 파닥파닥
 G.flappy = skillUI({
@@ -195,7 +233,8 @@ G.flappy = skillUI({
     c.fillStyle = '#fff'; c.beginPath(); c.arc(8 * d, -6 * d, 6 * d, 0, 7); c.fill(); c.fillStyle = '#111'; c.beginPath(); c.arc(10 * d, -6 * d, 3 * d, 0, 7); c.fill();
     c.fillStyle = '#ffb703'; c.beginPath(); c.ellipse(-6 * d, 2 * d + Math.sin(S.t * 30) * 4 * d, 10 * d, 6 * d, -0.4, 0, 7); c.fill(); c.restore();
   },
-}, { cls: 'tall', unit: '개', motion: '폰을 위로 확 들면 날갯짓' });
+  overlay() {}, // 3D 화면일 때 2D 캔버스에 따로 그릴 것 없음
+}, { cls: 'tall', unit: '개', motion: '폰을 위로 확 들면 날갯짓', view3d: () => import('./flap3d.js').then((m) => m.createFlap3D) });
 
 // ---------------- 하늘 계단
 G.stairs = skillUI({
@@ -216,7 +255,8 @@ G.stairs = skillUI({
     c.strokeStyle = '#e8ecff'; c.lineWidth = 6 * d; c.beginPath(); c.moveTo(0, -16 * d); c.lineTo(8 * d, 0); c.moveTo(0, -16 * d); c.lineTo(-6 * d, 0); c.moveTo(0, -32 * d); c.lineTo(12 * d, -22 * d); c.stroke();
     c.fillStyle = '#ffe2c6'; c.beginPath(); c.arc(0, -46 * d, 9 * d, 0, 7); c.fill(); c.restore();
   },
-}, { cls: 'mid', unit: '칸', buttons: (S, g) => h('div', { class: 'skbtns' }, P.press(h('button', { class: 'skb turn' }, '↩ 방향 바꾸기'), () => g.act(S, true)), P.press(h('button', { class: 'skb up' }, '↑ 오르기'), () => g.act(S, false))) });
+  overlay() {}, // 3D 화면일 때 2D 캔버스에 따로 그릴 것 없음
+}, { cls: 'mid', unit: '칸', view3d: () => import('./stair3d.js').then((m) => m.createStair3D), buttons: (S, g) => h('div', { class: 'skbtns' }, P.press(h('button', { class: 'skb turn' }, '↩ 방향 바꾸기'), () => g.act(S, true)), P.press(h('button', { class: 'skb up' }, '↑ 오르기'), () => g.act(S, false))) });
 
 // ---------------- 다리 놓기
 G.bridge = skillUI({
@@ -241,7 +281,8 @@ G.bridge = skillUI({
     c.fillStyle = '#111'; rr(c, px - 10 * d, py - 30 * d, 20 * d, 30 * d, 6 * d); c.fill(); c.fillStyle = S.api.team.color; c.fillRect(px - 10 * d, py - 26 * d, 20 * d, 5 * d);
     c.fillStyle = '#ffffffcc'; c.font = `${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(S.phase === 'ready' ? '꾹 누르는 동안 막대가 길어져요' : '', W / 2, H - 14 * d);
   },
-}, { cls: 'tall', unit: '칸' });
+  overlay(S, c, W, H, d) { if (S.phase !== 'ready') return; c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.font = `800 ${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText('꾹 누르는 동안 막대가 길어져요', W / 2, H - 14 * d); c.shadowBlur = 0; },
+}, { cls: 'tall', unit: '칸', view3d: () => import('./bridge3d.js').then((m) => m.createBridge3D) });
 
 // ---------------- 낚시왕
 const FISH = [['🐟', 5, '붕어'], ['🐠', 10, '열대어'], ['🐡', 15, '복어'], ['🦈', 25, '상어'], ['🐋', 40, '황금 고래']];
@@ -281,7 +322,21 @@ G.fishing = skillUI({
       c.font = `${40 * d}px sans-serif`; c.fillText(FISH[S.fish][0], W / 2 + Math.sin(S.t * 8) * 30 * d, H * 0.5);
     }
   },
-}, { cls: 'tall', unit: '점', motion: '확 들어 올려 챔질 · 폰 윗부분을 몸 쪽으로 당기면 감기' });
+  // 3D 화면일 때 위에 얹는 글자·감기 막대 (막대는 게임 조작에 꼭 필요해서 그대로)
+  overlay(S, c, W, H, d) {
+    c.textAlign = 'center'; c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; const wy = H * 0.3;
+    if (S.st === 'bite') { c.font = `900 ${24 * d}px sans-serif`; c.fillStyle = '#ffd43b'; c.fillText('지금! 챔질!', W / 2, wy); }
+    else if (S.st === 'wait') { c.font = `700 ${15 * d}px sans-serif`; c.fillText('찌를 지켜보세요…', W / 2, wy); }
+    c.shadowBlur = 0;
+    if (S.st === 'reel') {
+      const bw = W * 0.7, x0 = W * 0.15, yb = H * 0.66, zone = [0.32, 0.28, 0.24, 0.2, 0.18, 0.17][S.lv];
+      c.fillStyle = '#00000088'; rr(c, x0, yb, bw, 26 * d, 13 * d); c.fill(); c.fillStyle = '#2fd27aaa'; c.fillRect(x0 + (0.5 - zone) * bw, yb, zone * 2 * bw, 26 * d);
+      c.fillStyle = '#fff'; c.fillRect(x0 + Math.max(0, Math.min(1, S.ten)) * bw - 3 * d, yb - 6 * d, 6 * d, 38 * d);
+      c.fillStyle = '#ffd43b'; rr(c, x0, yb + 40 * d, bw * Math.min(1, S.prog), 10 * d, 5 * d); c.fill();
+      c.fillStyle = '#fff'; c.shadowBlur = 6 * d; c.font = `700 ${14 * d}px sans-serif`; c.fillText('꾹 누르면 감기 · 떼면 풀기 — 흰 막대를 초록 안에!', W / 2, yb + 76 * d); c.shadowBlur = 0;
+    }
+  },
+}, { cls: 'tall', unit: '점', motion: '확 들어 올려 챔질 · 폰 윗부분을 몸 쪽으로 당기면 감기', view3d: () => import('./fish3d.js').then((m) => m.createFish3D) });
 
 // ---------------- 달걀 받기
 G.eggs = skillUI({
@@ -299,7 +354,8 @@ G.eggs = skillUI({
     const X = S.bx * W, Y = 0.88 * H; c.fillStyle = '#8b5a2b'; c.beginPath(); c.moveTo(X - 46 * d, Y - 10 * d); c.lineTo(X + 46 * d, Y - 10 * d); c.lineTo(X + 34 * d, Y + 24 * d); c.lineTo(X - 34 * d, Y + 24 * d); c.fill();
     c.strokeStyle = '#5a3612'; c.lineWidth = 2 * d; for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(X + i * 12 * d, Y - 10 * d); c.lineTo(X + i * 9 * d, Y + 24 * d); c.stroke(); }
   },
-}, { cls: 'tall', unit: '개', motion: '폰을 좌우로 기울여 바구니 이동' });
+  overlay() {}, // 3D 화면일 때 2D 캔버스에 따로 그릴 것 없음
+}, { cls: 'tall', unit: '개', motion: '폰을 좌우로 기울여 바구니 이동', view3d: () => import('./eggs3d.js').then((m) => m.createEggs3D) });
 
 // ---------------- 컬링 (스톤 3개, 결과는 서버에 기록)
 G.curling = {
@@ -307,18 +363,25 @@ G.curling = {
     this.api = api; this.v = v; this.s = { st: null, stone: null, sweep: 0, n: v.th.length, rub: 0 };
     this.cv = h('canvas', { class: 'skcv' }); this.info = h('div', { class: 'sksc' }, '');
     const box = h('div', { class: 'skw sk-tall' }, this.cv, this.info); root.append(h('div', { class: 'gwrap skg' }, motionChip(api, '앞으로 밀듯 휘둘러 던지기 · 흔들면 스위핑'), box));
+    this.mine = []; attach3d(this, box, () => import('./curl3d.js').then((m) => m.createCurl3D), api); // 3D 빙상장 (안 되면 2D)
     this.unsub = M.sub((ev) => { if (!M.on) return; const S = this.s; if (ev.type === 'swing' && !S.stone && S.n < 3) { S.stone = { x: 0.5, y: 0.9, vx: ev.tx * 0.12, vy: 0.45 + ev.power * 0.75, moving: true }; sfx('pass', api.sfxOn); vibrate(20); } else if (ev.type === 'shake' && S.stone?.moving) S.rub += 0.04; });
     const pos = (e) => { const r = this.cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
     let down = false, last = null;
-    box.addEventListener('pointerdown', (e) => { e.preventDefault(); down = true; box.setPointerCapture?.(e.pointerId); const p = pos(e); if (!this.s.stone && this.s.n < 3) this.s.st = [...p, performance.now()]; last = p; });
+    box.addEventListener('pointerdown', (e) => { e.preventDefault(); down = true; box.setPointerCapture?.(e.pointerId); const p = pos(e); if (!this.s.stone && this.s.n < 3) this.s.st = [...p, e.timeStamp]; last = p; }); /* 손가락이 닿은 실제 시각 */
     box.addEventListener('pointermove', (e) => { if (!down) return; const p = pos(e); if (this.s.stone?.moving && last) { this.s.rub += Math.hypot(p[0] - last[0], p[1] - last[1]); } last = p; });
-    box.addEventListener('pointerup', (e) => { down = false; const p = pos(e); const st = this.s.st; this.s.st = null; if (!st || this.s.stone) return; const dt = Math.max(80, performance.now() - st[2]) / 1000; const vy = (st[1] - p[1]) / dt; if (vy < 0.4) return; this.s.stone = { x: 0.5, y: 0.9, vx: ((p[0] - st[0]) / dt) * 0.12, vy: Math.min(1.25, vy * 0.42), moving: true }; sfx('pass', api.sfxOn); });
+    box.addEventListener('pointerup', (e) => { down = false; const p = pos(e); const st = this.s.st; this.s.st = null; if (!st || this.s.stone) return; const dt = Math.max(80, e.timeStamp - st[2]) / 1000; const vy = (st[1] - p[1]) / dt; if (vy < 0.4) return; this.s.stone = { x: 0.5, y: 0.9, vx: ((p[0] - st[0]) / dt) * 0.12, vy: Math.min(1.25, vy * 0.42), moving: true }; sfx('pass', api.sfxOn); });
     let lt = performance.now();
     const loop = () => {
       if (this.dead) return; const now = performance.now(); const dt = Math.min(0.05, (now - lt) / 1000); lt = now; const S = this.s; const o = S.stone;
       // 일시정지 중엔 스톤도 멈춤 (멈춘 사이 결과를 보내면 서버가 버려 다음 스톤을 못 던지던 문제)
-      if (o?.moving && !window.__paused) { const fr = 0.42 - Math.min(0.25, S.rub * 0.9); S.rub *= 0.85; o.x += o.vx * dt; o.y -= o.vy * dt; const sp = Math.hypot(o.vx, o.vy); const nsp = Math.max(0, sp - fr * dt); if (sp > 0) { o.vx *= nsp / sp; o.vy *= nsp / sp; } if (nsp <= 0.003 || o.y < -0.1) { o.moving = false; const hx = (o.x - 0.5) / 0.22, hy = (o.y - 0.22) / 0.22 * (this.cv.height / this.cv.width) ; this.pend = { a: 'throw', x: Math.max(-1.5, Math.min(1.5, hx)), y: Math.max(-1.5, Math.min(1.5, hy)), n0: this.v.th.length }; api.send({ a: 'throw', x: this.pend.x, y: this.pend.y }); vibrate(30); } }
-      const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'curling');
+      if (o?.moving && !window.__paused) { const fr = 0.42 - Math.min(0.25, S.rub * 0.9); S.rub *= 0.85; o.x += o.vx * dt; o.y -= o.vy * dt; const sp = Math.hypot(o.vx, o.vy); const nsp = Math.max(0, sp - fr * dt); if (sp > 0) { o.vx *= nsp / sp; o.vy *= nsp / sp; } if (nsp <= 0.003 || o.y < -0.1) { o.moving = false; if (o.y > -0.1) this.mine.push({ x: o.x, y: o.y }); const hx = (o.x - 0.5) / 0.22, hy = (o.y - 0.22) / 0.22 * (this.cv.height / this.cv.width) ; this.pend = { a: 'throw', x: Math.max(-1.5, Math.min(1.5, hx)), y: Math.max(-1.5, Math.min(1.5, hy)), n0: this.v.th.length }; api.send({ a: 'throw', x: this.pend.x, y: this.pend.y }); vibrate(30); } }
+      const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d');
+      if (this.r3) { // 3D: 빙상장은 3D로, 2D 캔버스에는 안내 글자만
+        try { this.r3.render({ o, n: S.n, rub: S.rub, mine: this.mine, asp: this.cv.height / this.cv.width, t: now / 1000 }); } catch { this.drop3d('err'); }
+        c.clearRect(0, 0, W, H); c.fillStyle = '#fff'; c.shadowColor = '#000'; c.shadowBlur = 6 * d; c.font = `800 ${14 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(o?.moving ? '빠르게 문지르면 더 멀리!' : S.n < 3 ? '스톤을 위로 밀어 던지세요' : '', W / 2, H - 14 * d); c.shadowBlur = 0;
+        this.raf = requestAnimationFrame(loop); return;
+      }
+      sceneBg(c, W, H, 'curling');
       const cx = W * 0.5, cy = H * 0.22, R = W * 0.22;
       [[1, '#3d8bff'], [0.66, '#ffffff'], [0.33, '#ff4d6d'], [0.08, '#ffffff']].forEach(([k, col]) => { c.fillStyle = col; c.beginPath(); c.arc(cx, cy, R * k, 0, 7); c.fill(); });
       c.strokeStyle = '#9fb6d6'; c.lineWidth = 2 * d; c.beginPath(); c.moveTo(W * 0.5, 0); c.lineTo(W * 0.5, H); c.stroke();
@@ -332,8 +395,8 @@ G.curling = {
   update(v) { this.v = v; if (this.pend && v.th.length > this.pend.n0) this.pend = null; this.s.n = Math.max(this.s.n, v.th.length); this.info.textContent = `스톤 ${v.th.length}/3 ${v.th.length ? '· ' + v.th.join(' · ') + '점' : ''}`; },
   // 던진 결과가 일시정지·끊김으로 서버에 안 닿았으면 다시 보냄 (안 그러면 스톤이 멈춘 채 다음 스톤을 못 던짐)
   resync() { const p = this.pend; if (p && this.v.th.length <= p.n0) this.api.send({ a: 'throw', x: p.x, y: p.y }); },
+  unmount() { this.dead = true; this.drop3d?.('end'); this.unsub?.(); cancelAnimationFrame(this.raf); },
   reply(r) { this.pend = null; this.s.n = r.n; this.info.textContent = `스톤 ${r.n}/3 · 방금 ${r.s}점`; sfx(r.s >= 70 ? 'win' : 'good', this.api.sfxOn); setTimeout(() => { if (r.n < 3) this.s.stone = null; }, 900); },
-  unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); },
 };
 
 // ---------------- 승부차기
@@ -342,11 +405,20 @@ G.penalty = {
     this.api = api; this.anim = null;
     this.cv = h('canvas', { class: 'skcv' }); this.info = h('div', { class: 'sksc' }, `${v.goals}골`);
     const box = h('div', { class: 'skw sk-tall' }, this.cv, this.info); root.append(h('div', { class: 'gwrap skg' }, motionChip(api, '기울인 쪽으로 휘둘러 슛 · 세게 = 위쪽'), box, h('div', { class: 'muted' }, '골대의 칸을 터치해서 슛!')));
+    attach3d(this, box, () => import('./pen3d.js').then((m) => m.createPen3D), api); // 3D 경기장 (안 되면 2D)
     this.unsub = M.sub((ev) => { if (!M.on || ev.type !== 'swing' || (this.anim && performance.now() - this.anim.at < 1500)) return; const col = ev.tx < -0.3 ? 0 : ev.tx > 0.3 ? 2 : 1; const z = (ev.power > 0.6 ? 0 : 3) + col; api.send({ a: 'kick', z }); this.anim = { z, at: performance.now(), res: null }; vibrate(20); sfx('pass', api.sfxOn); });
     P.press(box, (e) => { if (this.anim && performance.now() - this.anim.at < 1500) return; const r = this.cv.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; if (y > 0.55 || x < 0.1 || x > 0.9) return; const col = Math.min(2, Math.floor((x - 0.1) / 0.8 * 3)); const row = y < 0.32 ? 0 : 1; const z = row * 3 + col; api.send({ a: 'kick', z }); this.anim = { z, at: performance.now(), res: null }; vibrate(15); sfx('pass', api.sfxOn); });
     const loop = () => {
-      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'penalty');
+      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d');
       const gx = W * 0.1, gy = H * 0.12, gw = W * 0.8, gh = H * 0.42;
+      if (this.r3) { // 3D: 골대·키퍼·공은 3D로 (터치 칸과 같은 자리), 2D에는 칸 안내선과 결과 글자만
+        try { this.r3.render({ a: this.anim, t: performance.now() / 1000 }); } catch { this.drop3d('err'); }
+        c.clearRect(0, 0, W, H); const a = this.anim; const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
+        if (!a || performance.now() - a.at > 1500) { c.strokeStyle = '#ffffff40'; c.lineWidth = 1.5 * d; c.setLineDash([6 * d, 6 * d]); for (let i = 1; i < 3; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 3, gy); c.lineTo(gx + (gw * i) / 3, gy + gh); c.stroke(); } c.beginPath(); c.moveTo(gx, gy + gh / 2); c.lineTo(gx + gw, gy + gh / 2); c.stroke(); c.setLineDash([]); }
+        if (a?.res && k >= 1 && performance.now() - a.at < 1800) { c.fillStyle = a.res.res === 'goal' ? '#ffd43b' : '#ff8fa3'; c.shadowColor = '#000'; c.shadowBlur = 10 * d; c.font = `900 ${40 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(a.res.res === 'goal' ? 'GOAL!' : a.res.res === 'save' ? '막혔다!' : '빗나감', W / 2, H * 0.7); c.shadowBlur = 0; }
+        this.raf = requestAnimationFrame(loop); return;
+      }
+      sceneBg(c, W, H, 'penalty');
       c.strokeStyle = '#ffffff22'; c.lineWidth = 1; for (let i = 0; i <= 12; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 12, gy); c.lineTo(gx + (gw * i) / 12, gy + gh); c.stroke(); } for (let j = 0; j <= 6; j++) { c.beginPath(); c.moveTo(gx, gy + (gh * j) / 6); c.lineTo(gx + gw, gy + (gh * j) / 6); c.stroke(); }
       c.strokeStyle = '#fff'; c.lineWidth = 6 * d; c.strokeRect(gx, gy, gw, gh);
       const a = this.anim; const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
@@ -364,7 +436,7 @@ G.penalty = {
   },
   update(v) { this.info.textContent = `${v.goals}골 / ${v.shots}슛`; },
   reply(r) { if (this.anim) { this.anim.res = r; this.anim.at = performance.now() - 300; } this.info.textContent = `${r.goals}골`; if (r.res === 'goal') { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); } else sfx('bad', this.api.sfxOn); },
-  unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); },
+  unmount() { this.dead = true; this.drop3d?.('end'); this.unsub?.(); cancelAnimationFrame(this.raf); },
 };
 
 // ---------------- 리듬 마스터
