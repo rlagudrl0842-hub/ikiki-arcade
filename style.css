@@ -41,3 +41,22 @@ canvas.fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events
 .brand.big .ikl { height: 120px; padding: 8px 14px; border-radius: 20px; margin-bottom: 8px; }
 .brand.big > div { margin-top: 4px; }
 .demo.pe { width: 100%; aspect-ratio: 16 / 10; border-radius: 16px; overflow: hidden; } .demo.pe canvas { width: 100%; height: 100%; display: block; }
+
+/* ================= 공통 효과 층 (fx.js) ================= */
+.fxl { position: fixed; inset: 0; pointer-events: none; z-index: 140; overflow: hidden; }
+.fxf { position: absolute; inset: 0; animation: fxF .55s ease-out forwards; }
+.fxf.ok { box-shadow: inset 0 0 60px 10px #2fd27a99; } .fxf.bad { box-shadow: inset 0 0 70px 14px #ff2a4fb3; } .fxf.gold { box-shadow: inset 0 0 70px 12px #ffd43bb3; }
+@keyframes fxF { from { opacity: 1; } to { opacity: 0; } }
+.fxp { position: absolute; transform: translate(-50%, -50%); font-weight: 900; font-size: 28px; color: #fff; text-shadow: 0 3px 0 #0006, 0 0 18px var(--g, #2fd27a); animation: fxP 1.05s cubic-bezier(.2, 1.4, .4, 1) forwards; white-space: nowrap; will-change: transform, opacity; }
+.fxp.ok { --g: #2fd27a; } .fxp.bad { --g: #ff2a4f; color: #ffd0d8; } .fxp.gold { --g: #ffd43b; color: #fff3c4; } .fxp.big { font-size: 44px; }
+@keyframes fxP { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.5); } 20% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -160%) scale(1); } }
+.fxr { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; border: 4px solid var(--c); animation: fxR .65s ease-out forwards; }
+@keyframes fxR { from { transform: scale(.3); opacity: 1; } to { transform: scale(9); opacity: 0; } }
+.fxd { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 2px; background: var(--c); animation: fxD .75s ease-out forwards; }
+@keyframes fxD { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(var(--x), var(--y)) rotate(200deg); opacity: 0; } }
+.fxb { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); padding: 14px 26px; border-radius: 16px; font-weight: 900; font-size: 24px; color: #1b1440; background: linear-gradient(100deg, #ffd43b, #ffb703 60%, #ffe58a); box-shadow: 0 14px 40px #0008, 0 0 0 3px #fff6; white-space: nowrap; animation: fxB 2.2s ease forwards; overflow: hidden; }
+.fxb::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffffaa 50%, transparent 70%); transform: translateX(-100%); animation: fxS 1.1s .25s ease forwards; }
+.fxb.up { background: linear-gradient(100deg, #2fd27a, #22b8cf); color: #04220f; } .fxb.down { background: linear-gradient(100deg, #ff6b6b, #ff2a4f); color: #fff; }
+@keyframes fxB { 0% { opacity: 0; transform: translate(-50%, -50%) perspective(600px) rotateX(70deg) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -50%) perspective(600px) rotateX(0) scale(1.08); } 25% { transform: translate(-50%, -50%) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%) scale(.95); } }
+@keyframes fxS { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .fxp, .fxr, .fxd, .fxb, .fxf { animation-duration: .01s !important; } }

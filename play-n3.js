@@ -2,6 +2,7 @@
 // 배경은 단순하게(버튼·점수가 잘 보이게), 누르는 곳은 크게. 모든 입력은 pointerdown 한 번 = 한 번(손가락이 미끄러져도 취소 없음)
 import { h, sfx, vibrate } from './client.js';
 import { G } from './play-games.js';
+import * as S3 from './scene3d.js';
 import { balloonCfg, balloonWave, balloonTarget, BALLOON_COLORS, bossCfg, bossCell } from './gen2.js';
 
 const press = (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; };
@@ -49,7 +50,7 @@ G.balloon = {
   },
   draw() {
     const [W, H, d] = fit(this.cv); const c = this.cv.getContext('2d'); const s = this.sec();
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#20305e'); g.addColorStop(1, '#0d1430'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    S3.paint(c, W, H, 'balloon', performance.now() / 1000); // 하늘 3D 배경
     if (s < 0) return;
     if ((this._p = (this._p || 0) + 1) % 15 === 0) this.paint();
     const R = W * 0.085;
@@ -165,7 +166,7 @@ G.towerup = {
   },
   draw() {
     const [W, H, d] = fit(this.cv); const c = this.cv.getContext('2d'); const v = this.v; if (!v) return;
-    c.fillStyle = '#121a3a'; c.fillRect(0, 0, W, H);
+    S3.paint(c, W, H, 'towerup', performance.now() / 1000); // 밤 도시 3D 배경
     const bh = H * 0.1; const baseY = H - bh * 0.6; const show = 5; const col = this.api.team.color;
     c.fillStyle = '#ffffff22'; c.fillRect(0, baseY, W, H - baseY);
     const stack = (v.stack || []).slice(-show); stack.forEach(([bx, bw], i) => { const y = baseY - (i + 1) * bh; c.fillStyle = i === stack.length - 1 ? col : col + 'aa'; c.fillRect(bx * W, y, bw * W, bh - 3 * d); });

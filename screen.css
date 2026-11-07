@@ -407,3 +407,34 @@ canvas.fx { z-index: 60; }
 .srec b { color: #ffd43b; }
 .snewrec { margin: 10px auto 0; width: fit-content; max-width: 94%; font-size: 34px; font-weight: 900; color: #1b1440; background: linear-gradient(90deg, #ffd43b, #ffb703); border-radius: 18px; padding: 12px 26px; animation: npop .5s; box-shadow: 0 10px 40px #ffd43b66; }
 .snewrec small { font-size: 22px; font-weight: 700; }
+
+/* ================= 3D 배경 (게임 주제별 장면) — 무대 뒤 전체 창 ================= */
+#bg3d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; pointer-events: none; }
+#stage { z-index: 1; background: linear-gradient(180deg, #070a1eb0, #0b0e24d0) !important; }
+body[data-ph="playing"] #stage, body[data-ph="countdown"] #stage { background: linear-gradient(180deg, #070a1e55, #0b0e2477) !important; }
+
+/* ================= 3D 오락실 화면 꾸밈 (대형 화면) ================= */
+/* 결과: 팀 줄이 앞으로 넘어오며 등장 · 1위는 빛나는 금속 테두리 · 입체 그림자 */
+.rlist { perspective: 1400px; }
+.ritem { transform-origin: 50% 100%; animation: r3dIn .7s cubic-bezier(.2, 1.3, .4, 1) both; background: linear-gradient(180deg, #ffffff1a, #ffffff08); box-shadow: 0 10px 0 #00000040, 0 18px 30px #0007, inset 0 1px 0 #ffffff33; }
+.ritem.r1 { background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 55%, #ffffff22), color-mix(in srgb, var(--tc) 25%, transparent)); box-shadow: 0 12px 0 #00000055, 0 0 60px #ffd43b66, inset 0 2px 0 #ffffff66, 0 0 0 3px #ffd43b; }
+.ritem.r1 .rrk { text-shadow: 0 0 24px #ffd43b, 0 4px 0 #a86f00; }
+@keyframes r3dIn { from { opacity: 0; transform: rotateX(-75deg) translateY(30px); } to { opacity: 1; transform: none; } }
+.resv .rt, .introv .it, .iinfo .it { text-shadow: 0 4px 0 #00000066, 0 10px 30px #000a; letter-spacing: -.5px; }
+/* 설명 화면: 게임 카드가 살짝 기울어진 입체 패널 */
+.introv2 > .iinfo { background: linear-gradient(160deg, #0b0e24cc, #0b0e2499); border: 1px solid #ffffff22; border-radius: 28px; padding: 26px 30px; box-shadow: 0 30px 60px #000a, inset 0 1px 0 #ffffff22; transform: perspective(1600px) rotateY(-6deg); transform-origin: 0 50%; animation: card3d .8s cubic-bezier(.2, 1.2, .4, 1) both; }
+.introv2 > .idemo { transform: perspective(1600px) rotateY(5deg); box-shadow: 0 30px 60px #000a; border-radius: 22px; animation: card3dL .8s cubic-bezier(.2, 1.2, .4, 1) both; }
+@keyframes card3d { from { opacity: 0; transform: perspective(1600px) rotateY(-35deg) translateX(80px); } }
+@keyframes card3dL { from { opacity: 0; transform: perspective(1600px) rotateY(35deg) translateX(-80px); } }
+.introv { background: radial-gradient(60% 60% at 50% 40%, #0b0e2499, transparent 75%); }
+/* 대기 화면: 팀 카드 입체감 */
+.lteam { background: linear-gradient(180deg, #ffffff16, #ffffff06); box-shadow: 0 8px 0 #00000033, 0 14px 28px #0006, inset 0 1px 0 #ffffff26; }
+.lleft { background: linear-gradient(180deg, #0b0e24cc, #0b0e2499) !important; box-shadow: 0 30px 60px #000a, inset 0 1px 0 #ffffff1f; border: 1px solid #ffffff1a; }
+/* 종합 순위: 오른 팀은 초록 빛, 내려간 팀은 붉은 빛으로 한 번 반짝 */
+.srow:has(i.up) { animation: rkUp 1.4s ease 1; } .srow:has(i.down) { animation: rkDn 1.4s ease 1; }
+@keyframes rkUp { 30% { background: #2fd27a44; transform: translateX(8px); } } @keyframes rkDn { 30% { background: #ff2a4f33; transform: translateX(-6px); } }
+/* 신기록 띠: 빛이 한 번 지나감 */
+.snewrec { position: relative; overflow: hidden; }
+.snewrec::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffffb0 50%, transparent 70%); transform: translateX(-100%); animation: fxS 1.2s .4s ease forwards; }
+.srec { box-shadow: 0 10px 30px #0008; border: 1px solid #ffffff22; }
+@keyframes fxS { to { transform: translateX(100%); } }

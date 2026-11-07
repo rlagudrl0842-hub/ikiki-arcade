@@ -121,7 +121,9 @@ export const SFX = {
   whoosh: () => { noise(0.5, 0.15); tone(200, 0.5, 'sine', 0.12, 0, 900); },
   spin: () => { for (let i = 0; i < 20; i++) tone(800, 0.03, 'square', 0.06, i * (0.05 + i * 0.008)); },
 };
-export function sfx(name, on = true) { if (on && SFX[name]) try { SFX[name](); } catch { /* */ } }
+// 효과음이 날 때 화면 효과도 같이 (참가자 화면이 구독) — 소리를 꺼도 화면 효과는 나옴
+export const sfxHooks = new Set();
+export function sfx(name, on = true) { for (const f of sfxHooks) try { f(name); } catch { /* */ } if (on && SFX[name]) try { SFX[name](); } catch { /* */ } }
 
 // ---------------- 음성 안내 ----------------
 let koVoice = null;

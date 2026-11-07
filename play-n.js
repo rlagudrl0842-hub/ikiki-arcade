@@ -3,6 +3,7 @@ import { h, sfx, vibrate } from './client.js';
 import { G } from './play-games.js';
 import { fruitSchedule, fruitPos, fruitLife, fruitR, FRUITS, ropeBeats } from './gen2.js';
 import { M, motionChip } from './play-motion.js';
+import * as S3 from './scene3d.js';
 
 const AW = 1600, AH = 860;
 function onPress(el, fn) { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; }
@@ -108,7 +109,7 @@ const ZOMBIE = {
     const X = (x) => (x - Z.cam[0] + VW / 2) * k, Y = (y) => (y - Z.cam[1] + VH / 2) * k;
     Z.view = [k / d, VW, VH]; // 점검용: CSS 픽셀/칸, 보이는 너비·높이(칸)
     // 바닥 · 격자 · 벽
-    c.fillStyle = v.z ? '#0f2416' : '#121845'; c.fillRect(0, 0, W, H);
+    S3.paint(c, W, H, 'zombie', now / 1000); if (!v.z) { c.fillStyle = '#12184566'; c.fillRect(0, 0, W, H); } // 3D 경기장 바닥 (사람일 땐 조금 푸르게)
     c.strokeStyle = '#ffffff12'; c.lineWidth = 1; c.beginPath();
     for (let x = Math.floor((Z.cam[0] - VW / 2) / 100) * 100; x <= Z.cam[0] + VW / 2; x += 100) { c.moveTo(X(x), 0); c.lineTo(X(x), H); }
     for (let y = Math.floor((Z.cam[1] - VH / 2) / 100) * 100; y <= Z.cam[1] + VH / 2; y += 100) { c.moveTo(0, Y(y)); c.lineTo(W, Y(y)); }
@@ -255,7 +256,7 @@ function arenaGame(kind) {
       if (kind === 'zombie') return this.drawZombie(c, W, H, d, performance.now());
       const sx = W / AW, sy = H / AH;
       c.clearRect(0, 0, W, H);
-      c.fillStyle = '#121845'; c.fillRect(0, 0, W, H);
+      S3.paint(c, W, H, kind, performance.now() / 1000); // 게임별 3D 경기장 바닥
       const now = performance.now();
       if (kind === 'paint' && this.grid) {
         const GC = v.GC, GR = v.GR; const cw = W / GC, ch = H / GR;

@@ -1,11 +1,13 @@
 // 참가자 폰 화면
-import { $, h, Live, api, store, sfx, say, vibrate, audioUnlock, AGE, teamOf, confetti } from './client.js';
+import { $, h, Live, api, store, sfx, sfxHooks, say, vibrate, audioUnlock, AGE, teamOf, confetti } from './client.js';
+import * as FX from './fx.js';
 import { G } from './play-games.js';
 import './play-n.js';
 import { saveCard } from './card.js';
 import './play-n2.js';
 import './play-n3.js';
 import { mountDemo, demoText } from './preview.js';
+import * as S3 from './scene3d.js';
 
 const app = $('#app'); window.__appOk = true; // 이 줄까지 실행되면 최신 문법을 아는 브라우저 (play.html의 안내 숨김)
 const params = new URLSearchParams(location.search);
@@ -188,8 +190,25 @@ function openMenu() {
   document.body.append(m);
 }
 
+// 화면 뒤 3D 배경: 지금(또는 다음) 게임 주제에 맞춘 장면 · 글자가 잘 보이게 위에 어두운 막 (게임 화면이 직접 그리면 그게 위에 보임)
+// 게임 중 성공·실패 순간: 화면 가장자리 빛 + (큰 성공이면) 빛 고리 — 모든 게임 공통 (효과음 신호를 받아서)
+if (!aiLv) sfxHooks.add((n) => {
+  if (!S || !['playing', 'countdown'].includes(S.phase)) return;
+  if (n === 'good' || n === 'pass') FX.flash('ok'); else if (n === 'win') { FX.flash('gold'); FX.burst({ color: '#ffd43b' }); } else if (n === 'bad' || n === 'boom') FX.flash('bad');
+});
+let bgNow = null;
+function backdrop() {
+  const g = (['playing', 'countdown'].includes(S.phase) ? VIEW[active()?.pid]?.g : null) || S.run?.game || S.item?.game || 'arcade';
+  const tone = S3.toneOf(S.settings.mode); const still = ['playing', 'countdown'].includes(S.phase); const key = `${g}|${tone}|${still}`;
+  document.body.dataset.tone = tone;
+  if (bgNow?.key === key) return;
+  bgNow?.ctl.stop(); let cv = document.getElementById('bg3d'); if (!cv) { cv = h('canvas', { id: 'bg3d', 'aria-hidden': 'true' }); document.body.prepend(cv, h('div', { id: 'bg3dshade' })); }
+  bgNow = { key, ctl: S3.backdrop(cv, g, { tone, still }) }; // 게임 중엔 배경을 멈춘 그림으로 (폰 부담 줄임)
+}
 function render() {
   if (!S) return;
+  try { backdrop(); } catch (e) { console.error(e); }
+  document.body.dataset.ph = S.phase;
   header();
   const main = $('#main'); if (!main) return;
   const p = active(); const me = ME[p.pid]?.me;
@@ -273,7 +292,9 @@ function rankTexts() {
 }
 function rankStrip() {
   const el = $('#rk'); if (!el || !S) return;
-  const { team, mine } = rankTexts(); const key = `${team}|${mine}`; if (el.dataset.k === key) return; el.dataset.k = key; el.innerHTML = '';
+  const rt = rankTexts(); const { team, mine } = rt; const key = `${team}|${mine}`; if (el.dataset.k === key) return; el.dataset.k = key; el.innerHTML = '';
+  // 우리 팀 순위가 바뀌면 크게 알림 (처음 그릴 때는 빼고)
+  const nr = rt.tr?.started ? rt.tr.rank : null; if (nr && rankStrip.prev && nr !== rankStrip.prev && !aiLv) FX.banner(nr < rankStrip.prev ? `▲ 우리 팀 ${nr}위로 올라감!` : `▼ 우리 팀 ${nr}위`, nr < rankStrip.prev ? 'up' : 'down'); if (nr) rankStrip.prev = nr;
   if (team) el.append(h('span', {}, h('i', {}, '팀'), team));
   if (mine) el.append(h('span', {}, h('i', {}, '나'), mine));
 }
@@ -321,7 +342,7 @@ function results() {
     if (tr.rank === 1) { sfx('win', sfxOn); setTimeout(() => { const c = h('canvas', { class: 'fx' }); document.body.append(c); confetti(c, [t.color, '#ffd43b', '#fff'], 120); setTimeout(() => c.remove(), 5000); }, 50); }
   }
   if (my && lr.personal !== false) el.append(h('div', { class: 'mine' }, '내 기록: ', h('b', {}, my.show ?? my.raw)));
-  if (lr.record?.isNew) el.append(h('div', { class: 'newrec' }, '🎉 신기록! ', h('b', {}, recTxt(lr.record.rec))));
+  if (lr.record?.isNew) { el.append(h('div', { class: 'newrec' }, '🎉 신기록! ', h('b', {}, recTxt(lr.record.rec)))); if (results.recRun !== lr.runId) { results.recRun = lr.runId; setTimeout(() => { FX.banner('NEW RECORD · 신기록!', 'gold', 2600); FX.burst({ color: '#ffd43b' }); }, 600); } }
   else if (lr.record?.rec) el.append(h('div', { class: 'irec' }, '🏅 최고 기록 ', h('b', {}, recTxt(lr.record.rec))));
   el.append(rankCard());
   const ace = lr.aces?.[t.id];

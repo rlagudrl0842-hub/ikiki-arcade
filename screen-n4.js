@@ -4,6 +4,8 @@ import { h } from './client.js';
 import { V } from './screen-games.js';
 import { loop, canvas, drawEmo, teamPanel } from './screen-n.js';
 import { BALLOON_COLORS } from './gen2.js';
+import * as S3 from './scene3d.js'; // 게임별 3D 배경
+const tone = () => document.body.dataset.tone || 'base'; const P3 = (c, W, H, id, dim) => { S3.paint(c, W, H, id, performance.now() / 1000, { tone: tone() }); if (dim) { c.fillStyle = `rgba(7,10,30,${dim})`; c.fillRect(0, 0, W, H); } };
 
 const W = 1300, H = 880;
 const scene = (self, ctx, title, fmt, gf) => { self.ctx = ctx; self.cv = canvas(W, H); self.panel = teamPanel(ctx, title, fmt, gf); self.big = h('div', { class: 'nbig' }); return h('div', { class: 'nar' }, h('div', { class: 'narc', style: { width: `${W}px` } }, self.cv, self.big), h('div', { class: 'nside' }, self.panel)); };
@@ -23,7 +25,7 @@ V.balloon = {
   draw(t) {
     const s = this.s; const c = this.cv.getContext('2d'); const ctx = this.ctx;
     // 하늘 + 축제 천막 + 만국기
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#5ec8ff'); g.addColorStop(0.62, '#bfe9ff'); g.addColorStop(0.62, '#5fbf5a'); g.addColorStop(1, '#3f9a3e'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'balloon');
     for (let i = 0; i < 6; i++) { const x = 40 + i * 215; c.fillStyle = i % 2 ? '#ff4d6d' : '#ffffff'; c.beginPath(); c.moveTo(x, 520); c.lineTo(x + 90, 450); c.lineTo(x + 180, 520); c.fill(); c.fillStyle = i % 2 ? '#ffffff' : '#ff4d6d'; c.fillRect(x + 10, 520, 160, 40); }
     c.strokeStyle = '#444'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 105); c.quadraticCurveTo(W / 2, 150, W, 105); c.stroke();
     for (let i = 0; i < 26; i++) { const x = (i + 0.5) * (W / 26); const y = 105 + Math.sin((x / W) * Math.PI) * 45 * 0.98; c.fillStyle = ['#ff4d6d', '#ffd43b', '#3d8bff', '#2fd27a', '#b06bff'][i % 5]; c.beginPath(); c.moveTo(x - 14, y); c.lineTo(x + 14, y); c.lineTo(x, y + 26); c.fill(); }
@@ -62,7 +64,7 @@ V.bombpass = {
   },
   draw(t) {
     const s = this.s; const c = this.cv.getContext('2d'); const ctx = this.ctx;
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1b1f3f'); g.addColorStop(1, '#0d1024'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'bombpass', 0.2);
     for (let r = 0; r < 4; r++) for (let i = 0; i < 40; i++) { c.fillStyle = ['#ff4d6d55', '#3d8bff55', '#ffd43b55', '#2fd27a55'][(i + r) % 4]; c.beginPath(); c.arc(16 + i * 33, 22 + r * 22 + Math.sin(t / 300 + i) * 2, 8, 0, 7); c.fill(); }
     c.fillStyle = '#ffffff'; c.font = '900 34px sans-serif'; c.textAlign = 'center'; c.fillText('💣 폭탄이 오면 다른 팀으로 휙! 심지가 다 타면 펑!', W / 2, 136);
     if (!s) return;
@@ -104,7 +106,7 @@ V.boss = {
   },
   draw(t) {
     const s = this.s; const c = this.cv.getContext('2d'); const ctx = this.ctx;
-    const g = c.createRadialGradient(W / 2, H * 0.6, 50, W / 2, H * 0.6, W * 0.8); g.addColorStop(0, '#4a1f2f'); g.addColorStop(1, '#120914'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'boss', 0.15);
     c.strokeStyle = '#ffb36633'; c.lineWidth = 2; for (let i = 0; i < 14; i++) { c.beginPath(); c.ellipse(W / 2, H * 0.95, 80 + i * 60, 20 + i * 14, 0, Math.PI, 0); c.stroke(); }
     c.fillStyle = '#ffd9a8'; c.font = '900 34px sans-serif'; c.textAlign = 'center'; c.fillText('🐉 폰에서 빛나는 약점 칸을 콕! 빨리 누르면 치명타', W / 2, 70);
     if (!s) return;
@@ -128,7 +130,7 @@ V.towerup = {
   update(s) { this.s = s; this.panel.set(s.team); for (const l of s.lanes) if (l.drop?.perfect && l.drop.at !== this.lastPerf) { this.lastPerf = l.drop.at; this.ctx.sfx('good'); } return s.team; },
   draw(t) {
     const s = this.s; const c = this.cv.getContext('2d'); const ctx = this.ctx;
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#16123a'); g.addColorStop(1, '#2b1d52'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'towerup');
     for (let i = 0; i < 5; i++) { const x = 130 + i * 260; const a = Math.sin(t / 900 + i) * 0.25; c.save(); c.translate(x, 0); c.rotate(a); const sg = c.createLinearGradient(0, 0, 0, H); sg.addColorStop(0, '#ffffff22'); sg.addColorStop(1, '#ffffff00'); c.fillStyle = sg; c.beginPath(); c.moveTo(-20, 0); c.lineTo(20, 0); c.lineTo(160, H); c.lineTo(-160, H); c.fill(); c.restore(); }
     c.fillStyle = '#3b2b6b'; c.fillRect(0, H - 70, W, 70); c.fillStyle = '#ffd43b'; c.fillRect(0, H - 74, W, 6);
     c.fillStyle = '#fff'; c.font = '900 32px sans-serif'; c.textAlign = 'center'; c.fillText('🏗 차례가 오면 블록이 탑과 딱 겹칠 때 탭!', W / 2, 52);

@@ -17,7 +17,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'scene3d.js', 'fx.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
   'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 

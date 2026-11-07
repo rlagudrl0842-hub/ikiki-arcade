@@ -9,6 +9,7 @@ import './screen-n4.js';
 import { mountPeTutorial } from './screen-pe2.js';
 import { PE_BY, AGE_NAME } from './pe2data.js';
 import { mountDemo, demoText } from './preview.js';
+import * as S3 from './scene3d.js';
 // 노트북에서 직접 실행(localhost)하면 폰은 localhost로 못 들어오므로, 참가 QR에는 이 노트북의 같은 와이파이 주소를 씀
 let localBase = '';
 if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) fetch('/api/info').then((r) => r.json()).then((r) => { if (r.lan?.[0]) localBase = r.lan[0]; }).catch(() => {});
@@ -103,7 +104,18 @@ function overtake(vals) {
   sfx('lead', sfxOn());
 }
 
+// 대형 화면 뒤 3D 배경: 게임 주제 장면 (대기·시상식은 오락실 홀)
+let bgNow = null;
+function stageBackdrop() {
+  const ph = S.phase; const g = ['intro', 'countdown', 'playing'].includes(ph) ? (S.run?.game || S.item?.game) : ph === 'results' ? S.lastResult?.game : null;
+  const id = g || 'arcade'; const tone = S3.toneOf(S.settings.mode); const key = `${id}|${tone}`;
+  document.body.dataset.ph = ph; document.body.dataset.tone = tone;
+  if (bgNow?.key === key) return;
+  bgNow?.ctl.stop(); let cv = document.getElementById('bg3d'); if (!cv) { cv = h('canvas', { id: 'bg3d', 'aria-hidden': 'true' }); document.body.prepend(cv); }
+  bgNow = { key, ctl: S3.backdrop(cv, id, { tone, pe: PE_BY[id] }) };
+}
 function render(prev) {
+  try { stageBackdrop(); } catch (e) { console.error(e); }
   // 일시정지·재개는 화면을 새로 만들지 않음 (게임 화면이 깜빡이며 처음부터 다시 그려지던 문제)
   const key = `${S.phase}:${S.idx}:${S.ceremonyStep}:${S.run?.id ?? ''}:${S.phaseAt ?? ''}`;
   const phaseChanged = key !== lastKey; lastKey = key;

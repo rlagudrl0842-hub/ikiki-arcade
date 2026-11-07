@@ -1,4 +1,5 @@
 // 폰 없는 체육 60종 — 대형 화면 (빔프로젝터). 진행·연출만 하고 점수는 사회자 입력으로만 바뀜
+import * as S3 from './scene3d.js';
 import { h } from './client.js';
 import { V } from './screen-games.js';
 import { loop, canvas } from './screen-n.js';
@@ -428,7 +429,7 @@ function peScreen(id) {
     },
     draw(tt) {
       const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const t = tt / 1000; const th = theme(s.lv);
-      c.save(); bg(c, W, H, th, t, s.mech === 'race' && s.st.style === 'stars' ? null : def.p.scene === 'forest' ? 'forest' : def.p.scene === 'laser' ? 'laser' : null);
+      c.save(); S3.paint(c, W, H, def.id, t, { tone: th.k === 'kid' ? 'kid' : th.k === 'pro' || th.k === 'esports' ? 'pro' : 'base', pe: def }); c.fillStyle = th.k === 'kid' ? 'rgba(255,255,255,0.08)' : 'rgba(7,10,30,0.28)'; c.fillRect(0, 0, W, H); // 게임 주제 3D 장면 (글자·선수가 잘 보이게 살짝 덮음)
       c.beginPath(); c.rect(0, 0, MW, H); c.clip();
       try { R[s.mech]?.(c, s, this.ctx, th, t, def, this.fx); } catch (e) { console.error(e); }
       c.restore();

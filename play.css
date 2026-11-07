@@ -465,3 +465,22 @@ body.zgame #rk { display: none; }
 @media (max-width: 340px) { .rkn { font-size: 28px; } .rkcard { gap: 6px; } }
 /* 게임 중에는 순위 줄을 숨겨 게임 화면·버튼 자리를 그대로 (게임 전·결과·대기 화면에는 표시) */
 body.ingame #rk { display: none; }
+
+/* ================= 3D 배경 (게임 주제별 장면) ================= */
+#bg3d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; pointer-events: none; }
+#bg3dshade { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(180deg, #070a1ecc, #0b0e24e6 60%); }
+body[data-ph="playing"] #bg3dshade, body[data-ph="countdown"] #bg3dshade { background: linear-gradient(180deg, #070a1e99, #0b0e24bb); }
+#app { position: relative; z-index: 1; }
+
+/* ================= 3D 카드 꾸밈 (참가자 폰) ================= */
+.rank, .badge { position: relative; overflow: hidden; box-shadow: 0 10px 0 #00000033, 0 18px 34px #0008, inset 0 1px 0 #ffffff44; transform: perspective(900px) rotateX(6deg); transform-origin: 50% 100%; animation: card3dP .6s cubic-bezier(.2, 1.3, .4, 1) both; }
+.rank::after, .badge::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, #ffffff40 50%, transparent 65%); transform: translateX(-100%); animation: fxS 1.4s .5s ease forwards; pointer-events: none; }
+@keyframes card3dP { from { opacity: 0; transform: perspective(900px) rotateX(60deg) translateY(20px); } }
+@keyframes fxS { to { transform: translateX(100%); } }
+.rank .rn { text-shadow: 0 4px 0 #0005, 0 0 30px #ffffff55; letter-spacing: -1px; }
+.badge .bi { animation: none; filter: drop-shadow(0 8px 10px #0008); }
+.mini, .intro .ir { background: #0b0e24b3; border: 1px solid #ffffff1a; } /* 흐림 효과(blur)는 구형 폰에서 느려 안 씀 */
+.intro .it { font-size: 32px; text-shadow: 0 3px 0 #0006, 0 8px 22px #000a; letter-spacing: -.5px; }
+.intro .ie { filter: drop-shadow(0 10px 14px #000a); }
+.results .rt { font-size: 24px; text-shadow: 0 3px 0 #0006; }
+@media (max-width: 360px), (prefers-reduced-motion: reduce) { .rank, .badge { transform: none; animation: none; } }

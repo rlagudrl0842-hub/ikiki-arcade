@@ -2,6 +2,8 @@
 import { h } from './client.js';
 import { V } from './screen-games.js';
 import { loop, canvas, teamPanel, feed, figure, token } from './screen-n.js';
+import * as S3 from './scene3d.js'; // 게임별 3D 배경
+const tone = () => document.body.dataset.tone || 'base'; const P3 = (c, W, H, id, dim) => { S3.paint(c, W, H, id, performance.now() / 1000, { tone: tone() }); if (dim) { c.fillStyle = `rgba(7,10,30,${dim})`; c.fillRect(0, 0, W, H); } };
 
 const stop = (self) => { self.dead = true; cancelAnimationFrame(self.raf); };
 
@@ -33,7 +35,7 @@ function skillScreen(id) {
       return avg;
     },
     draw(t) {
-      const c = this.cv.getContext('2d'); const W = 1300, H = 880; const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, c1); g.addColorStop(1, c2); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const c = this.cv.getContext('2d'); const W = 1300, H = 880; P3(c, W, H, id, 0.42); // 게임 장면 위에 팀 진행판 (글자가 잘 보이게 살짝 어둡게)
       c.fillStyle = '#ffffff06'; for (let i = 0; i < 14; i++) { const x = ((i * 137 + t * 0.02 * (i % 3 + 1)) % (W + 200)) - 100; c.beginPath(); c.arc(x, (i * 211) % H, 40 + (i % 4) * 20, 0, 7); c.fill(); }
       const teams = this.ctx.teams; const lh = Math.min(140, (H - 40) / teams.length); const y0 = (H - lh * teams.length) / 2;
       const x0 = 70, x1 = W - 170;
@@ -102,7 +104,7 @@ V.penalty = {
     this.panel.set(s.avg); return s.avg;
   },
   draw(t) {
-    const c = this.cv.getContext('2d'); const W = 1300, H = 880; const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1f6b3a'); g.addColorStop(1, '#0b3a1d'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const c = this.cv.getContext('2d'); const W = 1300, H = 880; P3(c, W, H, 'penalty', 0.1);
     const gx = 150, gy = 120, gw = 1000, gh = 460;
     c.strokeStyle = '#ffffff1f'; c.lineWidth = 1; for (let i = 0; i <= 40; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 40, gy); c.lineTo(gx + (gw * i) / 40, gy + gh); c.stroke(); } for (let j = 0; j <= 18; j++) { c.beginPath(); c.moveTo(gx, gy + (gh * j) / 18); c.lineTo(gx + gw, gy + (gh * j) / 18); c.stroke(); }
     c.strokeStyle = '#fff'; c.lineWidth = 14; c.strokeRect(gx, gy, gw, gh);
@@ -126,7 +128,7 @@ V.rhythm = {
     const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1832, H = 880;
     const now = this.ctx.now(); const beat = 60000 / s.bpm; const bi = Math.floor((now - s.t0) / beat); const ph = (((now - s.t0) % beat) + beat) % beat / beat;
     if (now >= s.t0 && bi !== this.lastBeat) { this.lastBeat = bi; this.ctx.sfx(bi % 4 === 0 ? 'count' : 'tap'); }
-    const g = c.createRadialGradient(W / 2, H, 50, W / 2, H, W * 0.8); g.addColorStop(0, `rgba(176,107,255,${0.35 + (1 - ph) * 0.25})`); g.addColorStop(1, '#05040f'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'rhythm', 0.2); { const g = c.createRadialGradient(W / 2, H, 50, W / 2, H, W * 0.8); g.addColorStop(0, `rgba(176,107,255,${0.2 + (1 - ph) * 0.25})`); g.addColorStop(1, 'rgba(5,4,15,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H); } // 박자에 맞춰 무대 빛
     c.strokeStyle = '#ffffff10'; for (let i = 0; i < 12; i++) { const y = H - ((i / 12 + ph / 12) % 1) * H; c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
     // 무대: 트러스 조명 + 박자 신호(원이 줄어드는 순간 = 탭 타이밍) + 판정 안내
     c.fillStyle = '#2b2440'; c.fillRect(0, 0, W, 26); for (let i = 0; i < 9; i++) { const lx = 100 + i * 205; const on = (bi + i) % 4 === 0; c.fillStyle = on ? '#fff3b0' : '#665c80'; c.beginPath(); c.arc(lx, 26, 12, 0, 7); c.fill(); if (on) { const sg = c.createLinearGradient(lx, 26, lx, H); sg.addColorStop(0, 'rgba(255,243,176,.22)'); sg.addColorStop(1, 'rgba(255,243,176,0)'); c.fillStyle = sg; c.beginPath(); c.moveTo(lx - 8, 26); c.lineTo(lx + 8, 26); c.lineTo(lx + 120, H); c.lineTo(lx - 120, H); c.fill(); } }
@@ -153,7 +155,7 @@ V.burger = {
   mount(root, ctx) { this.ctx = ctx; this.cnt = {}; this.cv = canvas(1832, 880); root.append(h('div', { class: 'nfull' }, this.cv)); loop(this, () => this.draw()); },
   update(s) { this.s = s; for (const [k, n] of Object.entries(s.done || {})) { this.cnt[k] = (this.cnt[k] || 0) + n; this.ctx.sfx('good'); } return s.avg; },
   draw() {
-    const c = this.cv.getContext('2d'); const W = 1832, H = 880; const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#3a1c0c'); g.addColorStop(1, '#120804'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const c = this.cv.getContext('2d'); const W = 1832, H = 880; P3(c, W, H, 'burger', 0.35);
     const teams = this.ctx.teams; const cw = W / teams.length;
     teams.forEach((tm, i) => {
       const n = this.cnt[tm.id] || 0; const cx = cw * i + cw / 2; const bw = Math.min(200, cw * 0.7); const lh = Math.min(26, 640 / Math.max(10, n));

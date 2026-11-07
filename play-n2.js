@@ -4,6 +4,7 @@ import { G } from './play-games.js';
 import { rng } from './gen.js';
 import { spotPuzzle, rhythmChart, BURGER } from './gen2.js';
 import { M, motionChip } from './play-motion.js';
+import * as S3 from './scene3d.js';
 
 const P = { press: (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; } };
 function fit(cv) { const r = cv.getBoundingClientRect(); const d = Math.min(2, devicePixelRatio || 1); const w = Math.max(1, Math.round(r.width * d)), hh = Math.max(1, Math.round(r.height * d)); if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; } return { W: w, H: hh, d }; }
@@ -53,6 +54,8 @@ function skillUI(g, opts = {}) {
     unmount() { this.dead = true; this.unsub?.(); cancelAnimationFrame(this.raf); clearInterval(this.iv); if (this.S.score !== this.S.sent) this.S.api.send({ a: 'sc', v: this.S.score }); },
   };
 }
+// 게임별 3D 배경 (scene3d.js) — 이전의 단색 그라데이션 대신
+const sceneBg = (c, W, H, id) => S3.paint(c, W, H, id, performance.now() / 1000, { tone: document.body.classList.contains('kid') ? 'kid' : 'base' });
 const bg = (c, W, H, a, b) => { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, a); g.addColorStop(1, b); c.fillStyle = g; c.fillRect(0, 0, W, H); };
 
 // ---------------- 달고나 뽑기
@@ -81,7 +84,7 @@ G.dalgona = skillUI({
   down(S, x, y) { S.last = null; this.move(S, x, y); },
   up(S) { S.last = null; }, // 손을 떼면 다음 획은 새로 시작 (떨어진 곳끼리 잇지 않음)
   draw(S, c, W, H, d) {
-    S.W = W; S.H = H; bg(c, W, H, '#2b1d14', '#120c08');
+    S.W = W; S.H = H; sceneBg(c, W, H, 'dalgona');
     const cx = W * 0.5, cy = H * 0.5, R = W * 0.36;
     const g = c.createRadialGradient(cx - R * 0.3, cy - R * 0.3, R * 0.2, cx, cy, R * 1.35); g.addColorStop(0, '#f2c46d'); g.addColorStop(1, '#b8792c'); c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R * 1.32, 0, 7); c.fill();
     c.setLineDash([6 * d, 6 * d]); c.strokeStyle = '#7a4a17'; c.lineWidth = 3 * d; c.beginPath(); S.pts.forEach((p, i) => { const X = cx + p[0] * R, Y = cy + p[1] * R; i ? c.lineTo(X, Y) : c.moveTo(X, Y); }); c.closePath(); c.stroke(); c.setLineDash([]);
@@ -116,7 +119,7 @@ function throwGame(kind) {
       }
     },
     draw(S, c, W, H, d) {
-      if (kind === 'tuho') bg(c, W, H, '#20304f', '#0d1426'); else bg(c, W, H, '#3b2416', '#160d07');
+      sceneBg(c, W, H, kind);
       if (kind !== 'tuho') { c.strokeStyle = '#ffffff22'; c.lineWidth = 2 * d; c.beginPath(); c.arc(W / 2, H, W * 0.45, Math.PI, 0); c.stroke(); }
       const tx = this.target(S) * W, ty = (kind === 'tuho' ? 0.2 : 0.18) * H;
       if (kind === 'tuho') {
@@ -153,7 +156,7 @@ G.runner = skillUI({
     const m = Math.floor(S.dist); if (m !== S.score) { if (Math.floor(m / 100) > Math.floor(S.score / 100)) S.add(0, 1, `${Math.floor(m / 100) * 100}m 돌파!`); S.score = m; }
   },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#1d2b6b', '#0b1030'); const gy = H * 0.72;
+    sceneBg(c, W, H, 'runner'); const gy = H * 0.72;
     c.fillStyle = '#ffffff08'; for (let i = 0; i < 6; i++) { const x = ((i * 0.3 - S.dist * 0.004) % 1.8 + 1.8) % 1.8 - 0.3; c.beginPath(); c.arc(x * W, H * 0.3, 60 * d, 0, 7); c.fill(); }
     c.fillStyle = '#2fd27a'; c.fillRect(0, gy, W, 4 * d); c.fillStyle = '#ffffff12'; for (let i = 0; i < 20; i++) c.fillRect(((i * 0.08 - S.dist * 0.01) % 1.6 + 1.6) % 1.6 * W - 0.3 * W, gy + 14 * d, 18 * d, 3 * d);
     for (const o of S.obs) { c.fillStyle = o.hit ? '#ff4d6d55' : '#ff4d6d'; const top = o.fly ? gy - (0.3 + o.h) * H * 0.55 : gy - o.h * H * 0.55; rr(c, o.x * W, top, o.w * W, o.h * H * 0.55, 6 * d); c.fill(); }
@@ -184,7 +187,7 @@ G.flappy = skillUI({
     S.pipes = S.pipes.filter((p) => p.x > -0.3);
   },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#3d7be0', '#1b2d6b');
+    sceneBg(c, W, H, 'flappy');
     for (const p of S.pipes) { const pw = 0.12 * W; c.fillStyle = '#2fd27a'; c.fillRect(p.x * W, 0, pw, (p.c - p.gap / 2) * H); c.fillRect(p.x * W, (p.c + p.gap / 2) * H, pw, H); c.fillStyle = '#1a9e55'; c.fillRect(p.x * W - 4 * d, (p.c - p.gap / 2) * H - 14 * d, pw + 8 * d, 14 * d); c.fillRect(p.x * W - 4 * d, (p.c + p.gap / 2) * H, pw + 8 * d, 14 * d); }
     const X = 0.22 * W, Y = S.y * H; c.save(); c.translate(X, Y); c.rotate(Math.max(-0.5, Math.min(1, S.vy * 1.5)));
     c.fillStyle = S.stun > 0 ? '#ffffff66' : '#ffd43b'; c.beginPath(); c.ellipse(0, 0, 20 * d, 16 * d, 0, 0, 7); c.fill();
@@ -204,7 +207,7 @@ G.stairs = skillUI({
   },
   step(S, dt) { if (S.fall > 0) { S.fall -= dt; if (S.fall <= 0) { S.face = S.seq[S.i + 1]; } } S.anim = Math.max(0, S.anim - dt * 8); },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#6a8cff', '#1d2050'); const sw = 56 * d, sh = 30 * d; const cx = W / 2, cy = H * 0.68;
+    sceneBg(c, W, H, 'stairs'); const sw = 56 * d, sh = 30 * d; const cx = W / 2, cy = H * 0.68;
     let x = 0; const xs = [0]; for (let k = 1; k < 14; k++) { x += S.seq[S.i + k] || 1; xs.push(x); }
     for (let k = 13; k >= 0; k--) { const X = cx + xs[k] * sw - sw / 2, Y = cy - k * sh + S.anim * sh; c.fillStyle = k === 0 ? '#ffd43b' : `hsl(${220 + k * 6},70%,${70 - k * 2}%)`; rr(c, X, Y, sw, 12 * d, 4 * d); c.fill(); }
     const py = cy + S.anim * sh - (S.fall > 0 ? -(0.9 - S.fall) * 200 * d : 0);
@@ -229,7 +232,7 @@ G.bridge = skillUI({
     if (S.phase === 'fall') { S.walk += dt; if (S.walk > 0.9) { S.len = 0; S.phase = 'ready'; } }
   },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#ff9a5a', '#5a2a6b'); const base = H * 0.66;
+    sceneBg(c, W, H, 'bridge'); const base = H * 0.66;
     for (const p of S.plat) { c.fillStyle = '#1b1530'; c.fillRect(p.x * W, base, p.w * W, H - base); c.fillStyle = '#ff4d6d'; c.fillRect((p.x + p.w / 2 - p.w * 0.075) * W, base, p.w * 0.15 * W, 4 * d); }
     const a = S.plat[0]; const sx = (a.x + a.w) * W; const L = S.len * W; const ang = S.phase === 'ready' ? -Math.PI / 2 : -Math.PI / 2 + S.fallA;
     c.strokeStyle = '#ffd43b'; c.lineWidth = 5 * d; c.beginPath(); c.moveTo(sx, base); c.lineTo(sx + Math.cos(ang) * L, base + Math.sin(ang) * L); c.stroke();
@@ -262,7 +265,7 @@ G.fishing = skillUI({
     }
   },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#7ec8ff', '#0b2a5c'); const wy = H * 0.32;
+    sceneBg(c, W, H, 'fishing'); const wy = H * 0.32;
     c.fillStyle = '#0d3b7a'; c.fillRect(0, wy, W, H - wy); c.strokeStyle = '#ffffff33'; c.lineWidth = 2 * d; c.beginPath(); for (let x = 0; x <= W; x += 10 * d) c.lineTo(x, wy + Math.sin(x / (30 * d) + S.t * 2) * 3 * d); c.stroke();
     const bx = W * 0.5, by = wy + (S.st === 'bite' ? 18 * d + Math.sin(S.t * 30) * 4 * d : Math.sin(S.t * 2) * 3 * d);
     c.strokeStyle = '#ffffffaa'; c.lineWidth = 1.5 * d; c.beginPath(); c.moveTo(W * 0.9, 0); c.lineTo(bx, by); c.stroke();
@@ -291,7 +294,7 @@ G.eggs = skillUI({
     S.items = S.items.filter((i) => !i.done && i.y < 1.1);
   },
   draw(S, c, W, H, d) {
-    bg(c, W, H, '#ffe2a8', '#e88a3a');
+    sceneBg(c, W, H, 'eggs');
     for (const it of S.items) { const X = it.x * W, Y = it.y * H; if (it.t === 'rock') { c.fillStyle = '#6b6b78'; c.beginPath(); c.ellipse(X, Y, 16 * d, 13 * d, 0.3, 0, 7); c.fill(); } else { c.fillStyle = it.t === 'gold' ? '#ffd43b' : '#fffaf0'; c.shadowColor = it.t === 'gold' ? '#fff3a0' : 'transparent'; c.shadowBlur = 16 * d; c.beginPath(); c.ellipse(X, Y, 12 * d, 16 * d, 0, 0, 7); c.fill(); c.shadowBlur = 0; c.strokeStyle = '#00000022'; c.stroke(); } }
     const X = S.bx * W, Y = 0.88 * H; c.fillStyle = '#8b5a2b'; c.beginPath(); c.moveTo(X - 46 * d, Y - 10 * d); c.lineTo(X + 46 * d, Y - 10 * d); c.lineTo(X + 34 * d, Y + 24 * d); c.lineTo(X - 34 * d, Y + 24 * d); c.fill();
     c.strokeStyle = '#5a3612'; c.lineWidth = 2 * d; for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(X + i * 12 * d, Y - 10 * d); c.lineTo(X + i * 9 * d, Y + 24 * d); c.stroke(); }
@@ -315,7 +318,7 @@ G.curling = {
       if (this.dead) return; const now = performance.now(); const dt = Math.min(0.05, (now - lt) / 1000); lt = now; const S = this.s; const o = S.stone;
       // 일시정지 중엔 스톤도 멈춤 (멈춘 사이 결과를 보내면 서버가 버려 다음 스톤을 못 던지던 문제)
       if (o?.moving && !window.__paused) { const fr = 0.42 - Math.min(0.25, S.rub * 0.9); S.rub *= 0.85; o.x += o.vx * dt; o.y -= o.vy * dt; const sp = Math.hypot(o.vx, o.vy); const nsp = Math.max(0, sp - fr * dt); if (sp > 0) { o.vx *= nsp / sp; o.vy *= nsp / sp; } if (nsp <= 0.003 || o.y < -0.1) { o.moving = false; const hx = (o.x - 0.5) / 0.22, hy = (o.y - 0.22) / 0.22 * (this.cv.height / this.cv.width) ; this.pend = { a: 'throw', x: Math.max(-1.5, Math.min(1.5, hx)), y: Math.max(-1.5, Math.min(1.5, hy)), n0: this.v.th.length }; api.send({ a: 'throw', x: this.pend.x, y: this.pend.y }); vibrate(30); } }
-      const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); bg(c, W, H, '#e9f3ff', '#c7dcf2');
+      const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'curling');
       const cx = W * 0.5, cy = H * 0.22, R = W * 0.22;
       [[1, '#3d8bff'], [0.66, '#ffffff'], [0.33, '#ff4d6d'], [0.08, '#ffffff']].forEach(([k, col]) => { c.fillStyle = col; c.beginPath(); c.arc(cx, cy, R * k, 0, 7); c.fill(); });
       c.strokeStyle = '#9fb6d6'; c.lineWidth = 2 * d; c.beginPath(); c.moveTo(W * 0.5, 0); c.lineTo(W * 0.5, H); c.stroke();
@@ -342,7 +345,7 @@ G.penalty = {
     this.unsub = M.sub((ev) => { if (!M.on || ev.type !== 'swing' || (this.anim && performance.now() - this.anim.at < 1500)) return; const col = ev.tx < -0.3 ? 0 : ev.tx > 0.3 ? 2 : 1; const z = (ev.power > 0.6 ? 0 : 3) + col; api.send({ a: 'kick', z }); this.anim = { z, at: performance.now(), res: null }; vibrate(20); sfx('pass', api.sfxOn); });
     P.press(box, (e) => { if (this.anim && performance.now() - this.anim.at < 1500) return; const r = this.cv.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; if (y > 0.55 || x < 0.1 || x > 0.9) return; const col = Math.min(2, Math.floor((x - 0.1) / 0.8 * 3)); const row = y < 0.32 ? 0 : 1; const z = row * 3 + col; api.send({ a: 'kick', z }); this.anim = { z, at: performance.now(), res: null }; vibrate(15); sfx('pass', api.sfxOn); });
     const loop = () => {
-      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); bg(c, W, H, '#1f6b3a', '#0d3b1f');
+      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'penalty');
       const gx = W * 0.1, gy = H * 0.12, gw = W * 0.8, gh = H * 0.42;
       c.strokeStyle = '#ffffff22'; c.lineWidth = 1; for (let i = 0; i <= 12; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 12, gy); c.lineTo(gx + (gw * i) / 12, gy + gh); c.stroke(); } for (let j = 0; j <= 6; j++) { c.beginPath(); c.moveTo(gx, gy + (gh * j) / 6); c.lineTo(gx + gw, gy + (gh * j) / 6); c.stroke(); }
       c.strokeStyle = '#fff'; c.lineWidth = 6 * d; c.strokeRect(gx, gy, gw, gh);
@@ -374,7 +377,7 @@ G.rhythm = {
     root.append(h('div', { class: 'gwrap skg' }, h('div', { class: 'skw sk-mid' }, this.cv, this.info), btns));
     this.update(v);
     const loop = () => {
-      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); bg(c, W, H, '#140f2e', '#05040f');
+      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'rhythm');
       const now = api.now(); const lw = W / lanes; const hitY = H * 0.86; const speed = H / 1.6;
       const cols = ['#ff4d6d', '#3d8bff', '#2fd27a'];
       for (let l = 0; l < lanes; l++) { c.fillStyle = l % 2 ? '#ffffff06' : '#ffffff0c'; c.fillRect(l * lw, 0, lw, H); }
@@ -519,7 +522,7 @@ G.sync = {
   reply(r) { this.fb = { k: r.k, at: performance.now() }; if (r.k === 'rest') { sfx('bad', this.api.sfxOn); vibrate([40, 40, 40]); } else sfx(r.k === 'perfect' ? 'win' : 'good', this.api.sfxOn); },
   draw() {
     const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); const now = this.api.now(); const col = this.api.team.color;
-    bg(c, W, H, '#1b1440', '#0b0e24');
+    sceneBg(c, W, H, 'sync');
     const cx = W / 2, cy = H * 0.5, R = Math.min(W, H) * 0.2;
     const nx = (this.v.nx || []).filter((b) => b.at > now - 250);
     const near = nx[0]; const k = near ? Math.max(0, 1 - Math.abs(near.at - now) / 160) : 0;

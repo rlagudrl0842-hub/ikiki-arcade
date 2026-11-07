@@ -2,6 +2,8 @@
 import { h } from './client.js';
 import { V } from './screen-games.js';
 import { loop, canvas } from './screen-n.js';
+import * as S3 from './scene3d.js'; // 게임별 3D 배경
+const tone = () => document.body.dataset.tone || 'base'; const P3 = (c, W, H, id, dim) => { S3.paint(c, W, H, id, performance.now() / 1000, { tone: tone() }); if (dim) { c.fillStyle = `rgba(7,10,30,${dim})`; c.fillRect(0, 0, W, H); } };
 
 const MOVES = ['손 머리 위로!', '양팔 옆으로 쫙!', '한 발로 서기!', '앉았다 일어나기!', '제자리 뛰기!', '팔 빙글빙글!', '무릎 터치!', '별 모양 점프!', '박수 세 번!', '몸 흔들흔들!'];
 const KEYS = ['up', 'wide', 'leg', 'squat', 'jog', 'spin', 'knee', 'star', 'clap', 'wiggle'];
@@ -67,7 +69,7 @@ function peScreen(kind) {
     draw(t) {
       const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1200, H = 880;
       const freeze = kind === 'pe_freeze' && s.ph === 'freeze';
-      const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, freeze ? '#0d3a6b' : '#2a1458'); g.addColorStop(1, '#0b0e24'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      P3(c, W, H, kind, 0.3); if (freeze) { c.fillStyle = '#4aa8ff33'; c.fillRect(0, 0, W, H); } // 체육관 3D · 얼음 순간은 파랗게
       // 비트 (댄스 중 120BPM)
       const beat = 500; const bk = (t % beat) / beat;
       if (kind === 'pe_freeze' && !freeze) { const bi = Math.floor(t / beat); if (bi !== this.lastBeat) { this.lastBeat = bi; if (!this.ctx.bgm?.active()) this.ctx.sfx(bi % 2 ? 'tap' : 'count'); } c.fillStyle = `rgba(255,80,200,${0.15 * (1 - bk)})`; c.fillRect(0, 0, W, H); for (let i = 0; i < 6; i++) { c.fillStyle = `hsla(${(t / 20 + i * 60) % 360},90%,60%,.18)`; c.beginPath(); c.arc(200 + i * 160, 700 - Math.sin(t / 300 + i) * 60, 60 + (1 - bk) * 30, 0, 7); c.fill(); } }
@@ -111,7 +113,7 @@ V.sync = {
   draw() {
     const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1820, H = 880; const ctx = this.ctx;
     const T = s.T + (performance.now() - this.at) / 1000;
-    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2a1458'); g.addColorStop(1, '#0b0e24'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'sync', 0.3);
     const nb = s.nx.find((b) => b[0] > T - 0.15); const k = nb ? Math.max(0, 1 - Math.abs(nb[0] - T) / 0.18) : 0;
     if (nb && !nb[1]) { c.fillStyle = `rgba(255,212,59,${k * 0.18})`; c.fillRect(0, 0, W, H); }
     c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -146,7 +148,7 @@ V.relay = {
   update(s) { this.s = s; for (const [k, v] of Object.entries(s.t)) if (v.pass && !this.shown[k + ':' + v.legs]) { this.shown[k + ':' + v.legs] = 1; this.ctx.sfx('tap'); } return s.team; },
   draw() {
     const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1820, H = 880; const ctx = this.ctx; const t0 = performance.now() / 1000;
-    c.fillStyle = '#0f1630'; c.fillRect(0, 0, W, H);
+    P3(c, W, H, 'relay', 0.35);
     c.textBaseline = 'middle';
     const n = ctx.teams.length; const lh = Math.min(200, (H - 40) / n); const y0 = (H - lh * n) / 2;
     const LAP = 10; const tx0 = 330, tx1 = W - 90;

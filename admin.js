@@ -3,6 +3,7 @@ import { $, h, Live, api, store, AGE, MODE, teamOf, qrImg, qrJoinUrl, shortHost,
 import { saveCard } from './card.js';
 import * as BGM from './bgm.js';
 import * as TP from './timeplan.js';
+import * as S3 from './scene3d.js';
 import { AGE_NAME as PE_AGE_NAME, TYPE as PE_TYPE, PE_BY } from './pe2data.js';
 // 노트북에서 직접 실행(localhost)하면 폰은 localhost로 못 들어오므로, 참가 QR에는 이 노트북의 같은 와이파이 주소를 씀
 let localBase = '';
@@ -704,7 +705,7 @@ function tabPrep(body) {
       if (F.fav && !favs.has(g.id)) continue;
       n++;
       const fav = h('span', { class: `gfav ${favs.has(g.id) ? 'on' : ''}`, title: '즐겨찾기', onclick: (e) => { e.stopPropagation(); const f = new Set(S.settings.favs || []); f.has(g.id) ? f.delete(g.id) : f.add(g.id); S.settings.favs = [...f]; save({ settings: { favs: [...f] } }); paintGrid(); } }, favs.has(g.id) ? '★' : '☆');
-      grid.append(h('div', { class: `gpick ${inPl.has(g.id) ? 'on' : ''} ${devOk(g) ? '' : 'nodev'}`, title: m ? `${m.act}\n${g.rule}` : g.rule, onclick: () => {
+      grid.append(h('div', { 'data-g': g.id, class: `gpick ${inPl.has(g.id) ? 'on' : ''} ${devOk(g) ? '' : 'nodev'}`, title: m ? `${m.act}\n${g.rule}` : g.rule, onclick: () => {
         if (locked) return; const i = pl.findIndex((p) => p.game === g.id);
         if (i >= 0) { if (i < S.idx) return toast('이미 한 게임은 ② 게임 순서에서 빼 주세요'); pl.splice(i, 1); } else pl.push(defItem(g.id));
         savePlaylist(pl); formDirty = false; drawTab();
@@ -714,6 +715,8 @@ function tabPrep(body) {
     }
     if (!n) grid.append(h('p', { class: 'muted' }, '조건에 맞는 게임이 없어요'));
     cnt.textContent = `${n}개`;
+    // 게임 카드 배경: 그 게임의 3D 장면 작은 그림 (한 번에 다 그리지 않고 조금씩 → 화면이 멈추지 않게)
+    const cards = [...grid.querySelectorAll('.gpick[data-g]')]; const step = () => { for (const el of cards.splice(0, 6)) { const id = el.dataset.g; try { el.style.setProperty('--thumb', `url(${S3.thumb(id, games.find((x) => x.id === id)?.pe2)})`); el.classList.add('th'); } catch { /* */ } } if (cards.length) requestAnimationFrame(step); }; requestAnimationFrame(step);
   };
   const cnt = h('span', { class: 'muted small' });
   for (const [el, k] of [[fAge, 'age'], [fSpace, 'space'], [fType, 'type'], [fTime, 'time']]) el.onchange = () => { F[k] = el.value; paintGrid(); };

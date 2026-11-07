@@ -2,6 +2,8 @@
 import { h } from './client.js';
 import { V } from './screen-games.js';
 import { ropeBeats, FRUITS } from './gen2.js';
+import * as S3 from './scene3d.js'; // 게임별 3D 배경
+const tone = () => document.body.dataset.tone || 'base';
 
 const AW = 1600, AH = 860;
 export function loop(self, fn) { const f = (t) => { if (self.dead) return; try { fn(t); } catch (e) { console.error(e); } self.raf = requestAnimationFrame(f); }; self.raf = requestAnimationFrame(f); }
@@ -225,7 +227,7 @@ V.mugung = {
     if (!this.cur) return;
     const s = this.cur.s; const c = this.cv.getContext('2d'); const W = 1400, H = 880; const ctx = this.ctx;
     const look = s.ph === 'look';
-    c.fillStyle = look ? '#3a0d18' : '#13204a'; c.fillRect(0, 0, W, H);
+    S3.paint(c, W, H, 'mugung', t / 1000, { tone: tone() }); if (look) { c.fillStyle = '#ff1a3a40'; c.fillRect(0, 0, W, H); } // 운동장 3D 배경 · 술래가 볼 때 붉게
     // 결승선 (오른쪽, 술래 쪽)
     const x0 = 60, x1 = W - 90;
     c.fillStyle = '#ffffff'; for (let y = 0; y < H; y += 24) { c.fillRect(x1, y, 12, 12); c.fillRect(x1 + 12, y + 12, 12, 12); }
