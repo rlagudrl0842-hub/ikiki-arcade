@@ -225,7 +225,7 @@ function arenaGame(kind) {
         // 3D 경기장 (WebGL 되고 화질 '가벼움'이 아닐 때만 · 실패·느림이면 원래 2D로 자동 복귀)
         if (S3.quality() !== 'low' && !/[?&]r3d=0/.test(location.search)) {
           const cv3 = h('canvas', { class: 'amap3', 'aria-hidden': 'true' }); mw.prepend(cv3); this.cv.classList.add('on3'); // 자리를 처음부터 잡아 둠 (불러온 뒤 조이스틱이 밀리지 않게)
-          this.drop3d = (why) => { try { this.r3?.dispose(); } catch { /* */ } this.r3 = null; cv3.remove(); this.cv.classList.remove('on3'); window.__r3d = `2d:${why}`; };
+          this.drop3d = (why) => { try { this.r3?.dispose(); } catch { /* */ } this.r3 = null; cv3.remove(); this.cv.classList.remove('on3'); window.__r3d = `2d:${why}`; S3.mark3dFail(why); };
           import('./arena3d.js').then((m) => { if (this.dead) return cv3.remove(); const r = m.createArena3D(cv3, { kind, color: api.team.color, teamColor: (i) => api.teamColor(i), quality: S3.quality(), onSlow: (why) => this.drop3d(why) }); if (r) { this.r3 = r; this.cv.classList.add('on3'); window.__r3d = '3d'; } else this.drop3d('nogl'); }).catch(() => this.drop3d('load'));
         }
       }
@@ -351,7 +351,11 @@ G.mugung = {
   draw() {
     const v = this.v; const b = this.ban;
     if (this.r3) { if (this.cv3.style.display === 'none') { this.cv3.style.display = ''; this.track.style.display = 'none'; } const { W, H } = fitCanvas(this.cv3); const c = this.cv3.getContext('2d'); if (!paint3d(this, c, W, H, { v, holding: this.holding, t: performance.now() / 1000 })) c.clearRect(0, 0, W, H); }
-    else if (this.no3d && this.cv3.style.display !== 'none') { this.cv3.style.display = 'none'; this.track.style.display = ''; } // 3D가 안 되거나 꺼지면 원래 트랙으로
+    else if (this.no3d && this.cv3.style.display !== 'none') { // 3D가 꺼져도 칸 크기는 그대로 두고 그 안에 2D 트랙을 그림 (버튼이 다시 움직이면 누르던 손가락이 빗나감)
+      const { W, H, d } = fitCanvas(this.cv3); const c = this.cv3.getContext('2d'); S3.paint(c, W, H, 'mugung', performance.now() / 1000);
+      const y = H * 0.62, x0 = W * 0.08, x1 = W * 0.92; c.strokeStyle = '#ffffff55'; c.lineWidth = 3 * d; c.setLineDash([8 * d, 8 * d]); c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke(); c.setLineDash([]);
+      c.font = `${28 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🏁', x1, y - 6 * d); c.fillText(this.api.team.icon, x0 + (x1 - x0) * Math.min(1, v.pos / 100), y - 6 * d);
+    }
     if (v.ph === 'sing') {
       const k = Math.max(0, Math.min(1, 1 - (v.until - this.api.now()) / (v.dur * 1000)));
       const n = Math.max(1, Math.ceil(k * SONG.length));

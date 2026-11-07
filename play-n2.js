@@ -16,7 +16,7 @@ const rr = (c, x, y, w, hh, r) => { c.beginPath(); c.roundRect(x, y, w, hh, r); 
 function attach3d(self, box, loader, api) {
   if (!loader || S3.quality() === 'low' || /[?&]r3d=0/.test(location.search)) return;
   const cv3 = h('canvas', { class: 'skcv sk3d', 'aria-hidden': 'true' }); box.prepend(cv3);
-  self.drop3d = (why) => { try { self.r3?.dispose(); } catch { /* */ } self.r3 = null; cv3.remove(); window.__r3d = `2d:${why}`; };
+  self.drop3d = (why) => { try { self.r3?.dispose(); } catch { /* */ } self.r3 = null; cv3.remove(); window.__r3d = `2d:${why}`; S3.mark3dFail(why); };
   loader().then((make) => {
     if (self.dead) return cv3.remove();
     const r = make(cv3, { color: api.team.color, quality: S3.quality(), onSlow: (why) => self.drop3d(why) });
@@ -69,6 +69,8 @@ function skillUI(g, opts = {}) {
   };
 }
 // 게임별 3D 배경 (scene3d.js) — 이전의 단색 그라데이션 대신
+// 3D 무대가 뒤에 있으면(리듬·한마음 박자) 캔버스 배경을 비워 무대가 보이게
+const stageBg = (c, W, H, id) => { if (window.__stage3d) { c.clearRect(0, 0, W, H); c.fillStyle = '#070a1e55'; c.fillRect(0, 0, W, H); } else sceneBg(c, W, H, id); };
 const sceneBg = (c, W, H, id) => S3.paint(c, W, H, id, performance.now() / 1000, { tone: document.body.classList.contains('kid') ? 'kid' : 'base' });
 const bg = (c, W, H, a, b) => { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, a); g.addColorStop(1, b); c.fillStyle = g; c.fillRect(0, 0, W, H); };
 
@@ -449,7 +451,7 @@ G.rhythm = {
     root.append(h('div', { class: 'gwrap skg' }, h('div', { class: 'skw sk-mid' }, this.cv, this.info), btns));
     this.update(v);
     const loop = () => {
-      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); sceneBg(c, W, H, 'rhythm');
+      if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); stageBg(c, W, H, 'rhythm');
       const now = api.now(); const lw = W / lanes; const hitY = H * 0.86; const speed = H / 1.6;
       const cols = ['#ff4d6d', '#3d8bff', '#2fd27a'];
       for (let l = 0; l < lanes; l++) { c.fillStyle = l % 2 ? '#ffffff06' : '#ffffff0c'; c.fillRect(l * lw, 0, lw, H); }
@@ -594,7 +596,7 @@ G.sync = {
   reply(r) { this.fb = { k: r.k, at: performance.now() }; if (r.k === 'rest') { sfx('bad', this.api.sfxOn); vibrate([40, 40, 40]); } else sfx(r.k === 'perfect' ? 'win' : 'good', this.api.sfxOn); },
   draw() {
     const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); const now = this.api.now(); const col = this.api.team.color;
-    sceneBg(c, W, H, 'sync');
+    stageBg(c, W, H, 'sync');
     const cx = W / 2, cy = H * 0.5, R = Math.min(W, H) * 0.2;
     const nx = (this.v.nx || []).filter((b) => b.at > now - 250);
     const near = nx[0]; const k = near ? Math.max(0, 1 - Math.abs(near.at - now) / 160) : 0;

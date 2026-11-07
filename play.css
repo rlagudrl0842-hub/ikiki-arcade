@@ -497,3 +497,7 @@ body:not(.ingame) .top .hrk { display: none; } /* 게임 밖에서는 아래 순
 
 /* 무궁화 3D 운동장 (트랙 대신) */
 .mg3 { width: 100%; height: clamp(100px, 22vh, 180px); border-radius: 18px; display: block; }
+
+/* 버튼 위주 게임의 3D 무대 배경 (원래 배경 위 · 어둡게 덮는 막 아래) */
+#stage3d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; pointer-events: none; }
+body.stage3d #bg3dshade { background: linear-gradient(180deg, #070a1e66, #0b0e2499); }

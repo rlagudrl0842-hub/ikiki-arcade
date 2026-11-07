@@ -194,6 +194,7 @@ function openMenu() {
 // 게임 중 성공·실패 순간: 화면 가장자리 빛 + (큰 성공이면) 빛 고리 — 모든 게임 공통 (효과음 신호를 받아서)
 if (!aiLv) sfxHooks.add((n) => {
   if (!S || !['playing', 'countdown'].includes(S.phase)) return;
+  try { stageNow?.r?.react?.(n); } catch { /* */ } // 3D 무대 조명·관중 반응
   if (n === 'good' || n === 'pass') FX.flash('ok'); else if (n === 'win') { FX.flash('gold'); FX.burst({ color: '#ffd43b' }); } else if (n === 'bad' || n === 'boom') FX.flash('bad');
 });
 let bgNow = null;
@@ -205,9 +206,31 @@ function backdrop() {
   bgNow?.ctl.stop(); let cv = document.getElementById('bg3d'); if (!cv) { cv = h('canvas', { id: 'bg3d', 'aria-hidden': 'true' }); document.body.prepend(cv, h('div', { id: 'bg3dshade' })); }
   bgNow = { key, ctl: S3.backdrop(cv, g, { tone, still }) }; // 게임 중엔 배경을 멈춘 그림으로 (폰 부담 줄임)
 }
+// 버튼·문제 위주 게임 14개: 게임 중 화면 뒤에 3D 무대 (버튼 화면은 그대로 · 안 되거나 느리면 원래 배경)
+const STAGE = ['bell', 'tele', 'mino', 'hilo', 'draw', 'spot', 'shout', 'hold', 'rhythm', 'sync', 'burger', 'relay', 'bombpass', 'boss'];
+let stageNow = null, stageNo = new Set();
+function stageBackdrop() {
+  const g = ['playing', 'countdown'].includes(S.phase) ? VIEW[active()?.pid]?.g : null;
+  const want = g && STAGE.includes(g) && !stageNo.has(g) && !aiLv && S3.quality() !== 'low' && !/[?&]r3d=0/.test(location.search) ? g : null;
+  if (stageNow?.g === want) return;
+  if (stageNow) { stageNow.dead = true; cancelAnimationFrame(stageNow.raf); try { stageNow.r?.dispose(); } catch { /* */ } stageNow.cv.remove(); stageNow = null; window.__stage3d = false; document.body.classList.remove('stage3d'); }
+  if (!want) return;
+  const cv = h('canvas', { id: 'stage3d', 'aria-hidden': 'true' }); const bg = document.getElementById('bg3d'); if (bg) bg.after(cv); else document.body.prepend(cv);
+  const st = stageNow = { g: want, cv, dead: false };
+  import('./stage3d.js').then((m) => {
+    if (st.dead) return;
+    const drop = (why) => { stageNo.add(want); window.__r3d = `2d:${why}`; S3.mark3dFail(why); if (stageNow === st) { st.dead = true; cancelAnimationFrame(st.raf); try { st.r?.dispose(); } catch { /* */ } cv.remove(); stageNow = null; window.__stage3d = false; document.body.classList.remove('stage3d'); } };
+    st.r = m.createStage3D(cv, { game: want, quality: S3.quality(), onSlow: drop }); if (!st.r) return drop('nogl');
+    window.__stage3d = true; window.__r3d = '3d'; document.body.classList.add('stage3d');
+    // 배경이라 초당 30번까지만 · 한 번 그리는 데 걸리는 시간을 재서 폰이 버거우면 원래 배경으로 (박자·연타 게임은 더 엄격하게: 버튼 반응이 늦어지지 않게)
+    const limit = ['rhythm', 'sync', 'shout', 'hold'].includes(want) ? 5 : 9; const costs = []; const force = /[?&]r3d=force/.test(location.search);
+    let last = 0; const loop = (now) => { if (st.dead) return; st.raf = requestAnimationFrame(loop); if (now - last < 30) return; last = now; const t0 = performance.now(); try { st.r.render({ t: now / 1000 }); } catch (e) { console.error(e); return drop('err'); } if (!force && costs.length < 40) { costs.push(performance.now() - t0); if (costs.length === 40) { const m = [...costs].sort((a, b) => a - b)[20]; if (m > limit) drop('cost'); } } };
+    st.raf = requestAnimationFrame(loop);
+  }).catch(() => { stageNo.add(want); if (stageNow === st) { cv.remove(); stageNow = null; } });
+}
 function render() {
   if (!S) return;
-  try { backdrop(); } catch (e) { console.error(e); }
+  try { backdrop(); stageBackdrop(); } catch (e) { console.error(e); }
   document.body.dataset.ph = S.phase;
   header();
   const main = $('#main'); if (!main) return;

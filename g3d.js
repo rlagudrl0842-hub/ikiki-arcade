@@ -13,7 +13,7 @@ export const sky = (stops) => tex(4, 256, (c, w, h) => { const g = c.createLinea
 const q = () => location.search;
 
 // base(canvas, opts) → null(3D 못 씀) 또는 { THREE, R, scene, cam, hi, frame(S): dt|null, draw(), dispose(fn) }
-export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = null, ortho = false } = {}) {
+export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = null, ortho = false, slowMs = 33 } = {}) {
   // ortho: 위에서 똑바로 내려다보는 카메라 — 화면 좌표(가로 0~1, 세로 0~높이/폭)와 3D 좌표가 정확히 같아서 터치 위치가 그림과 딱 맞음 (x → x, 화면 y → -y)
   // sizeFrom: 화면에 없는 캔버스에 그린 뒤 2D 캔버스에 옮겨 붙일 때, 크기를 맞출 화면 속 캔버스
   let R;
@@ -33,7 +33,7 @@ export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = nu
       if (lost) return null;
       const now = performance.now(); const fdt = now - lastT; lastT = now;
       // 첫 5프레임은 준비 시간이라 빼고 20프레임 중간값이 33ms를 넘으면 2D로 (느린 채로 두면 게임 시간도 늘어지니까 빨리)
-      nF++; if (!slowCalled && nF > 5 && !/[?&]r3d=force/.test(q())) { frames.push(fdt); if (frames.length >= 20) { frames.sort((a, b) => a - b); if (frames[10] > 33) { slowCalled = true; onSlow?.('slow'); return null; } frames = []; } }
+      nF++; if (!slowCalled && nF > 5 && !/[?&]r3d=force/.test(q())) { frames.push(fdt); if (frames.length >= 20) { frames.sort((a, b) => a - b); if (frames[10] > slowMs) { slowCalled = true; onSlow?.('slow'); return null; } frames = []; } }
       const el = sizeFrom || canvas; const w = el.clientWidth | 0, h = el.clientHeight | 0; if (!w || !h) return null;
       if (canvas.width !== Math.round(w * R.getPixelRatio()) || canvas.height !== Math.round(h * R.getPixelRatio())) { R.setSize(w, h, false); if (ortho) { cam.left = 0; cam.right = 1; cam.top = 0; cam.bottom = -h / w; } else cam.aspect = w / h; cam.updateProjectionMatrix(); }
       return Math.min(0.05, fdt / 1000);
