@@ -14,9 +14,10 @@ const rr = (c, x, y, w, hh, r) => { c.beginPath(); c.roundRect(x, y, w, hh, r); 
 // 진짜 3D 화면 붙이기 (지원하는 게임만): WebGL이 되고 화질이 '가벼움'이 아닐 때만. 실패·느림이면 원래 2D 화면으로 자동 복귀
 // self.r3가 있으면 3D로 그리고(2D 캔버스는 글자만), 없으면 원래 2D 그리기
 function attach3d(self, box, loader, api) {
-  if (!loader || S3.quality() === 'low' || /[?&]r3d=0/.test(location.search)) return;
+  if (!loader || /[?&]r3d=0/.test(location.search)) return;
   const cv3 = h('canvas', { class: 'skcv sk3d', 'aria-hidden': 'true' }); box.prepend(cv3);
-  self.drop3d = (why) => { try { self.r3?.dispose(); } catch { /* */ } self.r3 = null; cv3.remove(); window.__r3d = `2d:${why}`; S3.mark3dFail(why); };
+  self.drop3d = (why) => { if (self.r3dFailed) return; self.r3dFailed = true; try { self.r3?.dispose(); } catch { /* */ } self.r3 = null; cv3.remove(); window.__r3d = `2d:${why}`; S3.mark3dFail(why); };
+  cv3.addEventListener('webglcontextlost', (e) => { e.preventDefault(); self.drop3d('lost'); }, { once: true });
   loader().then((make) => {
     if (self.dead) return cv3.remove();
     const r = make(cv3, { color: api.team.color, quality: S3.quality(), onSlow: (why) => self.drop3d(why) });
@@ -416,7 +417,7 @@ G.penalty = {
       // 결과 표시가 끝난 공을 화면에 계속 세워 두지 않고, 골 장면에서는 골대 면을 지나 네트 안쪽까지 보낸다.
       if (this.anim && performance.now() - this.anim.at > 1800) this.anim = null;
       const a = this.anim;
-      const drawFlightBall = (goalDepth = 0.2) => {
+      const drawFlightBall = (goalDepth = 0.55) => {
         if (!a) return;
         const elapsed = performance.now() - a.at;
         const k = Math.min(1, Math.max(0, elapsed / 620));
@@ -431,8 +432,8 @@ G.penalty = {
         c.beginPath(); c.arc(bx, by, 16 * d * bs, 0, Math.PI * 2); c.fill();
         c.shadowBlur = 0; c.fillStyle = '#111'; c.beginPath(); c.arc(bx, by, 6 * d * bs, 0, Math.PI * 2); c.fill(); c.restore();
       };
-      if (this.r3) { // 3D 렌더러의 t는 초 단위이므로 슛 시작 시각도 초로 맞춰 전달한다.
-        const anim3d = a ? { ...a, at: a.at / 1000 } : null;
+      if (this.r3) { // 애니메이션 시작 시각은 performance.now()와 같은 밀리초 단위로 전달한다.
+        const anim3d = a;
         try { this.r3.render({ a: anim3d, t: performance.now() / 1000 }); } catch { this.drop3d('err'); }
         c.clearRect(0, 0, W, H); const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
         if (!a || performance.now() - a.at > 1500) { c.strokeStyle = '#ffffff40'; c.lineWidth = 1.5 * d; c.setLineDash([6 * d, 6 * d]); for (let i = 1; i < 3; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 3, gy); c.lineTo(gx + (gw * i) / 3, gy + gh); c.stroke(); } c.beginPath(); c.moveTo(gx, gy + gh / 2); c.lineTo(gx + gw, gy + gh / 2); c.stroke(); c.setLineDash([]); }
@@ -455,7 +456,7 @@ G.penalty = {
     this.raf = requestAnimationFrame(loop);
   },
   update(v) { this.info.textContent = `${v.goals}골 / ${v.shots}슛`; },
-  reply(r) { if (this.anim) { this.anim.res = r; this.anim.at = performance.now() - 300; } this.info.textContent = `${r.goals}골`; if (r.res === 'goal') { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); } else sfx('bad', this.api.sfxOn); },
+  reply(r) { if (this.anim) this.anim.res = r; this.info.textContent = `${r.goals}골`; if (r.res === 'goal') { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); } else sfx('bad', this.api.sfxOn); },
   unmount() { this.dead = true; this.drop3d?.('end'); this.unsub?.(); cancelAnimationFrame(this.raf); },
 };
 
@@ -551,11 +552,11 @@ G.spot = {
   update(v) {
     const key = `${v.k}`; this.v = v; this.found = new Set(v.found); if (key === this.key) return this.paint(); this.key = key;
     const z = this.z = spotPuzzle(v.seed, v.k, v.lv);
-    const cols = z.left.length > 12 ? 3 : Math.min(z.cols, 4);
+    const cols = Math.max(1, Math.min(z.cols || 4, 4));
     const grid = (arr, tap) => h('div', { class: 'spg', style: { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(arr.length / cols)}, minmax(0, 1fr))` } }, arr.map((x, i) => tap ? P.press(h('button', { class: 'spc', 'data-i': i }, x), () => { this.api.send({ a: 'tap', k: v.k, c: i }); vibrate(8); }) : h('div', { class: 'spc' }, x)));
-    const board = (title, arr, tap) => h('section', { class: 'spotboard' }, h('b', { class: 'spotlabel' }, title), grid(arr, tap));
+    const board = (title, arr, tap) => h('section', { class: `spotboard ${tap ? 'spot-target' : 'spot-source'}` }, h('b', { class: 'spotlabel' }, title), grid(arr, tap));
     this.root.innerHTML = '';
-    this.root.append(h('div', { class: 'bellh spothead' }, h('span', {}, `${v.k + 1}번째 그림`), h('span', { class: 'spn' })), h('div', { class: 'spotboards' }, board('원본', z.left, false), board('다른 그림 · 터치', z.right, true)));
+    this.root.append(h('div', { class: 'bellh spothead' }, h('span', {}, `${v.k + 1}번째 그림`), h('span', { class: 'spn' })), h('div', { class: 'spotboards' }, board('① 원본', z.left, false), board('② 다른 그림 · 여기 터치', z.right, true)));
     this.right = this.root.querySelector('.spotboard:last-child .spg');
     this.paint();
   },

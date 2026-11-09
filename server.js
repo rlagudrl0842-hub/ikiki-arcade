@@ -4,13 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { openDb } from './db.js';
 import { Event, Err, sanitizeSettings, TEAM_COLORS, TEAM_ICONS, defaultPlaylist } from './engine.js';
-import { GAME_LIST, GAMES } from './games.js';
+import { GAME_LIST } from './games.js';
 import { DEFAULT_QUESTIONS } from './c.js';
 
 // 모든 파일이 저장소 최상위에 있는 구조 (Render: node server.js)
@@ -18,9 +17,9 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUB = ROOT;
 // 브라우저에 보내도 되는 파일만 공개 (서버 코드·데이터베이스는 절대 안 보냄)
 const PUBLIC_FILES = new Set(['index.html', 'admin.html', 'play.html', 'screen.html', 'style.css', 'admin.css', 'play.css', 'screen.css', 'icon.svg', 'logo.png',
-  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'scene3d.js', 'fx.js', 'run3d.js', 'g3d.js', 'tuho3d.js', 'fish3d.js', 'curl3d.js', 'pen3d.js', 'flap3d.js', 'stair3d.js', 'bridge3d.js', 'eggs3d.js', 'bask3d.js', 'arena3d.js', 'x3d.js', 'rope3d.js', 'tower3d.js', 'mug3d.js', 'fruit3d.js', 'ball3d.js', 'fire3d.js', 'dalg3d.js', 'zomb3d.js', 'stage3d.js', 'three-0.160.0.min.js', 'home.js', 'play-old.js', 'pe2data.js', 'pe2draw.js', 'screen-pe2.js', 'solo.html', 'solo.js', 'solo.css',
-  'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3']);
-const GZ = new Map(); // 압축해 둔 큰 파일
+  'admin.js', 'play.js', 'play-games.js', 'screen.js', 'screen-games.js', 'client.js', 'gen.js', 'gen2.js', 'play-n.js', 'screen-n.js', 'play-n2.js', 'screen-n2.js', 'play-motion.js', 'card.js', 'screen-n3.js', 'bgm.js', 'play-n3.js', 'screen-n4.js', 'preview.js', 'ai.js', 'timeplan.js', 'solo.html', 'solo.js', 'solo.css',
+  'bgm-g7.mp3', 'bgm-g8.mp3', 'bgm-g1.mp3', 'bgm-g12.mp3', 'bgm-fanfare.mp3',
+  'scene3d.js', 'g3d.js', 'three-0.160.0.min.js', 'bask3d.js', 'bridge3d.js', 'curl3d.js', 'dalg3d.js', 'eggs3d.js', 'fish3d.js', 'flap3d.js', 'pen3d.js', 'run3d.js', 'stair3d.js', 'tuho3d.js']);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.webmanifest': 'application/manifest+json' };
 
 export function createServer(opts = {}) {
@@ -126,23 +125,13 @@ export function createServer(opts = {}) {
     let p;
     try { p = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
     if (p === '/') p = '/index.html';
-    if (/^\/(join|j)\/?$/i.test(p)) p = '/play.html';
-    // 짧은 참가 주소 /j/참가코드 (QR용) → 그 행사 참가 화면으로
-    const jm = p.match(/^\/j\/([A-Za-z0-9]{4,8})\/?$/i);
-    if (jm) { res.writeHead(302, { Location: `/play.html?e=${jm[1].toUpperCase()}`, 'Cache-Control': 'no-store' }); return res.end(); }
+    if (/^\/(join|j)\/?$/.test(p)) p = '/play.html';
     const name = p.replace(/^\/+/, '');
     if (!PUBLIC_FILES.has(name)) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
     const file = path.join(PUB, name);
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('페이지를 찾을 수 없어요'); }
       const ext = path.extname(file);
-      // 3D 엔진(Three.js, 버전이 이름에 박힌 큰 파일): 압축해서 보내고 폰에 1년 보관 → 와이파이에서 30명이 받아도 가벼움
-      if (name.startsWith('three-')) {
-        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-        const body = gz ? (GZ.get(name) || (GZ.set(name, zlib.gzipSync(fs.readFileSync(file), { level: 9 })), GZ.get(name))) : null;
-        res.writeHead(200, { 'Content-Type': MIME[ext], 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Length': gz ? body.length : st.size, ...(gz ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}) });
-        return gz ? res.end(body) : fs.createReadStream(file).pipe(res);
-      }
       res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Cache-Control': ext === '.html' ? 'no-cache' : ext === '.mp3' ? 'public, max-age=604800' : 'public, max-age=60', 'Content-Length': st.size,
@@ -167,10 +156,9 @@ export function createServer(opts = {}) {
     if (a === 'games' && method === 'GET') return json(res, 200, { games: GAME_LIST });
     if (a === 'qr' && method === 'GET') {
       const text = String(url.searchParams.get('text') || '').slice(0, 300);
-      if (!/^https?:\/\//i.test(text)) throw new Err('주소 오류');
-      if (b === 'png') { const buf = await QRCode.toBuffer(text, { width: 1024, margin: 4, errorCorrectionLevel: 'M' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="ikiki-qr.png"' }); return res.end(buf); }
-      // 흰 여백 2칸 + 순수 검정/흰색 + 짧은 주소(칸 수↓) → 같은 크기에서 점이 커져 구형 폰·태블릿도 잘 읽음 (전에는 여백 1칸·남색·긴 주소)
-      const svg = await QRCode.toString(text, { type: 'svg', width: 600, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
+      if (!/^https?:\/\//.test(text)) throw new Err('주소 오류');
+      if (b === 'png') { const buf = await QRCode.toBuffer(text, { width: 1024, margin: 2, errorCorrectionLevel: 'M' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="ikiki-qr.png"' }); return res.end(buf); }
+      const svg = await QRCode.toString(text, { type: 'svg', width: 600, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0b0e24', light: '#ffffff' } });
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=300' }); return res.end(svg);
     }
     if (a === 'info' && method === 'GET') return json(res, 200, { lan: lanAddrs().map((h) => `http://${h}:${server.address().port}`) });
@@ -309,17 +297,6 @@ export function createServer(opts = {}) {
       return json(res, 200, { events: rows.filter((r) => !isTest(r)).map((r) => ({ ...r, mode: JSON.parse(r.settings).mode, settings: undefined, phase: events.get(r.id)?.phase ?? null })) });
     }
     // ---- 🎮 혼자 테스트하기 / 게임 미리보기: 홍팀(나) vs 청팀(컴퓨터) 테스트 행사 (실제 행사 기록과 분리)
-    // 게임별 최고 기록 보기 · 초기화(마스터만, 명시적으로 고른 것만)
-    if (a === 'records' && method === 'GET' && !b) {
-      const rows = db.all('SELECT * FROM records ORDER BY game, mode');
-      return json(res, 200, { records: rows.map((r) => ({ ...r, name: GAMES[r.game]?.name || r.game, emoji: GAMES[r.game]?.emoji || '🎮' })) });
-    }
-    if (a === 'records' && b === 'reset' && method === 'POST') {
-      needMaster();
-      const g = String(body.game || ''), m = String(body.mode || '');
-      if (!g || !m) throw new Err('초기화할 기록을 골라 주세요');
-      db.run('DELETE FROM records WHERE game=? AND mode=?', g, m); return json(res, 200, { ok: true });
-    }
     if (a === 'solo' && method === 'POST') {
       const list = (Array.isArray(body.games) ? body.games : []).filter((g) => typeof g === 'string' && GAME_LIST.some((x) => x.id === g)).slice(0, 40);
       if (!list.length) throw new Err('테스트할 게임을 골라 주세요');

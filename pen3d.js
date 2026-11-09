@@ -75,7 +75,7 @@ export function createPen3D(canvas, { color = '#ff4d6d', quality = 'high', onSlo
     // 공: 슛한 칸으로 날아감 (골이면 그물까지, 막히면 키퍼 앞에서 튕김, 빗나가면 골대 밖으로)
     if (a && now - a.at < 1500) {
       const res = a.res?.res; const tx = zoneX(a.z) + (res === 'miss' ? (a.z % 3 === 0 ? -1.4 : a.z % 3 === 2 ? 1.4 : 0) : 0), ty = zoneY(a.z) + (res === 'miss' && a.z % 3 === 1 ? GH * 0.6 : 0);
-      const tz = res === 'goal' ? -1.4 : res === 'save' ? 0.6 : -0.5; const kk = Math.min(1, (now - a.at) / 500);
+      const tz = res === 'goal' ? -2.5 : res === 'save' ? 0.6 : -0.5; const kk = Math.min(1, (now - a.at) / 500);
       let x = tx * kk, y = 0.15 + (ty - 0.15) * kk + Math.sin(kk * Math.PI) * 0.6, z = ballZ + (tz - ballZ) * kk;
       if (res === 'save' && kk >= 1) { const b = Math.min(1, (now - a.at - 500) / 500); x = tx * (1 - b * 0.3); y = Math.max(0.15, ty - b * ty); z = tz + b * 2.5; }
       ball.position.set(x, y, z); ball.rotation.x -= dt * 14;
