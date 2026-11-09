@@ -413,9 +413,28 @@ G.penalty = {
     const loop = () => {
       if (this.dead) return; const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d');
       const gx = W * 0.1, gy = H * 0.12, gw = W * 0.8, gh = H * 0.42;
-      if (this.r3) { // 3D: 골대·키퍼·공은 3D로 (터치 칸과 같은 자리), 2D에는 칸 안내선과 결과 글자만
-        try { this.r3.render({ a: this.anim, t: performance.now() / 1000 }); } catch { this.drop3d('err'); }
-        c.clearRect(0, 0, W, H); const a = this.anim; const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
+      // 결과 표시가 끝난 공을 화면에 계속 세워 두지 않고, 골 장면에서는 골대 면을 지나 네트 안쪽까지 보낸다.
+      if (this.anim && performance.now() - this.anim.at > 1800) this.anim = null;
+      const a = this.anim;
+      const drawFlightBall = (goalDepth = 0.2) => {
+        if (!a) return;
+        const elapsed = performance.now() - a.at;
+        const k = Math.min(1, Math.max(0, elapsed / 620));
+        const ease = 1 - Math.pow(1 - k, 3);
+        const tx = gx + gw * ((a.z % 3) + 0.5) / 3;
+        const ty = gy + gh * (Math.floor(a.z / 3) + 0.5) / 2;
+        const endY = ty - (a.res?.res === 'goal' ? gh * goalDepth : 0);
+        const bx = W / 2 + (tx - W / 2) * ease;
+        const by = H * 0.85 + (endY - H * 0.85) * ease - Math.sin(k * Math.PI) * H * 0.025;
+        const bs = 1 - 0.62 * ease;
+        c.save(); c.fillStyle = '#fff'; c.shadowColor = '#000b'; c.shadowBlur = 5 * d;
+        c.beginPath(); c.arc(bx, by, 16 * d * bs, 0, Math.PI * 2); c.fill();
+        c.shadowBlur = 0; c.fillStyle = '#111'; c.beginPath(); c.arc(bx, by, 6 * d * bs, 0, Math.PI * 2); c.fill(); c.restore();
+      };
+      if (this.r3) { // 3D 렌더러의 t는 초 단위이므로 슛 시작 시각도 초로 맞춰 전달한다.
+        const anim3d = a ? { ...a, at: a.at / 1000 } : null;
+        try { this.r3.render({ a: anim3d, t: performance.now() / 1000 }); } catch { this.drop3d('err'); }
+        c.clearRect(0, 0, W, H); const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
         if (!a || performance.now() - a.at > 1500) { c.strokeStyle = '#ffffff40'; c.lineWidth = 1.5 * d; c.setLineDash([6 * d, 6 * d]); for (let i = 1; i < 3; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 3, gy); c.lineTo(gx + (gw * i) / 3, gy + gh); c.stroke(); } c.beginPath(); c.moveTo(gx, gy + gh / 2); c.lineTo(gx + gw, gy + gh / 2); c.stroke(); c.setLineDash([]); }
         if (a?.res && k >= 1 && performance.now() - a.at < 1800) { c.fillStyle = a.res.res === 'goal' ? '#ffd43b' : '#ff8fa3'; c.shadowColor = '#000'; c.shadowBlur = 10 * d; c.font = `900 ${40 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(a.res.res === 'goal' ? 'GOAL!' : a.res.res === 'save' ? '막혔다!' : '빗나감', W / 2, H * 0.7); c.shadowBlur = 0; }
         this.raf = requestAnimationFrame(loop); return;
@@ -423,14 +442,13 @@ G.penalty = {
       sceneBg(c, W, H, 'penalty');
       c.strokeStyle = '#ffffff22'; c.lineWidth = 1; for (let i = 0; i <= 12; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 12, gy); c.lineTo(gx + (gw * i) / 12, gy + gh); c.stroke(); } for (let j = 0; j <= 6; j++) { c.beginPath(); c.moveTo(gx, gy + (gh * j) / 6); c.lineTo(gx + gw, gy + (gh * j) / 6); c.stroke(); }
       c.strokeStyle = '#fff'; c.lineWidth = 6 * d; c.strokeRect(gx, gy, gw, gh);
-      const a = this.anim; const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
+      const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
       const zx = (z) => gx + gw * ((z % 3) + 0.5) / 3, zy = (z) => gy + gh * (Math.floor(z / 3) + 0.5) / 2;
       let kx = W / 2, ky = gy + gh * 0.75;
       if (a?.res) { kx = zx(a.res.keeper); ky = zy(a.res.keeper); }
       const kk = a?.res ? k : 0; const KX = W / 2 + (kx - W / 2) * kk, KY = gy + gh * 0.75 + (ky - gy - gh * 0.75) * kk;
       c.fillStyle = '#ffd43b'; rr(c, KX - 22 * d, KY - 34 * d, 44 * d, 56 * d, 12 * d); c.fill(); c.fillStyle = '#ffe2c6'; c.beginPath(); c.arc(KX, KY - 44 * d, 12 * d, 0, 7); c.fill();
-      const bx = a ? W / 2 + (zx(a.z) - W / 2) * k : W / 2, by = a ? H * 0.85 + (zy(a.z) - H * 0.85) * k : H * 0.85; const bs = a ? 1 - 0.45 * k : 1;
-      c.fillStyle = '#fff'; c.beginPath(); c.arc(bx, by, 16 * d * bs, 0, 7); c.fill(); c.fillStyle = '#111'; c.beginPath(); c.arc(bx, by, 6 * d * bs, 0, 7); c.fill();
+      drawFlightBall(0.2);
       if (a?.res && k >= 1) { c.fillStyle = a.res.res === 'goal' ? '#ffd43b' : '#ff8fa3'; c.font = `900 ${36 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(a.res.res === 'goal' ? 'GOAL!' : a.res.res === 'save' ? '막혔다!' : '빗나감', W / 2, H * 0.68); }
       this.raf = requestAnimationFrame(loop);
     };
@@ -529,13 +547,16 @@ G.hilo = choiceUI('hilo');
 
 // ---------------- 틀린 그림 찾기
 G.spot = {
-  mount(root, v, api) { this.api = api; this.root = h('div', { class: 'gwrap spot2' }); root.append(this.root); this.update(v); },
+  mount(root, v, api) { this.api = api; document.body.classList.add('spot-game'); this.root = h('div', { class: 'gwrap spot2' }); root.append(this.root); this.update(v); },
   update(v) {
     const key = `${v.k}`; this.v = v; this.found = new Set(v.found); if (key === this.key) return this.paint(); this.key = key;
     const z = this.z = spotPuzzle(v.seed, v.k, v.lv);
-    const grid = (arr, tap) => h('div', { class: 'spg', style: { gridTemplateColumns: `repeat(${z.cols}, 1fr)` } }, arr.map((x, i) => tap ? P.press(h('button', { class: 'spc', 'data-i': i }, x), () => { this.api.send({ a: 'tap', k: v.k, c: i }); vibrate(8); }) : h('div', { class: 'spc' }, x)));
+    const cols = z.left.length > 12 ? 3 : Math.min(z.cols, 4);
+    const grid = (arr, tap) => h('div', { class: 'spg', style: { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(arr.length / cols)}, minmax(0, 1fr))` } }, arr.map((x, i) => tap ? P.press(h('button', { class: 'spc', 'data-i': i }, x), () => { this.api.send({ a: 'tap', k: v.k, c: i }); vibrate(8); }) : h('div', { class: 'spc' }, x)));
+    const board = (title, arr, tap) => h('section', { class: 'spotboard' }, h('b', { class: 'spotlabel' }, title), grid(arr, tap));
     this.root.innerHTML = '';
-    this.root.append(h('div', { class: 'bellh' }, h('span', {}, `${v.k + 1}번째 그림`), h('span', { class: 'spn' })), h('small', { class: 'muted' }, '원본'), grid(z.left, false), h('small', { class: 'muted' }, '여기서 다른 곳을 터치'), this.right = grid(z.right, true));
+    this.root.append(h('div', { class: 'bellh spothead' }, h('span', {}, `${v.k + 1}번째 그림`), h('span', { class: 'spn' })), h('div', { class: 'spotboards' }, board('원본', z.left, false), board('다른 그림 · 터치', z.right, true)));
+    this.right = this.root.querySelector('.spotboard:last-child .spg');
     this.paint();
   },
   paint() { this.root.querySelector('.spn').textContent = `찾은 개수 ${this.v.total} · 이번 그림 ${this.found.size}/${this.z.diff.length}`; this.right.querySelectorAll('.spc').forEach((b) => b.classList.toggle('ok', this.found.has(+b.dataset.i))); },
@@ -543,6 +564,7 @@ G.spot = {
     if (r.ok != null) { this.found.add(r.ok); this.v.total = r.total; sfx('good', this.api.sfxOn); if (r.next != null) { sfx('win', this.api.sfxOn); this.v = { ...this.v, k: r.next, found: [] }; this.found = new Set(); this.update(this.v); return; } this.paint(); }
     if (r.wrong != null) { sfx('bad', this.api.sfxOn); vibrate(80); const b = this.right.querySelector(`[data-i="${r.wrong}"]`); b?.classList.add('no'); setTimeout(() => b?.classList.remove('no'), 600); }
   },
+  unmount() { document.body.classList.remove('spot-game'); },
 };
 
 // ---------------- 손 떼면 탈락

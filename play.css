@@ -331,6 +331,17 @@ body.shake #app { animation: shake .4s; }
 .spot2 { gap: 6px; }
 .spg { width: 100%; display: grid; gap: 3px; }
 .spc { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: clamp(16px, 6vw, 28px); background: #ffffff10; border-radius: 8px; border: 2px solid transparent; }
+.spot-game, .spot-game #app { height: 100dvh; min-height: 0; overflow: hidden; }
+.spot-game #app { max-height: 100dvh; }
+.spot-game #main, .spot-game .game, .spot-game .spot2 { min-height: 0; overflow: hidden; }
+.spot-game #main { padding: 8px 10px; }
+.spot-game .spot2 { flex: 1 1 0; width: 100%; gap: 6px; padding-top: 0; }
+.spothead { flex: none; margin: 0; }
+.spotboards { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.spotboard { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+.spotlabel { flex: none; font-size: 12px; line-height: 1.2; color: var(--muted); }
+.spotboard .spg { flex: 1 1 0; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.spotboard .spc { min-width: 0; min-height: 0; width: 100%; height: 100%; aspect-ratio: auto; padding: 0; font-size: clamp(12px, 4vw, 21px); line-height: 1; }
 .spc.ok { border-color: var(--green); background: #2fd27a44; } .spc.no { border-color: var(--red); animation: shake .3s; }
 .spn { color: var(--y); font-size: 15px; }
 .hd2 { gap: 14px; }
