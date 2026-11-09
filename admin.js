@@ -284,6 +284,17 @@ const STEPS = [['prep', '① 행사 준비'], ['playlist', '② 게임 순서'],
 const MORE = [['people', '👥 참가자·팀'], ['score', '🏆 점수'], ['quiz', '✏️ 문제·단어'], ['music', '🎵 음악'], ['settings', '⚙️ 설정']];
 const busyPh = () => ['countdown', 'playing'].includes(S?.phase);
 function goTab(k) { tab = k; drawTab(); syncTabs(); }
+function saveScroll(root) {
+  const y = window.scrollY || document.documentElement.scrollTop || 0;
+  const nodes = []; let el = root;
+  while (el && el !== document.body) { nodes.push([el, el.scrollTop, el.scrollLeft]); el = el.parentElement; }
+  const doc = document.scrollingElement;
+  if (doc && !nodes.some(([n]) => n === doc)) nodes.push([doc, doc.scrollTop, doc.scrollLeft]);
+  return () => requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const [node, top, left] of nodes) if (node.isConnected) { node.scrollTop = top; node.scrollLeft = left; }
+    window.scrollTo(0, y);
+  }));
+}
 function syncTabs() {
   const con = $('.con'); if (!con) return;
   con.className = `con t-${tab} ${busyPh() ? 'busy' : ''}`;
@@ -607,9 +618,12 @@ function drawTab() {
   syncTabs();
   const body = $('.tabbody'); if (!body || !S) return;
   if (document.activeElement && body.contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return; // 입력 중엔 다시 그리지 않음
+  const keepScroll = draw.lastTab === tab ? saveScroll(body) : null;
   formDirty = false;
   body.innerHTML = '';
   ({ prep: tabPrep, run: tabRun, playlist: tabPlaylist, people: tabPeople, score: tabScore, quiz: tabQuiz, music: tabMusic, settings: tabSettings })[tab](body);
+  draw.lastTab = tab;
+  keepScroll?.();
 }
 function tabRun(body) {
   const list = h('div', { class: 'plist' });
@@ -819,6 +833,7 @@ function tabPlaylist(body) {
   const commit = (msg) => { savePlaylist(pl, msg); paint(); };
   let dragFrom = null;
   const paint = () => {
+    const keepScroll = saveScroll(list);
     list.innerHTML = '';
     pl.forEach((p, i) => {
       const g = games.find((x) => x.id === p.game); if (!g) return;
@@ -850,6 +865,7 @@ function tabPlaylist(body) {
       }
     });
     if (!pl.length) list.append(h('p', { class: 'muted' }, '게임이 없어요. 아래에서 넣거나 ① 행사 준비에서 빠른 구성을 골라 주세요'));
+    keepScroll();
   };
   paint();
   // 게임 추가 (넣으면 기본 시간·배점·추천 음악이 자동으로 들어가요)
