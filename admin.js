@@ -283,7 +283,7 @@ const joinUrl = () => (S.settings.joinUrl || localBase || location.origin) + '/p
 const STEPS = [['prep', '① 행사 준비'], ['playlist', '② 게임 순서'], ['run', '③ 진행']];
 const MORE = [['people', '👥 참가자·팀'], ['score', '🏆 점수'], ['quiz', '✏️ 문제·단어'], ['music', '🎵 음악'], ['settings', '⚙️ 설정']];
 const busyPh = () => ['countdown', 'playing'].includes(S?.phase);
-function goTab(k) { const body = $('.tabbody'); const restore = body ? saveScroll(body) : null; tab = k; drawTab(); syncTabs(); restore?.(); }
+function goTab(k) { tab = k; drawTab(); syncTabs(); }
 function saveScroll(root) {
   const y = window.scrollY || document.documentElement.scrollTop || 0;
   const nodes = []; let el = root;
@@ -328,7 +328,6 @@ function draw() {
   const ck = ctrlKey();
   if (ck !== draw.ck || !$('.ctrl .bigbtns')) { draw.ck = ck; drawCtrl(); } else updateCounts();
   paintBoard(); drawQuick(); paintTime(); timeModal.paint?.();
-  if (S.phase === 'results' && S.lastResult && !S.settings.auto) { const replayKey = `${S.lastResult.runId || S.seq}:${S.lastResult.label || S.item?.name || ''}`; if (draw.replayPrompt !== replayKey) { draw.replayPrompt = replayKey; replayModal(); } }
   if (tab === 'run') { const rk = runKey(); if (rk !== draw.rk || !$('.tabbody .plist')) { draw.rk = rk; drawTab(); } }
   else if (tab === 'prep' || tab === 'playlist') { const pk = JSON.stringify([S.playlist, S.phase === 'lobby', busyPh(), S.idx, S.teams.length, S.settings.mode, S.settings.device, S.standings.played > 0]); if (pk !== draw.pk) { draw.pk = pk; if (!formDirty) drawTab(); } draw.rk = null; }
   else draw.rk = null;
@@ -511,7 +510,7 @@ function drawCtrl() {
     main.append(h('div', { class: 'hostpad' }, h('div', { class: 'muted small' }, '🎯 진행자 판정: 잘한 팀에 점수를 눌러 주세요'), ...S.teams.map((t) => h('div', { class: 'hprow', style: { '--tc': t.color } }, h('b', {}, `${t.icon} ${t.name}`),
       ...[[1, '+1'], [2, '+2'], [3, '+3'], [-1, '−1']].map(([d, l]) => h('button', { class: `btn ${d < 0 ? 'ghost' : 'green'}`, onclick: (e) => { e.currentTarget.animate([{ transform: 'scale(.88)' }, { transform: 'scale(1)' }], 180); hp(t.id, d); } }, l))))));
   }
-  if (ph === 'results') { main.append(B(S.idx < S.total ? `⏭ 다음 게임 준비${S.playlist[S.idx] ? ` (${games.find((g) => g.id === S.playlist[S.idx].game)?.name || ''})` : ''}` : '🏆 마무리', 'next', 'green big')); main.append(h('button', { class: 'btn yellow big', onclick: () => replayModal() }, '🔁 점수 유지 / 초기화 후 재경기')); more.append(h('button', { class: 'btn ghost', onclick: () => replayModal() }, '🔁 재경기')); }
+  if (ph === 'results') { main.append(B(S.idx < S.total ? `⏭ 다음 게임 준비${S.playlist[S.idx] ? ` (${games.find((g) => g.id === S.playlist[S.idx].game)?.name || ''})` : ''}` : '🏆 마무리', 'next', 'green big')); more.append(h('button', { class: 'btn ghost', onclick: () => replayModal() }, '🔁 재경기')); }
   if (ph === 'ceremony') main.append(B(S.ceremonyStep >= 5 ? '✅ 행사 마치기' : `▶ 다음 발표 (${S.ceremonyStep}/5)`, 'ceremonyNext', 'green big'));
   if (ph === 'ended') main.append(h('button', { class: 'btn green big', onclick: () => saveCard(S, { share: false }).then(() => toast('결과 카드를 저장했어요')) }, '🖼 결과 공유 카드 저장'), B('↩ 행사 다시 열기', 'reopen', 'ghost'));
   // 긴급 일시정지는 항상 크게 보이게
