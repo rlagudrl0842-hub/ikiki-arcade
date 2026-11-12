@@ -441,3 +441,36 @@ body[data-ph="playing"] #stage, body[data-ph="countdown"] #stage { background: l
 @keyframes fxS { to { transform: translateX(100%); } }
 #pracBadge { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50; background: #3d8bff; color: #fff; font-weight: 900; font-size: 28px; padding: 10px 26px; border-radius: 999px; box-shadow: 0 8px 24px #0008; pointer-events: none; }
 #pracBadge[hidden] { display: none; }
+/* 골든벨 정답 이유 (빔 화면에서 읽기 쉽게 크게) · 세트 이름 */
+.bellwhy { margin: 10px auto 6px; max-width: 1500px; background: #0f3a26; border: 4px solid #2fd27a; border-radius: 22px; padding: 18px 28px; text-align: left; font-size: 40px; line-height: 1.35; color: #fff; }
+.bellwhy b { display: block; color: #8ff0b8; font-size: 44px; margin-bottom: 6px; }
+.bellset { background: #3d8bff !important; color: #fff !important; }
+
+/* 🏟 육상 대회 (대형 화면) */
+.athS { height: 100%; display: flex; gap: 16px; align-items: flex-start; }
+.athcvw { position: relative; flex: none; width: 1360px; height: 860px; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 40px #0008; }
+.athsc { display: block; width: 1360px; height: 860px; }
+.athL { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; background: #0b0e24e0; padding: 10px 18px; border-radius: 40px; }
+.athL i { width: 46px; height: 46px; border-radius: 50%; background: #2a2f4a; box-shadow: inset 0 -4px 0 #0006; }
+.athL b { color: #fff; font-size: 34px; font-weight: 900; min-width: 170px; text-align: center; }
+.athL.l-marks i:nth-child(1) { background: #ff3b3b; box-shadow: 0 0 24px #ff3b3b; }
+.athL.l-set i:nth-child(1), .athL.l-set i:nth-child(2) { background: #ffb020; box-shadow: 0 0 24px #ffb020; }
+.athL.l-go i { background: #2fe35a; box-shadow: 0 0 30px #2fe35a; } .athL.l-go b { color: #2fe35a; font-size: 44px; }
+.athL.l-recall i { background: #ff3b3b; animation: athblk .4s steps(2) infinite; } .athL.l-recall b { color: #ff6b6b; }
+.athL.l-setup, .athL.l-done, .athL.l-over { display: none; }
+@keyframes athblk { 50% { background: #4a0d0d; box-shadow: none; } }
+.athcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; height: 860px; }
+.athside { flex: 1; min-height: 0; overflow: hidden; background: #0b0e24cc; border-radius: 18px; padding: 14px 16px; color: #fff; display: flex; flex-direction: column; gap: 6px; }
+.athhd { display: flex; gap: 10px; align-items: baseline; } .athhd b { font-size: 34px; } .athhd span { font-size: 24px; color: #c9d3ff; } .athhd em { font-style: normal; background: #ffd43b; color: #111; border-radius: 8px; padding: 0 8px; font-weight: 800; }
+.athsub { font-size: 20px; color: #ffd43b; font-weight: 800; margin-top: 6px; }
+.athr { display: flex; align-items: center; gap: 8px; font-size: 26px; padding: 3px 0; border-bottom: 1px solid #ffffff14; }
+.athr .pl { width: 30px; text-align: center; font-weight: 900; color: #ffd43b; } .athr .ln { width: 30px; text-align: center; font-weight: 900; background: #ffffff1a; border-radius: 6px; }
+.athr i { width: 14px; height: 30px; border-radius: 4px; flex: none; } .athr .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800; } .athr .nm small { font-size: 18px; color: #c9d3ff; font-weight: 600; } .athr .nm .fs { color: #ff8787; }
+.athr b { font-size: 28px; font-variant-numeric: tabular-nums; } .athr.fin b { color: #2fe35a; }
+.athcard { background: #1d2246; border-radius: 12px; padding: 10px 12px; font-size: 24px; display: flex; flex-direction: column; gap: 4px; } .athcard .hl { color: #ffd43b; font-weight: 800; }
+.athfl { font-size: 20px; }
+.athtm { display: flex; flex-wrap: wrap; gap: 6px; } .athtm span { padding: 4px 10px; border-radius: 10px; font-size: 20px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #0008; }
+.athnote { margin-top: auto; font-size: 15px; color: #9aa3c7; }
+.athsnd { background: #0b0e24cc; border-radius: 18px; padding: 10px 14px; color: #fff; display: flex; flex-direction: column; gap: 6px; font-size: 17px; }
+.athsnd .btn { font-size: 18px; padding: 8px; } .athsnd input[type=range] { width: 70%; vertical-align: middle; }
+.athsm { font-size: 15px; } .athsm.ok { color: #8ce99a; } .athsm.warn { color: #ffd43b; }

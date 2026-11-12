@@ -32,15 +32,19 @@ export const bell = {
       const m = q[0].match(/^\s*\[(유아|초등|중등|고등|성인)\]\s*/); const tag = m ? TAG[m[1]] : null;
       return Object.assign([m ? q[0].slice(m[0].length) : q[0], ...q.slice(1)], { own: true, tag });
     }).filter((q) => !q.tag || q.tag === age);
+    // 행사 문제만 쓰기(bellOnly): 기본 문제를 섞지 않고 넣은 문제를 한 판에 모두 냄 (예: 진로 골든벨 17문제)
+    if (st.bellOnly && own.length >= 2) return { items: own, n: Math.min(own.length, 40), key: (q) => q[0], pri: () => true, only: true };
     return { items: [...own, ...bank], n: age === 'kid' ? 7 : 10, key: (q) => q[0], pri: (q) => !!q.own };
   },
   create(ctx) {
     const r = rng(ctx.seed);
     const age = qAge(ctx.settings.mode);
     const revive = -1; // (예전 '6번째 문제 패자부활전' → 이제 매 문제 부활 기회)
-    const src = ctx.qset || bell.qsource(ctx.settings).items.slice(0, 10);
+    const qsrc = bell.qsource(ctx.settings); const src = ctx.qset || qsrc.items.slice(0, qsrc.n);
     // 한 판의 모든 참가자가 같은 문제 세트 · 보기 순서만 사람마다 다르게(view에서)
-    const qs = src.map((q) => { const opts = shuffle(r, q.slice(1)); return { text: q[0], opts, ans: opts.indexOf(q[1]) }; });
+    // 정답 이유: 문제 글로 연결한 별도 데이터(bellWhy) — 없으면 빈 글 (옛 문제·기본 문제는 그대로 진행·채점)
+    const WHY = ctx.settings.bellWhy || {}; const whyOf = (t) => { const k = String(t).replace(/^\s*\[(유아|초등|중등|고등|성인)\]\s*/, '').trim(); return typeof WHY[k] === 'string' ? WHY[k] : ''; };
+    const qs = src.map((q) => { const opts = shuffle(r, q.slice(1)); return { text: q[0], opts, ans: opts.indexOf(q[1]), why: whyOf(q[0]) }; });
     const N = qs.length;
     if (ctx.settings.device === 'nophone') return bellBoard(ctx, qs, age);
     const perm = (pid, i) => permFor(pid, `${ctx.runId}:${i}`, qs[i].opts.length); // perm[보이는 자리] = 원래 보기 번호
@@ -63,7 +67,7 @@ export const bell = {
       }
       // 팀별 정답률은 공개 순간에만 계산해 보여 줌
       rate = {}; for (const t of ctx.teams) { const m = [...P.values()].filter((p) => p.team === t && p.ans[qi] != null); if (m.length) rate[t] = Math.round((m.filter((p) => p.ans[qi] === q.ans).length / m.length) * 100); }
-      ph = 'reveal'; phEnd = C.T + 4.5; ctx.dirtyAll();
+      ph = 'reveal'; phEnd = C.T + (qs[qi]?.why ? 8 : 4.5); ctx.dirtyAll(); // 정답 이유가 있으면 읽을 시간을 더 줌
     };
     const aliveBy = () => { const o = Object.fromEntries(ctx.teams.map((t) => [t, 0])); for (const p of P.values()) if (p.alive && p.active && o[p.team] != null) o[p.team]++; return o; };
     return {
@@ -98,12 +102,12 @@ export const bell = {
         let aiKnow;
         if (p.ai && ph === 'q') { p.know ||= {}; if (p.know[i] == null) p.know[i] = Math.random() < ({ easy: 0.35, normal: 0.6, hard: 0.85 }[p.ai] ?? 0.3 + Math.random() * 0.6); if (p.know[i]) aiKnow = pm.indexOf(q.ans); }
         // 낸 뒤에는 보기를 숨기고 '제출 완료'만 (정답·내 답·정답률은 공개 시간까지 안 보냄)
-        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: ph === 'q' && done ? null : pm.map((k) => q.opts[k]), submitted: done, aiKnow, kid: age === 'kid', my: ph === 'reveal' ? inv(p.ans[i]) : done ? -1 : null, ans: ph === 'reveal' ? inv(q.ans) : null, alive: p.alive, revive: qi === revive, ok: p.ok, streak, ...this._cnt };
+        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: ph === 'q' && done ? null : pm.map((k) => q.opts[k]), submitted: done, aiKnow, kid: age === 'kid', my: ph === 'reveal' ? inv(p.ans[i]) : done ? -1 : null, ans: ph === 'reveal' ? inv(q.ans) : null, why: ph === 'reveal' ? q.why : '', set: ctx.settings.bellTitle || '', alive: p.alive, revive: qi === revive, ok: p.ok, streak, ...this._cnt };
       },
       screen() {
         const q = qs[qi] || qs[N - 1];
         const al = aliveBy();
-        return { qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, counts: ph === 'reveal' ? counts : null, rate: ph === 'reveal' ? rate : null, out: outNow.slice(0, 14), outN: outNow.length, rev: revNow.slice(0, 14), revN: revNow.length, alive: al, aliveN: Object.values(al).reduce((a, b) => a + b, 0), revive: qi === revive, answered: [...P.values()].filter((p) => p.ans[qi] != null).length, kid: age === 'kid' };
+        return { qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, why: ph === 'reveal' ? q.why : '', set: ctx.settings.bellTitle || '', counts: ph === 'reveal' ? counts : null, rate: ph === 'reveal' ? rate : null, out: outNow.slice(0, 14), outN: outNow.length, rev: revNow.slice(0, 14), revN: revNow.length, alive: al, aliveN: Object.values(al).reduce((a, b) => a + b, 0), revive: qi === revive, answered: [...P.values()].filter((p) => p.ans[qi] != null).length, kid: age === 'kid' };
       },
       finish() {
         const players = {};
@@ -138,7 +142,7 @@ function bellBoard(ctx, qs, age) {
       if (now - (this._v || 0) > 1000) { this._v = now; ctx.dirtyAll(); }
     },
     view() { return { g: 'bell', board: true }; },
-    screen() { const q = qs[Math.min(qi, N - 1)]; return { board: true, qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, pts, flash: flash && C.T - flash.at < 1.5 ? [flash.team, flash.d] : null, kid: age === 'kid', counts: null, rate: null, alive: {}, aliveN: 0, answered: 0, out: [], rev: [] }; },
+    screen() { const q = qs[Math.min(qi, N - 1)]; return { board: true, qi, N, ph, left: round1(Math.max(0, phEnd - C.T)), text: q.text, opts: q.opts, ans: ph === 'reveal' ? q.ans : null, why: ph === 'reveal' ? q.why || '' : '', set: ctx.settings.bellTitle || '', pts, flash: flash && C.T - flash.at < 1.5 ? [flash.team, flash.d] : null, kid: age === 'kid', counts: null, rate: null, alive: {}, aliveN: 0, answered: 0, out: [], rev: [] }; },
     finish() { return { players: {}, teams: { ...pts }, teamLabel: Object.fromEntries(Object.entries(pts).map(([t, v]) => [t, `정답 ${v}점`])) }; },
   };
 }

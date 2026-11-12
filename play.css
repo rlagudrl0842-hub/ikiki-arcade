@@ -573,3 +573,30 @@ body.stage3d #bg3dshade { background: linear-gradient(180deg, #070a1e66, #0b0e24
 .pracbar b { font-size: 14px; } .pracbar span { flex: 1; opacity: .9; }
 .pracskipbtn { background: #ffffff; color: #1b2a5a; border: 0; border-radius: 9px; padding: 6px 10px; font-weight: 800; font-size: 13px; }
 .pracskip { display: flex; flex-direction: column; gap: 12px; }
+/* 골든벨 정답 이유 · 세트 이름 */
+.bellwhy { margin-top: 8px; background: #2fd27a1f; border: 2px solid #2fd27a88; border-radius: 14px; padding: 10px 12px; text-align: left; font-size: 16px; line-height: 1.45; }
+.bellwhy b { display: block; color: #8ff0b8; font-size: 17px; margin-bottom: 3px; }
+.bellsetp { font-size: 12px; font-weight: 800; background: #3d8bff33; border-radius: 999px; padding: 2px 8px; margin-right: 4px; }
+
+/* 🏟 육상 대회 (참가자 폰) */
+.athw { display: flex; flex-direction: column; align-items: stretch; width: 100%; align-self: stretch; gap: 6px; height: 100%; min-height: 0; padding: 4px 6px 8px; box-sizing: border-box; }
+.athtop { display: flex; gap: 8px; align-items: baseline; font-size: 15px; } .athtop b { font-size: 17px; } .athtop span { color: #c9d3ff; } .athtop em { margin-left: auto; font-style: normal; background: #ffd43b; color: #111; border-radius: 8px; padding: 0 6px; font-weight: 800; }
+.athsig { text-align: center; font-weight: 900; font-size: 26px; padding: 8px 4px; border-radius: 12px; background: #2a2f55; color: #fff; letter-spacing: 1px; }
+.athsig.s-marks { background: #c92a2a; } .athsig.s-set { background: #f59f00; color: #111; } .athsig.s-go { background: #2fb344; font-size: 34px; } .athsig.s-recall { background: #c92a2a; animation: athblink .5s steps(2) infinite; } .athsig.s-done, .athsig.s-over { background: #3b4a8a; }
+@keyframes athblink { 50% { background: #5c0f0f; } }
+.athcv { width: 100%; flex: 1 1 32vh; min-height: 120px; max-height: 40vh; border-radius: 12px; background: #123b23; display: block; }
+.athinfo { min-height: 22px; font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .athinfo b { font-size: 17px; }
+.athen { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; } .athen i { display: inline-block; height: 10px; border-radius: 5px; min-width: 2px; max-width: 90px; } .athen::after { content: ''; }
+.athmid { display: flex; flex-direction: column; gap: 6px; overflow: auto; max-height: 30vh; min-height: 0; }
+.athbox { background: #1d2246; border-radius: 12px; padding: 8px 10px; font-size: 15px; } .athbox.go { background: #1f4d2c; font-weight: 800; } .athbox.soon { background: #6b4e00; font-weight: 800; }
+.athrow { display: flex; align-items: center; gap: 6px; font-size: 14px; padding: 2px 0; } .athrow .pl { width: 22px; font-weight: 900; text-align: center; } .athrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .athrow i, .athpod i, .athfin i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; }
+.athpod { font-size: 16px; display: flex; gap: 6px; align-items: center; } .athpod b { margin-left: auto; }
+.athfin { background: #1d2246; border-radius: 12px; padding: 6px 10px; font-size: 14px; } .athfin summary { font-weight: 800; }
+.athchoose { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: #1d2246; border-radius: 12px; padding: 8px; } .athchoose > div { width: 100%; font-weight: 800; } .athchoose .btn { flex: 1; min-width: 70px; font-size: 18px; }
+.athnote { font-size: 12px; color: #9aa3c7; text-align: center; }
+.athhint { text-align: center; font-size: 14px; min-height: 20px; color: #c9d3ff; } .athhint.warn { color: #ffd43b; font-weight: 800; } .athhint.bad { color: #ff6b6b; font-weight: 900; }
+.athpad { display: flex; gap: 10px; flex: 0 0 26vh; min-height: 120px; width: 100%; }
+.athw > * { width: 100%; box-sizing: border-box; }
+.athbtn { flex: 1; border: 0; border-radius: 18px; background: #39407a; color: #fff; font-size: 26px; font-weight: 900; display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: inset 0 -6px 0 #0004; }
+.athbtn small { font-size: 14px; opacity: .7; } .athpad.live .athbtn { background: var(--tc, #3d8bff); } .athpad.prac .athbtn { opacity: .75; }
+.athbtn.hit { transform: scale(.95); filter: brightness(1.25); }

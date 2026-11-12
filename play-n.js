@@ -569,7 +569,7 @@ G.bell = {
     const st = this.root.querySelector('.bellrace'); if (st) st.textContent = bellRace(v); // 다른 참가자 상황(수만)은 화면을 다시 만들지 않고 글자만 바꿈 (보기를 누르는 중에 깜빡이지 않게)
     const key = `${v.qi}:${v.ph}:${v.submitted}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
     const R = this.root; R.innerHTML = '';
-    const head = h('div', { class: 'bellh' }, h('span', {}, `🔔 ${v.qi + 1} / ${v.N}`), v.revive ? h('span', { class: 'chip hot' }, '🔥 패자부활전') : null, h('span', { class: 'belltime' }));
+    const head = h('div', { class: 'bellh' }, v.set ? h('span', { class: 'bellsetp' }, `📘 ${v.set}`) : null, h('span', {}, `🔔 ${v.qi + 1} / ${v.N}`), v.revive ? h('span', { class: 'chip hot' }, '🔥 패자부활전') : null, h('span', { class: 'belltime' }));
     this.raceEl = h('div', { class: 'bellrace' }, bellRace(v));
     const status = v.kid ? null : h('div', { class: `bellst ${v.alive ? 'ok' : 'out'}` }, v.alive ? `✅ 생존 중 · ${v.ok}개 정답` : '😤 탈락 중 · 이번 문제 맞히면 바로 부활!');
     // 답을 내면 보기를 감추고 '제출 완료'만 (옆 사람이 보고 따라 하기 어렵게) · 보기 순서는 사람마다 다름
@@ -583,7 +583,8 @@ G.bell = {
       return onPress(h('button', { class: `bopt ${cls}`, disabled: !can }, h('b', {}, '①②③④'[i]), o), () => { if (!can || this.sent === v.qi) return; this.sent = v.qi; this.api.send({ a: 'ans', q: v.qi, c: i }); vibrate(15); this.key = ''; this.update(this.v); });
     }));
     let foot = null;
-    if (v.ph === 'reveal') foot = h('div', { class: `bellres ${v.my === v.ans ? 'ok' : 'no'}` }, v.my === v.ans ? '🎉 정답!' : v.my == null ? '⏰ 시간 초과' : '❌ 땡!');
+    if (v.ph === 'reveal') foot = h('div', {}, h('div', { class: `bellres ${v.my === v.ans ? 'ok' : 'no'}` }, v.my === v.ans ? '🎉 정답!' : v.my == null ? '⏰ 시간 초과' : '❌ 땡!'),
+      v.why ? h('div', { class: 'bellwhy' }, h('b', {}, `✅ 정답: ${v.opts?.[v.ans] ?? ''}`), h('div', {}, `💡 ${v.why}`)) : null); // 맞혀도 틀려도 정답과 이유를 함께 (공개 때만 옴)
     R.append(head, status, this.raceEl, h('div', { class: 'bellq' }, v.text), opts, foot);
     this.tick();
   },

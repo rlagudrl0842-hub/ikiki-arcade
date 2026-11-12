@@ -9,8 +9,9 @@ import { sync, relay } from './n7.js';
 import { balloon, bombpass, boss, towerup } from './n8.js';
 import { PE2 } from './pe2.js';
 import { tug, ljump, bowl } from './n9.js';
+import { ath } from './ath.js'; // 🏟 육상 대회 (임시 행사용 · 게임 순서에 넣을 때만 나옴)
 
-const list = [dodge, zombie, paint, gems, crown, mugung, dalgona, rope, tuho, runner, flappy, fruit, stairs, bridge, fishing, curling, penalty, basket, fire, rhythm, eggs, burger, bell, tele, mino, draw, spot, hilo, shout, hold, pe_freeze, pe_simon, pe_mission, sync, relay, balloon, bombpass, boss, towerup, tug, ljump, bowl, ...PE2].sort((a, b) => a.no - b.no);
+const list = [dodge, zombie, paint, gems, crown, mugung, dalgona, rope, tuho, runner, flappy, fruit, stairs, bridge, fishing, curling, penalty, basket, fire, rhythm, eggs, burger, bell, tele, mino, draw, spot, hilo, shout, hold, pe_freeze, pe_simon, pe_mission, sync, relay, balloon, bombpass, boss, towerup, tug, ljump, bowl, ath, ...PE2].sort((a, b) => a.no - b.no);
 
 // 기기 분류: 실제 입력 구조 기준
 //  phone = 참가자 휴대폰 필요 / none = 휴대폰 없이 가능 / both = 둘 다 가능(휴대폰 없으면 대형 화면 + 진행자 입력)

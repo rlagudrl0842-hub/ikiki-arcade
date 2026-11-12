@@ -7,6 +7,7 @@ import { saveCard } from './card.js';
 import './play-n2.js';
 import './play-n3.js';
 import './play-n4.js'; // 줄다리기·멀리뛰기·볼링
+import './play-ath.js'; // 🏟 육상 대회
 import { mountDemo, demoText, howTo } from './preview.js';
 import * as S3 from './scene3d.js';
 

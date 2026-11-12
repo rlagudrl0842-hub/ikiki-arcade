@@ -524,6 +524,7 @@ function drawCtrl() {
   }
   const isPe2 = !!games.find((g) => g.id === S.playlist[S.idx]?.game)?.pe2;
   if (ph === 'playing' && isPe2) { main.append(h('div', { class: 'hostpad pe2pad' }, h('div', { class: 'muted small' }, '🎯 사회자 판정 패드 준비 중…'))); draw.peKey = null; }
+  if (ph === 'playing' && S.playlist[S.idx]?.game === 'ath') { main.append(h('div', { class: 'hostpad athpad2' }, h('div', { class: 'muted small' }, '🏟 육상 대회 진행 패드 준비 중…'))); draw.athKey = null; if (draw.athLast) setTimeout(() => athPad(draw.athLast), 0); }
   if (ph === 'playing' && it?.host && !isPe2) {
     const hp = (team, d) => A(`/api/events/${eid}/command`, { op: 'hostPt', arg: { team, d } }).catch((e) => toast(e.message));
     main.append(h('div', { class: 'hostpad' }, h('div', { class: 'muted small' }, '🎯 진행자 판정: 잘한 팀에 점수를 눌러 주세요'), ...S.teams.map((t) => h('div', { class: 'hprow', style: { '--tc': t.color } }, h('b', {}, `${t.icon} ${t.name}`),
@@ -560,6 +561,7 @@ function clock() {
 }
 function liveMini(m) {
   if (m.s?.g === 'pe2') pePad(m.s);
+  if (m.s?.g === 'ath') { athPad(m.s); return; }
   const el = $('.livemini'); if (!el || !S) return;
   const s = m.s || {};
   const vals = s.avg || s.boards || s.prog || s.pts || (s.team && typeof Object.values(s.team)[0] === 'number' ? s.team : null);
@@ -589,6 +591,60 @@ function pePad(s) {
   }
   if (ui.glob?.length) box.append(h('div', { class: 'pglob' }, ...ui.glob.map((b) => B(b[0], b[1], 0, b[2], b[3]))));
 }
+// 🏟 육상 대회 진행 패드: 종목·출전 방식·주로 수·결승 → 조 확정 → 출발 → 결과 → 다음 조/결승 → 종목 마치기 · 출전 현황 · 음향 테스트
+const ATH_EV = [['100', '100m'], ['200', '200m'], ['400', '400m'], ['800', '800m'], ['relay', '4×100m 계주']];
+const ATH_ST = { setup: '① 종목·출전 설정', ready: '② 출발 준비', marks: '제자리에…', set: '차렷…', go: '경주 중', recall: '부정 출발 → 다시 출발', done: '③ 경주 결과', over: '④ 종목 결과' };
+function athPad(s) {
+  if (s.host) draw.athHost = s.host; draw.athLast = s;
+  const box = $('.athpad2'); if (!box) return; const hi = draw.athHost; if (!hi) return;
+  const key = JSON.stringify([s.st, s.heat, s.att, hi, s.recall, s.msg, s.rs.length]); if (draw.athKey === key) return; draw.athKey = key;
+  const send = (a, v = 0, btn) => { btn?.animate?.([{ transform: 'scale(.9)' }, { transform: 'scale(1)' }], 160); A(`/api/events/${eid}/command`, { op: 'hostPt', arg: { a, v } }).catch((e) => toast(e.message)); };
+  const B = (lbl, a, v, cls = 'ghost', ask) => h('button', { class: `btn ${cls}`, onclick: (e) => { if (ask && !confirm(ask)) return; send(a, v, e.currentTarget); } }, lbl);
+  const c = hi.cfg; const sum = hi.sum; box.innerHTML = '';
+  box.append(h('div', { class: 'pnote' }, `🏟 ${s.evName} · ${ATH_ST[s.st] || s.st}${s.heat ? ` · ${s.heat}` : ''}${s.prac ? ' · 🧪 연습(점수 없음)' : ''}`));
+  if (s.msg) box.append(h('div', { class: 'notice' }, s.msg));
+  const g = h('div', { class: 'athg' });
+  if (s.st === 'setup') {
+    g.append(h('div', { class: 'athl' }, '종목'), h('div', { class: 'athbtns' }, ...ATH_EV.map(([k, n], i) => B(`${n}${hi.done[k] ? ' ✓' : ''}`, 'ev', i, c.ev === k ? 'green' : 'ghost'))));
+    if (c.ev !== 'relay') g.append(h('div', { class: 'athl' }, '출전'), h('div', { class: 'athbtns' }, ...hi.entryNames.map((n, i) => B(n, 'entry', i, c.entry === i ? 'green' : 'ghost'))));
+    else g.append(h('div', { class: 'muted small' }, '계주: 접속한 모든 참가자를 팀별 4명씩 계주 팀으로 묶어요 (4명이 안 되면 같은 팀 친구가 한 번 더 달림)'));
+    if (c.ev !== 'relay' && (c.entry === 2 || c.entry === 3)) {
+      const L = ['100', '200', '400', '800'];
+      g.append(h('div', { class: 'athl' }, c.entry === 2 ? '나눌 종목' : '신청 종목'), h('div', { class: 'athbtns' }, ...L.map((k, i) => B(`${k}m${(c.prog >> i) & 1 ? ' ✓' : ''}${c.entry === 2 && hi.assign[k] != null ? ` (${hi.assign[k]}명)` : ''}${c.entry === 3 && hi.choice[k] != null ? ` (${hi.choice[k]}명)` : ''}`, 'prog', c.prog ^ (1 << i), (c.prog >> i) & 1 ? 'yellow' : 'ghost'))));
+      if (c.entry === 3) g.append(h('div', { class: 'athbtns' }, B(c.choose ? '📱 신청 받는 중 (누르면 닫기)' : '📱 폰에서 종목 신청 받기', 'choose', c.choose ? 0 : 1, c.choose ? 'yellow' : 'blue'), B(`신청 안 한 ${hi.unchosen}명 자동 배정`, 'fill', 0, 'ghost')));
+      if (c.entry === 2) g.append(h('div', { class: 'athbtns' }, B('🔀 다시 나누기', 'reassign', 0, 'ghost', '종목 나눔을 처음부터 다시 할까요?')));
+    }
+    g.append(h('div', { class: 'athl' }, '주로 수'), h('div', { class: 'athbtns' }, ...[4, 5, 6, 7, 8, 9].map((n) => B(`${n}`, 'lanes', n, c.lanes === n ? 'green' : 'ghost'))));
+    g.append(h('div', { class: 'athl' }, '결승'), h('div', { class: 'athbtns' }, B('결승 있음 (예선 기록 상위)', 'final', 1, c.final ? 'green' : 'ghost'), B('예선만 (시간 절약)', 'final', 0, c.final ? 'ghost' : 'green')));
+    g.append(h('div', { class: 'athsum' }, `출전 ${sum.n}명${c.ev === 'relay' ? ` · 계주 ${sum.units}팀` : ''} → 예선 ${sum.heats}조${sum.final ? ' + 결승 1' : ''} · 예상 약 ${Math.ceil(sum.estSec / 60)}분 (경주 1번 약 ${hi.raceEst}초)`));
+    g.append(B('✅ 조 편성 확정하고 시작', 'confirm', 0, 'green big'));
+  } else {
+    if (s.st === 'ready' || s.st === 'recall') g.append(B(s.st === 'recall' ? '▶ 다시 출발 (제자리에부터)' : '▶ 출발 절차 시작 (제자리에 → 차렷 → 총)', 'go', 0, 'green big'));
+    if (s.st === 'marks' || s.st === 'set') g.append(B('⛔ 출발 멈춤 (다시 출발)', 'recall', 0, 'red big'));
+    if (s.st === 'go') g.append(h('div', { class: 'athbtns' }, B('🏁 경주 끝내기 (지금 기록으로)', 'end', 0, 'yellow', '아직 안 들어온 선수는 기록 없음으로 끝낼까요?'), B('⏹ 경주 멈춤 (이 조 처음부터)', 'stop', 0, 'ghost', '이 경주를 멈추고 처음부터 다시 할까요?')));
+    if (s.st === 'done') { const lastHeat = hi.hi >= hi.heats.length - 1; g.append(B(hi.inFinal ? '▶ 종목 결과 보기' : !lastHeat ? `▶ 다음 조 (예선 ${hi.hi + 2}조)` : hi.hasFinal ? '▶ 결승 진행' : '▶ 종목 결과 보기', 'next', 0, 'green big'), B('🔁 이 조 다시 (방금 기록 지움)', 'rerun', 0, 'ghost', '방금 경주 기록을 지우고 다시 할까요?')); }
+    if (s.st === 'ready') g.append(h('div', { class: 'athbtns' }, B('⏭ 이 조 건너뛰기', 'skip', 0, 'ghost', '이 조를 건너뛸까요? (이 조 선수는 기록 없음)'), hi.hasFinal && !hi.inFinal ? B('결승 없이 진행', 'nofinal', 0, 'ghost', '결승을 하지 않을까요?') : null, B('🏁 지금까지로 종목 끝', 'over', 0, 'ghost', '남은 조를 하지 않고 종목 결과로 갈까요?')));
+    if (s.st === 'over') g.append(B('✅ 종목 마치기 (팀 점수 반영 → 다음 게임)', 'finish', 0, 'green big'));
+    if (hi.heats.length) g.append(h('details', { class: 'athdet' }, h('summary', {}, `조 편성 ${hi.heats.length}조${hi.hasFinal ? ' + 결승' : ''} (✓ = 끝남)`), ...hi.heats.map((x) => h('div', { class: 'small' }, `${x.done ? '✓' : x.no - 1 === hi.hi && !hi.inFinal ? '▶' : '·'} ${x.no}조 (${x.n}): ${x.names.join(', ')}`))));
+  }
+  box.append(g);
+  // 출전 현황: 한 번이라도 직접 달린 사람 / 아직 안 뛴 사람(접속 중) / 접속 끊김
+  const ppl = hi.ppl; const ran = ppl.filter((p) => p[2]); const notYet = ppl.filter((p) => !p[2] && p[3]); const off = ppl.filter((p) => !p[3]);
+  box.append(h('details', { class: 'athdet', open: notYet.length > 0 && s.st === 'setup' }, h('summary', {}, `👟 출전 현황: ${ran.length}/${ppl.length}명 달림${notYet.length ? ` · 아직 안 뛴 사람 ${notYet.length}명` : ' · 모두 출전 ✓'}${off.length ? ` · 접속 끊김 ${off.length}` : ''}`),
+    notYet.length ? h('div', { class: 'small warn' }, `아직: ${notYet.map((p) => p[0]).join(', ')}`) : null, off.length ? h('div', { class: 'small muted' }, `접속 끊김: ${off.map((p) => p[0]).join(', ')}`) : null,
+    h('div', { class: 'small' }, ran.map((p) => `${p[0]}(${p[2].replace('relay', '계주')})`).join(', '))));
+  box.append(h('div', { class: 'athbtns' }, B('🔊 대형 화면 음향 테스트', 'snd', 0, 'blue')), h('div', { class: 'muted small' }, '소리는 대형 화면 노트북에서만 나요. 대형 화면 오른쪽 아래에서 음소거·크기 조절 · 소리가 안 나도 출발등으로 진행돼요'));
+  box.append(h('details', { class: 'athdet' }, h('summary', {}, '📘 공식 규칙(World Athletics)과 게임 규칙'), ...ATH_RULES.map(([k, o, gm]) => h('div', { class: 'small athrule' }, h('b', {}, k), h('div', {}, `공식: ${o}`), h('div', { class: 'gm' }, `게임(간략): ${gm}`)))));
+}
+const ATH_RULES = [
+  ['출발 구령', '400m까지(계주 포함) "제자리에(On your marks) → 차렷(Set) → 총" · 400m보다 긴 종목(800m)은 "제자리에 → 총"', '같음. 차렷 뒤 1.2~2.5초 사이 무작위로 총 · 구령은 음성, 총소리는 합성 효과음, 화면 출발등 함께'],
+  ['부정 출발', '총 전에 출발하면 한 번에 실격 (반응 0.100초 미만도 부정 출발)', '총 전 입력만 판정(서버가 받은 시각) · 1회 = 경고 후 다시 출발 · 같은 선수 2회째 = 1초 늦게 출발 (실격 없음) · 800m는 "제자리에" 2초 뒤부터 판정'],
+  ['100m', '직선 주로, 자기 주로 유지', '같음 (홈 직선 연장 구간에서 출발)'],
+  ['200m·400m', '엇갈린 출발, 끝까지 자기 주로', '표준 트랙 치수(직선 84.39m·곡선 반지름 36.5m·주로 1.22m)로 출발 위치 계산 — 8주로 400m는 약 53m 앞'],
+  ['800m', '첫 곡선이 끝나는 브레이크라인까지 자기 주로, 이후 안쪽 합류 (2026년 개정 실내 규정은 해당 없음 · 실외 기준)', '같음. 합류 뒤 거리는 1주로 기준으로 같게 처리(브레이크라인 곡선 보정 단순화) · 몸싸움·길막힘 없음'],
+  ['4×100m 계주', '30m 교환 구역(표시선 앞 20m~뒤 10m) 안에서 배턴 · 구역 밖 교대·배턴 떨어뜨림 = 실격', '다음 주자는 구역 시작점에서 출발해 구역 끝을 넘지 못하고 기다림(실격 대신) · 따라잡으면 자동 교대 · 배턴 떨어뜨림 없음 · 3초 안 누르면 자동으로 천천히 달림'],
+  ['기록·결승', '전자 계시 기록 · 조별 순위+기록으로 다음 라운드', '게임 계산 기록(실제보다 짧게 압축, 실제 기록 아님) · 모든 조 기록을 합쳐 빠른 순서로 결승 (주로 수만큼) · 팀 점수 = 순위 점수 1인 평균 (결승·계주 2배)'],
+];
 async function save(body) { try { await A(`/api/events/${eid}/update`, body); } catch (e) { toast(e.message); } }
 
 // 게임별 최고 기록 (모든 행사 공통 · 행사를 지워도 남음) — 초기화는 마스터가 하나씩 직접 골라서만
@@ -1125,20 +1181,43 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 function tabQuiz(body) {
   const s = full?.settings || {};
   const bell = h('textarea', { class: 'inp ta', rows: 10, placeholder: '한 줄에 한 문제: 문제 | 정답 | 오답 | 오답 | 오답\n예) 우리 원장님 성함은? | 김민지 | 이수진 | 박지영\n예) 오늘 운동회 장소는? | 별빛체육관 | 달빛강당' });
+  const strip = (t) => String(t).replace(/^\s*\[(유아|초등|중등|고등|성인)\]\s*/, '').trim();
   bell.value = (s.bellCustom || []).map((q) => q.join(' | ')).join('\n');
+  // 정답 이유: 위 문제와 같은 순서로 한 줄씩 (비워 두면 이유 없이 정답만 공개) — 문제 글에 연결해 따로 저장하므로 문제 형식(|)은 그대로
+  const why = h('textarea', { class: 'inp ta', rows: 6, placeholder: '위 문제 순서대로 한 줄에 하나씩 (빈 줄 = 이유 없음)\n예) 심판은 경기 규칙에 따라 공정하게 판정해요.' });
+  why.value = (s.bellCustom || []).map((q) => (s.bellWhy || {})[strip(q[0])] || '').join('\n').replace(/\n+$/, '');
+  const title = h('input', { class: 'inp', maxlength: 30, placeholder: '문제 세트 이름 (예: 스포츠 진로 도전 골든벨) — 빈칸이면 표시 안 함', value: s.bellTitle || '' });
+  const only = h('input', { type: 'checkbox', checked: !!s.bellOnly });
   const words = h('textarea', { class: 'inp ta', rows: 5, placeholder: '쉼표나 줄바꿈으로 구분: 원장님, 미끄럼틀, 우리 반 강아지, 축구공 …' });
   words.value = (s.drawCustom || []).join(', ');
+  // 지금 저장된 문제·이유·설정을 글 파일로 내려받기 (되돌릴 때 이 글을 그대로 붙여 넣으면 됨)
+  const backup = () => {
+    const txt = [`# 아이키키 골든벨 백업 · 행사 ${S.event.name} (${S.event.code}) · ${new Date().toLocaleString('ko-KR')}`, `# 세트 이름: ${s.bellTitle || ''}`, `# 행사 문제만: ${s.bellOnly ? '켜짐' : '꺼짐'}`, '', '[문제]', ...(s.bellCustom || []).map((q) => q.join(' | ')), '', '[정답 이유]', ...(s.bellCustom || []).map((q) => (s.bellWhy || {})[strip(q[0])] || ''), '', '[그림 단어]', (s.drawCustom || []).join(', ')].join('\n');
+    const a = h('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/plain' })), download: `골든벨백업_${S.event.code}.txt` }); document.body.append(a); a.click(); a.remove();
+  };
   const save2 = async () => {
     const bq = bell.value.split('\n').map((l) => l.split('|').map((x) => x.trim()).filter(Boolean)).filter((q) => q.length);
     const bad = bq.filter((q) => q.length < 3);
     if (bad.length) return toast(`정답과 오답을 | 로 나눠 주세요: "${bad[0][0]}"`);
+    const dup = bq.find((q) => new Set(q.slice(1)).size !== q.length - 1); if (dup) return toast(`보기에 같은 글이 있어요 (정답이 2개로 보일 수 있어요): "${dup[0]}"`);
+    const long = bq.find((q) => q[0].length > 80 || q.slice(1).some((x) => x.length > 30)); if (long) return toast(`글이 길어요 (문제 80자 · 보기 30자까지): "${long[0].slice(0, 20)}…"`);
+    const wl = why.value.split('\n').map((x) => x.trim()); if (wl.filter(Boolean).length && wl.length > bq.length && wl.slice(bq.length).some(Boolean)) return toast(`정답 이유가 문제보다 많아요 (문제 ${bq.length}개 · 이유 ${wl.filter(Boolean).length}줄)`);
+    const bw = {}; bq.forEach((q, i) => { if (wl[i]) bw[strip(q[0])] = wl[i].slice(0, 120); });
+    const old = (s.bellCustom || []).map((q) => q.join('|')).join('\n'); const neu = bq.map((q) => q.join('|')).join('\n');
+    if (old && old !== neu && !confirm(`이 행사에 저장된 골든벨 문제 ${(s.bellCustom || []).length}개를 새 문제 ${bq.length}개로 바꿔요.\n(다른 행사의 문제는 그대로예요)\n먼저 [💾 백업 내려받기]를 했나요?`)) return;
+    if (only.checked && bq.length < 2) return toast('\'행사 문제만\'을 켜려면 문제를 2개 이상 넣어 주세요');
     const dw = words.value.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
-    await save({ settings: { bellCustom: bq, drawCustom: dw } }); toast(`골든벨 ${bq.length}문제 · 그림 단어 ${dw.length}개 저장`);
+    await save({ settings: { bellCustom: bq, bellWhy: bw, bellTitle: title.value.trim(), bellOnly: only.checked && bq.length >= 2, drawCustom: dw } });
+    toast(`골든벨 ${bq.length}문제 (이유 ${Object.keys(bw).length}개${only.checked ? ' · 행사 문제만' : ''}) · 그림 단어 ${dw.length}개 저장`);
   };
   body.append(h('div', { class: 'stack' },
-    h('h3', {}, '🔔 골든벨 우리 행사 문제'), h('p', { class: 'muted small' }, '넣은 문제가 먼저 나오고, 모자란 만큼 연령에 맞는 기본 문제로 채워요. 문제 앞에 [유아]·[초등]·[성인]을 붙이면 그 연령에서만 나와요. 띄어쓰기·기호만 다른 같은 문제는 하나로 합쳐요. 한 행사 안에서는 낸 문제를 다 쓸 때까지 다시 내지 않아요. 보기 순서는 참가자마다 달라요.'), bell,
+    h('h3', {}, '🔔 골든벨 우리 행사 문제'), h('p', { class: 'muted small' }, '이 행사에만 저장돼요 (다른 행사 문제는 그대로). 넣은 문제가 먼저 나오고, 모자란 만큼 연령에 맞는 기본 문제로 채워요. 문제 앞에 [유아]·[초등]·[성인]을 붙이면 그 연령에서만 나와요.'), bell,
+    h('label', { class: 'row', style: { gap: '8px', alignItems: 'center' } }, only, h('b', {}, '행사 문제만 내기'), h('span', { class: 'muted small' }, '— 기본 문제를 섞지 않고, 넣은 문제를 한 판에 모두 내요 (예: 17문제 → 17문제)')),
+    h('div', { class: 'field' }, h('label', {}, '📘 문제 세트 이름 (참가자 폰·큰 화면 위에 표시)'), title),
+    h('div', { class: 'field' }, h('label', {}, '💡 정답 이유 (정답 공개 때 정답과 함께 표시 · 위 문제와 같은 순서로 한 줄씩)'), why),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn ghost', onclick: backup }, '💾 백업 내려받기 (지금 저장된 것)')),
     h('h3', {}, '🖍 그려라 맞혀라 단어'), h('p', { class: 'muted small' }, '6개 이상 넣으면 넣은 단어만 써요 (팀마다 다른 단어가 나와요).'), words,
-    h('button', { class: 'btn', onclick: save2 }, '💾 문제·단어 저장'),
+    h('button', { class: 'btn', onclick: save2 }, '💾 문제·이유·단어 저장'),
     h('h3', {}, '🔁 출제 기록'), h('p', { class: 'muted small' }, '같은 행사에서는 이미 낸 문제를 다 쓰기 전까지 다시 내지 않아요 (새로고침·서버 재시작 후에도 기억). 처음부터 다시 내고 싶을 때만 지우세요.'),
     h('button', { class: 'btn ghost', onclick: async () => { if (!confirm('이 행사의 퀴즈 출제 기록을 지울까요? (점수·기록은 그대로)')) return; await cmd('qreset', {}); toast('출제 기록을 지웠어요'); } }, '🧹 퀴즈 출제 기록 지우기')));
 }

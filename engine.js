@@ -48,7 +48,7 @@ const id = (n = 8) => crypto.randomBytes(n).toString('base64url');
 const code6 = () => Array.from(crypto.randomBytes(6), (b) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
 
 const isAI = (p) => !!(p.ai || /^ai:/.test(p.device || '')); // 컴퓨터 상대(시험용)는 🤖로 구분
-const LIVE_SKIP = new Set(['bell', 'tele', 'mino', 'hilo', 'draw', 'spot']);
+const LIVE_SKIP = new Set(['bell', 'tele', 'mino', 'hilo', 'draw', 'spot', 'ath']); // ath = 육상 대회(자체 순위판)
 export class Event {
   constructor(hub, row) {
     this.hub = hub; this.db = hub.db;
@@ -481,7 +481,7 @@ export class Event {
     g.start?.(now);
     this.bump('playing');
     if (g.endAt) this.schedule(g.endAt - now, () => this.finishGame('time'));
-    else this.schedule(g.practice ? 3 * 60 * 1000 : 10 * 60 * 1000, () => this.finishGame('safety')); // 라운드형 게임 안전장치
+    else this.schedule(g.practice ? 3 * 60 * 1000 : (g.def.maxMin || 10) * 60 * 1000, () => this.finishGame('safety')); // 라운드형 게임 안전장치 (육상 대회는 45분)
     this.broadcastState();
     this.flushViews(true);
     this.startTicker();
@@ -565,7 +565,7 @@ export class Event {
       this.db.run("UPDATE runs SET status='done', ended_at=? WHERE id=?", now, g.runId);
       for (const b of res.bonus || []) this.db.run('INSERT INTO adjustments(event_id,team_id,delta,kind,reason,at) VALUES(?,?,?,?,?,?)', this.id, b.team, b.delta, 'luck', b.reason, now);
     });
-    let record = null; try { if (!this.settings.test && !res.noPoints && !res.bonus) record = this.recordRun(g.def, res, out); } catch (e) { console.error('record', e); }
+    let record = null; try { if (!this.settings.test && !res.noPoints && !res.bonus && !g.def.noRecord) record = this.recordRun(g.def, res, out); } catch (e) { console.error('record', e); }
     this.lastResult = { runId: g.runId, game: g.def.id, label: g.def.name, teams: out.teams, players: compactPlayers(res.players), mvp: out.mvp, aces: out.aces, extra: res.extra || null, bonus: res.bonus || null, reason, record, personal: this.personalGame(g.def.id) };
     this.game = null;
     this.state.runId = null;
@@ -650,7 +650,7 @@ export class Event {
     const ph = this.state.phase;
     if (this.game) { if (this.game.endAt) this.game.endAt += shift; this.game.startAt += shift; this.game.shift?.(shift); }
     if (ph === 'playing' && this.game?.endAt) this.schedule(this.game.endAt - Date.now(), () => this.finishGame('time'));
-    else if (ph === 'playing') this.schedule(10 * 60 * 1000, () => this.finishGame('safety'));
+    else if (ph === 'playing') this.schedule((this.game?.practice ? 3 : this.game?.def?.maxMin || 10) * 60 * 1000, () => this.finishGame('safety'));
     else if (ph === 'countdown') this.schedule(p.remain ?? 1000, () => this.beginPlay());
     else if (ph === 'intro' && this.settings.auto) this.schedule(p.remain ?? 3000, () => this.startCountdown());
     else if (ph === 'results' && this.settings.auto) this.schedule(p.remain ?? 3000, () => this.afterResults(false));
@@ -890,6 +890,9 @@ export function sanitizeSettings(s) {
   if (['auto', 'on', 'off'].includes(s.motion)) o.motion = s.motion;
   // 진행자 문제: [문제, 정답, 오답1~3] 최대 40개 · 그림 단어 최대 60개
   const txt = (v, n) => String(v ?? '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, n);
+  if (typeof s.bellOnly === 'boolean') o.bellOnly = s.bellOnly; // 골든벨: 행사 문제만 (기본 문제 안 섞음)
+  if (typeof s.bellTitle === 'string') o.bellTitle = txt(s.bellTitle, 30); // 골든벨 문제 세트 이름 (화면 위에 표시)
+  if (s.bellWhy && typeof s.bellWhy === 'object' && !Array.isArray(s.bellWhy)) { const w = {}; for (const [k, v] of Object.entries(s.bellWhy).slice(0, 40)) { const kk = txt(k, 80), vv = txt(v, 120); if (kk && vv) w[kk] = vv; } o.bellWhy = w; } // 정답 이유 (문제 글 → 이유)
   if (Array.isArray(s.bellCustom)) o.bellCustom = s.bellCustom.slice(0, 40).map((q) => (Array.isArray(q) ? q.slice(0, 5).map((x, i) => txt(x, i ? 30 : 80)).filter(Boolean) : [])).filter((q) => q.length >= 3 && new Set(q.slice(1)).size === q.length - 1);
   if (Array.isArray(s.drawCustom)) o.drawCustom = [...new Set(s.drawCustom.slice(0, 60).map((w) => txt(w, 16)).filter(Boolean))];
   if (Array.isArray(s.playlist) && s.playlist.length <= 120) {

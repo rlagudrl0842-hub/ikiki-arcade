@@ -291,3 +291,11 @@ body.remote .ctrlmore .chk { display: none; }
 @media (max-width: 520px) { .ob { width: 34px; height: 34px; font-size: 13px; } .orow > b { width: 18px; } }
 .pracnote { background: #3d8bff22; border: 1px solid #3d8bff77; border-radius: 12px; padding: 8px 12px; font-size: 14px; }
 .howbox { display: grid; gap: 4px; background: #ffffff0d; border: 1px solid #ffffff1a; border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.4; }
+
+/* 🏟 육상 대회 진행 패드 */
+.athg { display: flex; flex-direction: column; gap: 6px; }
+.athl { font-weight: 800; font-size: 14px; margin-top: 4px; }
+.athbtns { display: flex; flex-wrap: wrap; gap: 6px; } .athbtns .btn { flex: 1 1 auto; min-width: 0; }
+.athsum { background: #fff3bf; color: #333; border-radius: 10px; padding: 8px; font-weight: 700; }
+.athdet { margin-top: 6px; } .athdet summary { font-weight: 800; cursor: pointer; } .athdet .warn { color: #e8590c; font-weight: 700; }
+.athrule { border-top: 1px solid #0001; padding: 4px 0; } .athrule .gm { color: #1971c2; }
