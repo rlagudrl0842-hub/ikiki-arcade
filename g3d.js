@@ -12,6 +12,18 @@ export function tex(w, h, fn, rep) {
 export const sky = (stops) => tex(4, 256, (c, w, h) => { const g = c.createLinearGradient(0, 0, 0, h); stops.forEach(([k, col]) => g.addColorStop(k, col)); c.fillStyle = g; c.fillRect(0, 0, w, h); });
 const q = () => location.search;
 
+// 검은 화면 지킴이: 처음 몇 장을 그린 뒤 화면 몇 점을 읽어 봄 — 전부 까맣거나 투명하면(일부 태블릿·구형 기기에서 3D가 그려지지 않는 경우) 원래 2D 화면으로
+export function blackGuard(R, onBad) {
+  let n = 0, bad = 0; const px = new Uint8Array(4);
+  return () => {
+    n++; if (n > 12 || n % 4 || !onBad) return;
+    try {
+      const gl = R.getContext(); const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight; let sum = 0;
+      for (const [x, y] of [[0.5, 0.5], [0.2, 0.2], [0.8, 0.3], [0.3, 0.8], [0.7, 0.7]]) { gl.readPixels((x * w) | 0, (y * h) | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); sum += px[0] + px[1] + px[2]; }
+      if (sum === 0) bad++; if (n === 12 && bad >= 2) onBad('black');
+    } catch { /* */ }
+  };
+}
 // base(canvas, opts) → null(3D 못 씀) 또는 { THREE, R, scene, cam, hi, frame(S): dt|null, draw(), dispose(fn) }
 export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = null, ortho = false, slowMs = 33 } = {}) {
   // ortho: 위에서 똑바로 내려다보는 카메라 — 화면 좌표(가로 0~1, 세로 0~높이/폭)와 3D 좌표가 정확히 같아서 터치 위치가 그림과 딱 맞음 (x → x, 화면 y → -y)
@@ -25,6 +37,7 @@ export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = nu
   R.setPixelRatio(Math.min(devicePixelRatio || 1, hi ? 1.75 : 1)); R.shadowMap.enabled = hi; R.shadowMap.type = THREE.PCFShadowMap; R.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene(); const cam = ortho ? new THREE.OrthographicCamera(0, 1, 0, -1, 0.1, 100) : new THREE.PerspectiveCamera(fov, 1, 0.1, 300); if (ortho) cam.position.set(0, 0, 50);
   let lastT = performance.now(), frames = [], nF = 0, slowCalled = false, lost = false; const extra = [];
+  const guard = blackGuard(R, (why) => { if (!slowCalled && !lost) { slowCalled = true; onSlow?.(why); } });
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (lost) return; lost = true; onSlow?.('lost'); }); // 직접 정리할 때는 무시
   return {
     THREE, R, scene, cam, hi,
@@ -38,7 +51,7 @@ export function base(canvas, { quality = 'high', onSlow, fov = 55, sizeFrom = nu
       if (canvas.width !== Math.round(w * R.getPixelRatio()) || canvas.height !== Math.round(h * R.getPixelRatio())) { R.setSize(w, h, false); if (ortho) { cam.left = 0; cam.right = 1; cam.top = 0; cam.bottom = -h / w; } else cam.aspect = w / h; cam.updateProjectionMatrix(); }
       return Math.min(0.05, fdt / 1000);
     },
-    draw() { R.render(scene, cam); },
+    draw() { R.render(scene, cam); guard(); },
     onDispose(fn) { extra.push(fn); },
     dispose() {
       lost = true; extra.forEach((f) => { try { f(); } catch { /* */ } });

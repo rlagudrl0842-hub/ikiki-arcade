@@ -83,7 +83,7 @@ export class AI {
               }
             }
             // 벽에 끼임 감지: 1.5초 동안 거의 안 움직였으면 경기장 가운데 쪽으로 방향을 새로 잡음
-            if (g === 'zombie') { const st = this.zst ||= { x: v2.x, y: v2.y, at: Date.now() }; if (Math.hypot(v2.x - st.x, v2.y - st.y) > 30) { st.x = v2.x; st.y = v2.y; st.at = Date.now(); } else if (Date.now() - st.at > 1500) { ang = Math.atan2(AH / 2 - v2.y, AW / 2 - v2.x) + R(-0.6, 0.6); x = Math.cos(ang); y = Math.sin(ang); st.at = Date.now(); } }
+            if (g === 'zombie') { const st = this.zst = this.zst || { x: v2.x, y: v2.y, at: Date.now() }; if (Math.hypot(v2.x - st.x, v2.y - st.y) > 30) { st.x = v2.x; st.y = v2.y; st.at = Date.now(); } else if (Date.now() - st.at > 1500) { ang = Math.atan2(AH / 2 - v2.y, AW / 2 - v2.x) + R(-0.6, 0.6); x = Math.cos(ang); y = Math.sin(ang); st.at = Date.now(); } }
             if (g === 'gems' && v2.gems?.length && Math.random() < 0.3 + sk * 0.7) { const b = v2.gems.slice().sort((a, b2) => Math.hypot(a[0] - v2.x, a[1] - v2.y) - Math.hypot(b2[0] - v2.x, b2[1] - v2.y))[0]; const l = Math.hypot(b[0] - v2.x, b[1] - v2.y) || 1; x = (b[0] - v2.x) / l; y = (b[1] - v2.y) / l; }
             if (g === 'crown' && v2.z && Math.random() < 0.3 + sk * 0.7) { const l = Math.hypot(v2.z[0] - v2.x, v2.z[1] - v2.y); if (l > 40) { x = (v2.z[0] - v2.x) / l; y = (v2.z[1] - v2.y) / l; } else { x *= 0.3; y *= 0.3; } }
             if (v2.x < 60) x = Math.abs(x); if (v2.x > AW - 60) x = -Math.abs(x); if (v2.y < 60) y = Math.abs(y); if (v2.y > AH - 60) y = -Math.abs(y);
@@ -148,7 +148,7 @@ export class AI {
         once('shout', () => this.every(200, () => this.in({ a: 'lv', v: Math.round(R(25, 95) * sk) })));
         break;
       case 'sync':
-        this.sy ||= [];
+        this.sy = this.sy || [];
         for (const b of v.nx || []) { if (b.rest && Math.random() > (1 - sk) * 0.4) continue; if (this.sy.some((x) => Math.abs(x - b.at) < 200)) continue; this.sy.push(b.at); if (this.sy.length > 30) this.sy.shift(); const d = b.at - now(); if (d > 0 && Math.random() < 0.45 + sk * 0.5) this.later(d + R(-200, 200) * (1.2 - sk), () => this.in({ a: 'hit', ts: Math.round(now()) })); }
         break;
       case 'relay':
@@ -162,6 +162,15 @@ export class AI {
         break;
       case 'boss':
         once('boss', () => this.every(90, () => { const vv = this.v; if (!vv?.t0 || vv.done) return; const s = (now() - vv.t0) / 1000; const k = Math.floor(s / vv.slot); if (k === this.bk || s - k * vv.slot < R(0.15, 0.6) / sk) return; this.bk = k; if (Math.random() > 0.85 * sk + 0.1) return; const right = bossCell(vv.seed, this.pid, k, vv.cells); const c = Math.random() < (1 - sk) * 0.25 ? (right + 1) % vv.cells : right; this.in({ a: 'hit', k, c, ts: Math.round(now()) }); }));
+        break;
+      case 'tug':
+        once('tug', () => this.every(Math.round(170 / sk), () => this.in({ a: 'pull', n: Math.random() < 0.5 ? 1 : 2 })));
+        break;
+      case 'ljump':
+        if (v.tries.length < v.max && this.lj !== v.tries.length) { this.lj = v.tries.length; const i = v.tries.length; this.later(R(3000, 4500), () => this.in({ a: 'jump', i, spd: Math.min(1, R(0.5, 1) * (0.6 + sk * 0.4)), bd: Math.random() < 0.15 * (1.2 - sk) ? -0.05 : R(0, 0.25) * (1.2 - sk), ang: R(25, 65) })); }
+        break;
+      case 'bowl':
+        if (this.bw !== `${v.f}:${v.r}`) { this.bw = `${v.f}:${v.r}`; const f = v.f, r = v.r; this.later(R(2200, 3500), () => this.in({ a: 'roll', f, r, x: R(-0.35, 0.35), ang: R(-0.06, 0.06), pow: R(0.5, 1) })); }
         break;
       case 'towerup':
         if (v.me && this.cur !== `tw${v.h}:${v.T}` && now() - (this.twLast || 0) > 1500) { this.cur = `tw${v.h}:${v.T}`; this.twLast = now(); const vv = v; const at = now(); let tries = 0; const go = () => { if (!this.v?.me) return; const T = vv.T + (now() - at) / 1000; const span = 1 - vv.w; const q = ((T * vv.spd + vv.ph) % 2 + 2) % 2; const x = (q < 1 ? q : 2 - q) * span; if (Math.abs(x - vv.x) < 0.02 + (1 - sk) * 0.12 || ++tries > 70) { this.tapSel('.twbtn'); return; } this.later(30, go); }; this.later(R(300, 900) / sk, go); }

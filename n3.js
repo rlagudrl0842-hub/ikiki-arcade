@@ -4,6 +4,7 @@ import { rng, shuffle } from './gen.js';
 import { clamp, round1, numIn, intIn } from './common.js';
 import { BELL, WORDS } from './n3data.js';
 import { permFor } from './qpool.js';
+import { bankFor } from './qbank.js'; // 연령별 추가 문제은행 (분야·난이도별)
 
 function clock() {
   const c = { T: 0, last: null };
@@ -24,7 +25,7 @@ export const bell = {
   // 문제 후보: 진행자 문제 + 연령에 맞는 기본 문제 (엔진이 행사 단위로 중복 없이 고름)
   qsource(st) {
     const age = qAge(st.mode);
-    const bank = st.mode6 === 'mid' ? [...BELL.elem.slice(8), ...BELL.adult] : BELL[age];
+    const bank = [...(st.mode6 === 'mid' ? [...BELL.elem.slice(8), ...BELL.adult] : BELL[age]), ...bankFor(st.mode6 || st.mode)]; // 기존 문제 + 추가 문제은행 (같은 문제는 자동으로 하나로)
     // 진행자 문제 앞에 [유아]·[초등]·[성인](또는 중등·고등) 표시를 붙이면 그 연령에서만 나옴 · 표시가 없으면 모든 연령
     const TAG = { 유아: 'kid', 초등: 'elem', 중등: 'adult', 고등: 'adult', 성인: 'adult' };
     const own = (st.bellCustom || []).filter((q) => Array.isArray(q) && q.length >= 3 && q.every((x) => typeof x === 'string' && x.trim())).map((q) => {

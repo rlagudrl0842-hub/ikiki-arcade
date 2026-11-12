@@ -6,6 +6,7 @@ import './screen-n.js';
 import './screen-n2.js';
 import './screen-n3.js';
 import './screen-n4.js';
+import './screen-n5.js'; // 줄다리기·멀리뛰기·볼링
 import { mountPeTutorial } from './screen-pe2.js';
 import { PE_BY, AGE_NAME } from './pe2data.js';
 import { mountDemo, demoText } from './preview.js';

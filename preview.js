@@ -46,6 +46,9 @@ export const DEMO = {
   bombpass: { t: 'bomb', steps: K(['폭탄이 와요', '같은 색 버튼 콕', '다른 팀으로 휙!'], ['폭탄이 오면 진동이 와요', '화면에 나온 색과 같은 버튼을 눌러요', '다른 팀에게 넘어가요 (심지가 다 타면 들고 있던 팀 폭발)'], null), goal: '폭발이 적은 팀이 이겨요', score: '우리 팀 폭발 ÷ 전체 폭발 (적을수록 좋음)' },
   boss: { t: 'grid', cells: 9, cols: 3, label: '🎯', boss: true, steps: K(['칸을 봐요', '반짝이는 칸 콕!', '보스를 공격!'], ['칸들 중 빛나는 약점을 찾아요', '나타나자마자 그 칸을 터치 (빠르면 치명타 ×2)', '다른 칸은 0.6초 막혀요 · 팀 공격으로 보스 체력을 깎아요'], null), goal: '보스를 먼저 쓰러뜨린 팀이 이겨요 (체력은 팀 인원에 맞춤)', score: '처치 순서 · 못 쓰러뜨리면 깎은 체력 %' },
   towerup: { t: 'tower', steps: K(['내 차례를 기다려요', '블록이 탑 위에 오면 콕', '높이 쌓아요'], ['내 차례가 되면 진동이 와요', '움직이는 블록이 탑과 겹칠 때 탭', '겹친 만큼만 남아요 · 딱 맞으면 PERFECT'], null), goal: '탑 평균 높이가 높은 팀이 이겨요 (차례대로 번갈아)', score: '탑 평균 층수' },
+  tug: { t: 'tap', label: '영차!', rep: 6, team: true, steps: K(['영차 버튼에 손가락', '콕콕콕 빨리!', '우리 쪽으로 끌어와요'], ['"영차!" 버튼을 봐요', '팀원과 함께 빠르게 연타해요', '매듭을 우리 쪽 선까지 끌어오면 1승']) },
+  ljump: { t: 'timing', label: '점프!', steps: K(['콕콕콕 달려요', '선 앞에서 점프!', '바늘 가운데서 콕'], ['버튼을 연타해 빨리 달려요', '발구르기 선 바로 앞에서 "점프"', '각도 바늘이 45° 근처일 때 콕 (3번 중 최고 기록)']) },
+  bowl: { t: 'swipeUp', obj: '🎳', tgt: '🎯', steps: K(['공을 잡아요', '위로 쓱!', '핀을 넘어뜨려요'], ['레인 아래쪽 공 근처에 손가락을 대요', '노리는 방향으로 위로 쓱 밀어요 (빠를수록 세게)', '맨 앞 핀 바로 옆을 맞히면 스트라이크!']) },
 };
 export const ageKey = (mode) => (['baby', 'kid'].includes(mode) ? 'kid' : ['mid', 'high', 'adult'].includes(mode) ? 'adult' : 'elem');
 export function demoText(game, mode) { const d = DEMO[game]; if (!d && PE_BY[game]) { const g = PE_BY[game]; return { steps: g.tut.slice(0, 3), goal: g.win, score: g.score }; } if (!d) return null; const a = ageKey(mode); return { steps: d.steps[a] || d.steps.elem, goal: d.goal, score: d.score }; }

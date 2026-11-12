@@ -126,7 +126,13 @@ export const spot = {
         return { ok: m.c, total: p.total };
       },
       tick(now) { if (now - (this._v || 0) > 1500) { this._v = now; ctx.dirtyAll(); } },
-      view(pid) { const p = P.get(pid); if (!p) return { g: 'spot', spectator: true }; return { g: 'spot', seed: ctx.seed, lv: p.lv, k: p.k, found: [...p.found], total: p.total }; },
+      view(pid) {
+        const p = P.get(pid); if (!p) return { g: 'spot', spectator: true };
+        // 다른 참가자와 비교: 찾은 '개수'만 (정답 위치는 절대 보내지 않음) · 같은 개수면 같은 순위
+        const all = [...P.values()].filter((q) => q.active || q.id === pid); const best = Math.max(0, ...all.map((q) => q.total)); const rank = 1 + all.filter((q) => q.total > p.total).length;
+        const ahead = all.filter((q) => q.total > p.total).reduce((m, q) => Math.min(m, q.total), Infinity);
+        return { g: 'spot', seed: ctx.seed, lv: p.lv, k: p.k, found: [...p.found], total: p.total, rank, n: all.length, best, gapAhead: Number.isFinite(ahead) ? ahead - p.total : 0 };
+      },
       screen() { const e = pops; pops = {}; const top = [...P.values()].filter((p) => p.active).sort((a, b) => b.total - a.total).slice(0, 5).map((p) => [p.name, p.team, p.total]); return { pops: e, top, avg: avgBy(P, (p) => (p.active ? p.total : null), ctx.teams) }; },
       finish() { const players = {}; for (const p of P.values()) if (p.active) players[p.id] = { raw: p.total, norm: round1(clamp((p.total / by6(p.lv, [8, 10, 14, 16, 18, 20])) * 100, 0, 100)), show: `${p.total}개 찾음` }; return { players }; },
     };

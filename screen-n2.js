@@ -188,7 +188,7 @@ V.penalty = {
 // ---------------------------------------------------------------- 리듬 마스터: 대형 화면이 비트를 울림
 V.rhythm = {
   mount(root, ctx) { this.ctx = ctx; this.s = null; this.eq = {}; this.lastBeat = -1; this.cv = canvas(1832, 880); root.append(h('div', { class: 'nfull' }, this.cv)); loop(this, (t) => this.draw(t)); },
-  update(s) { this.s = s; const now = performance.now(); this.hq ||= {}; for (const [k, n] of Object.entries(s.hits || {})) { this.eq[k] = Math.min(1, (this.eq[k] || 0) + n * 0.06); (this.hq[k] ||= []).push([now, n]); } return s.avg; },
+  update(s) { this.s = s; const now = performance.now(); this.hq = this.hq || {}; for (const [k, n] of Object.entries(s.hits || {})) { this.eq[k] = Math.min(1, (this.eq[k] || 0) + n * 0.06); (this.hq[k] = this.hq[k] || []).push([now, n]); } return s.avg; },
   draw(t) {
     const s = this.s; if (!s) return; const c = this.cv.getContext('2d'); const W = 1832, H = 880;
     const now = this.ctx.now(); const beat = 60000 / s.bpm; const bi = Math.floor((now - s.t0) / beat); const ph = (((now - s.t0) % beat) + beat) % beat / beat;

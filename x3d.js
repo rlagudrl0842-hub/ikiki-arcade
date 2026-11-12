@@ -18,7 +18,7 @@ export function paint3d(self, c, W, H, state) {
   try {
     const t0 = performance.now(); if (self.r3.render(state) !== true) return false; c.drawImage(self.off3, 0, 0, W, H);
     // 한 장 그리는 데 걸린 시간: 40장 중간값이 10ms를 넘으면 폰이 버거운 것 → 원래 2D로 (버튼 반응이 늦어지지 않게)
-    if (!/[?&]r3d=force/.test(location.search) && (self.cost3 ||= []).length < 40) { self.cost3.push(performance.now() - t0); if (self.cost3.length === 40 && [...self.cost3].sort((a, b) => a - b)[20] > 10) self.drop3d('cost'); }
+    if (!/[?&]r3d=force/.test(location.search) && (self.cost3 = self.cost3 || []).length < 40) { self.cost3.push(performance.now() - t0); if (self.cost3.length === 40 && [...self.cost3].sort((a, b) => a - b)[20] > 10) self.drop3d('cost'); }
     return true;
   } catch (e) { console.error(e); self.drop3d('err'); return false; }
 }

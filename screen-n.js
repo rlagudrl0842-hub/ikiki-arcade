@@ -114,7 +114,7 @@ function arenaScreen(kind) {
       if (kind === 'paint' && s.grid) {
         // 칠한 땅은 바뀔 때만 따로 그려 두고 매 프레임엔 붙여 넣기만
         if (this.gridKey !== s.grid) {
-          this.gridKey = s.grid; const gc = (this.gridCv ||= document.createElement('canvas')); gc.width = W; gc.height = H; const g2 = gc.getContext('2d');
+          this.gridKey = s.grid; const gc = (this.gridCv = this.gridCv || document.createElement('canvas')); gc.width = W; gc.height = H; const g2 = gc.getContext('2d');
           const cw = W / s.GC, ch = H / s.GR; g2.globalAlpha = 0.78;
           for (let i = 0; i < s.grid.length; i++) { const ch0 = s.grid[i]; if (ch0 === '.') continue; g2.fillStyle = ctx.team(parseInt(ch0, 36)).color; g2.fillRect((i % s.GC) * cw, Math.floor(i / s.GC) * ch, cw + 0.6, ch + 0.6); }
         }

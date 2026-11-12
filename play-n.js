@@ -258,7 +258,7 @@ function arenaGame(kind) {
       if (r.hit) { vibrate([120, 60, 120]); sfx('boom', this.api.sfxOn); this.flash('hit', r.dead ? '💀 번개에 맞아 탈락!' : '⚡ 찌릿! 맞았어요'); }
       if (r.bitten) this.flash('bit', `🧟 ${r.by}에게 물렸다!`);
       if (r.tag) { sfx('good', this.api.sfxOn); vibrate([30, 40, 30]); this.flash('tag', `🧟 ${r.who} 잡았다!`); }
-      if (kind === 'zombie' && (r.tag || r.bitten) && r.x != null) (this.Z.burst ||= []).push({ x: r.x, y: r.y, at: performance.now(), mine: true });
+      if (kind === 'zombie' && (r.tag || r.bitten) && r.x != null) (this.Z.burst = this.Z.burst || []).push({ x: r.x, y: r.y, at: performance.now(), mine: true });
       if (r.big) { sfx('win', this.api.sfxOn); vibrate([40, 30, 40]); this.flash('tag', '대형 보석 +5'); }
     },
     resync() { if (M.on && !this.pad.classList.contains('on')) this.lastT = [9, 9]; else this.pad.resync(); },
@@ -450,7 +450,7 @@ G.fire = {
   },
   burst(x, now) {
     const y = this.rocketY(x, now) ?? 1; const col = `hsl(${x.hue},95%,62%)`;
-    (this.bl ||= []).push({ x: x.x, y: y * 0.8 + 0.08, hue: x.hue, at: performance.now() }); if (this.bl.length > 6) this.bl.shift(); // 3D 화면용 터짐 기록
+    (this.bl = this.bl || []).push({ x: x.x, y: y * 0.8 + 0.08, hue: x.hue, at: performance.now() }); if (this.bl.length > 6) this.bl.shift(); // 3D 화면용 터짐 기록
     for (let i = 0; i < 46; i++) { const a = (i / 46) * Math.PI * 2; const sp = 0.35 + Math.random() * 0.25; this.parts.push({ x: x.x, y: 1 - y * 0.8 - 0.08, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, at: performance.now(), col }); }
     sfx('boom', this.api.sfxOn);
   },

@@ -3,6 +3,7 @@
 // 2D 화면의 좌표를 3D로 옮김: 장애물 x(0~1.1) → 앞쪽 거리, 높이(h·y) → 위로, 러너는 제자리에서 달리고 세상이 다가옴
 // WebGL이 없거나 느리면 null/onSlow로 알려서 원래 2D 화면으로 돌아감
 import * as THREE from './three-0.160.0.min.js';
+import { blackGuard } from './g3d.js';
 
 const D = 20; // 장애물 x 1.0 = 앞으로 20m
 const KY = 7; // 높이 1.0 = 7m (러너 키 ≈ S.bh × 7 ≈ 1.7m)
@@ -119,6 +120,7 @@ export function createRunner3D(canvas, { color = '#ff4d6d', quality = 'high', on
   const burst = (z) => { for (let i = 0; i < NP; i++) { pPos.set([(Math.random() - 0.5) * 6, 4.2, z], i * 3); pVel.set([(Math.random() - 0.5) * 5, Math.random() * 4, (Math.random() - 0.5) * 3], i * 3); } confT = 0; confetti.visible = true; };
 
   let lastMile = 0, lastT = performance.now(), frames = [], slowCalled = false, lost = false, nF = 0;
+  const guard = blackGuard(R, (why) => { if (!slowCalled && !lost) { slowCalled = true; onSlow?.(why); } });
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (lost) return; lost = true; onSlow?.('lost'); }); // 직접 정리할 때는 무시
 
   function render(S) {
@@ -148,7 +150,7 @@ export function createRunner3D(canvas, { color = '#ff4d6d', quality = 'high', on
     // 카메라: 러너 뒤 오른쪽 위에서 따라감 (점프하면 살짝 따라 올라감 · 흔들림 없음)
     cam.position.set(1.7, 3.4 + S.y * KY * 0.3, 7.6); cam.lookAt(0, 0.9 + S.y * KY * 0.2, -10);
     if (confetti.visible) { confT += dt; for (let i = 0; i < NP; i++) { pVel[i * 3 + 1] -= 9 * dt; for (let k = 0; k < 3; k++) pPos[i * 3 + k] += pVel[i * 3 + k] * dt; } pGeo.attributes.position.needsUpdate = true; if (confT > 1.6) confetti.visible = false; }
-    R.render(scene, cam);
+    R.render(scene, cam); guard();
   }
   function dispose() {
     lost = true; try { scene.traverse((o) => { o.geometry?.dispose?.(); const m = o.material; (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => { x.map?.dispose?.(); x.dispose?.(); }); }); scene.background?.dispose?.(); R.dispose(); R.forceContextLoss?.(); } catch { /* */ }

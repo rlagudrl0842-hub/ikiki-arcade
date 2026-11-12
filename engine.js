@@ -43,6 +43,8 @@ const COUNTDOWN_MS = 3000;
 const id = (n = 8) => crypto.randomBytes(n).toString('base64url');
 const code6 = () => Array.from(crypto.randomBytes(6), (b) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
 
+const isAI = (p) => !!(p.ai || /^ai:/.test(p.device || '')); // 컴퓨터 상대(시험용)는 🤖로 구분
+const LIVE_SKIP = new Set(['bell', 'tele', 'mino', 'hilo', 'draw', 'spot']);
 export class Event {
   constructor(hub, row) {
     this.hub = hub; this.db = hub.db;
@@ -313,6 +315,7 @@ export class Event {
       case 'start': return this.startCountdown();
       case 'endNow': return this.finishGame('admin');
       case 'pause': return this.pause();
+      case 'qreset': { this.qmem = {}; this.db.setKV('qset:' + this.id, '{}'); this.pendingQ = null; return; } // 진행자: 이 행사의 퀴즈 출제 기록 지우기 (처음부터 다시 출제)
       case 'resume': return this.resume();
       case 'skip': return this.skip();
       case 'replay': return this.replay(arg.keep);
@@ -431,7 +434,27 @@ export class Event {
       try { this.game.tick?.(now); } catch (e) { console.error('tick', e); }
       this.flushViews(false);
       if (++n % 2 === 0) this.hub.broadcastScreen(this.id, { t: 'live', now, run: this.game.runId, s: this.game.screen(now), cheer: Object.fromEntries(this.cheer) });
+      if (n % 10 === 5) this.liveBoard(now); // 1초마다: 폰에 이번 게임 실시간 순위 (나·팀·1등과 차이)
     }, 100);
+  }
+  // 이번 게임 실시간 순위: 게임의 점수 계산(finish — 상태를 바꾸지 않음)을 그대로 써서 끝났을 때 순위와 같은 기준
+  // 라운드마다 공개하는 게임(골든벨·텔레파시·소수·하이로우·그림)과 자체 순위가 있는 게임(틀린 그림)은 뺌
+  liveBoard(now) {
+    const g = this.game; const id = g?.def?.id; if (!g || g.def.pe || LIVE_SKIP.has(id)) return;
+    let res; try { res = g.finish(now); } catch { return; } if (!res || res.noPoints) return;
+    const r1 = (x) => Math.round(x * 10) / 10;
+    const rows = []; for (const [pid, x] of Object.entries(res.players || {})) { const p = this.players.get(pid); if (!p || p.excluded || !Number.isFinite(x?.norm)) continue; rows.push({ pid, p, norm: x.norm, raw: Number.isFinite(x.raw) ? x.raw : x.norm }); }
+    rows.sort((a, b) => b.norm - a.norm);
+    const byTeam = {}; for (const r of rows) (byTeam[r.p.team] = byTeam[r.p.team] || []).push(r);
+    const mode = this.settings.scoring;
+    const tm = this.teams.map((t) => { let m = null; if (res.teams && res.teams[t.id] != null) m = res.teams[t.id]; else { const arr = byTeam[t.id] || []; if (arr.length) { const sum = arr.reduce((s, x) => s + x.norm, 0); m = mode === 'sum' ? sum : mode === 'top' ? arr.slice(0, Math.min(this.settings.topN, arr.length)).reduce((s, x) => s + x.norm, 0) / Math.min(this.settings.topN, arr.length) : mode === 'rep' ? (arr.find((x) => x.p.rep)?.norm ?? sum / arr.length) : sum / arr.length; } } return m == null ? null : [t.id, r1(m)]; }).filter(Boolean).sort((a, b) => b[1] - a[1]);
+    const top = rows.slice(0, 3).map((r) => [r.p.name, r1(r.raw), isAI(r.p) ? 1 : 0, r.p.team]);
+    for (const pid of this.conns.keys()) {
+      const p = this.players.get(pid); if (!p || p.excluded) continue;
+      const i = rows.findIndex((r) => r.pid === pid); let me = null;
+      if (i >= 0) { const mine = rows[i]; const above = rows.filter((r) => r.norm > mine.norm); const ah = above.length ? above[above.length - 1] : null; me = { rank: above.length + 1, n: rows.length, g1: r1(Math.abs(rows[0].raw - mine.raw)), ah: ah ? r1(Math.abs(ah.raw - mine.raw)) : 0, ahn: ah ? ah.p.name : '', ai: ah && isAI(ah.p) ? 1 : 0 }; }
+      this.sendPlayer(pid, { t: 'lb', run: g.runId, tm, top: rows.length > 1 ? top : [], me });
+    }
   }
   stopTicker() { if (this.ticker) clearInterval(this.ticker); this.ticker = null; }
 

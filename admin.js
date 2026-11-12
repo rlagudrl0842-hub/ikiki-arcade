@@ -1086,7 +1086,9 @@ function tabQuiz(body) {
   body.append(h('div', { class: 'stack' },
     h('h3', {}, '🔔 골든벨 우리 행사 문제'), h('p', { class: 'muted small' }, '넣은 문제가 먼저 나오고, 모자란 만큼 연령에 맞는 기본 문제로 채워요. 문제 앞에 [유아]·[초등]·[성인]을 붙이면 그 연령에서만 나와요. 띄어쓰기·기호만 다른 같은 문제는 하나로 합쳐요. 한 행사 안에서는 낸 문제를 다 쓸 때까지 다시 내지 않아요. 보기 순서는 참가자마다 달라요.'), bell,
     h('h3', {}, '🖍 그려라 맞혀라 단어'), h('p', { class: 'muted small' }, '6개 이상 넣으면 넣은 단어만 써요 (팀마다 다른 단어가 나와요).'), words,
-    h('button', { class: 'btn', onclick: save2 }, '💾 문제·단어 저장')));
+    h('button', { class: 'btn', onclick: save2 }, '💾 문제·단어 저장'),
+    h('h3', {}, '🔁 출제 기록'), h('p', { class: 'muted small' }, '같은 행사에서는 이미 낸 문제를 다 쓰기 전까지 다시 내지 않아요 (새로고침·서버 재시작 후에도 기억). 처음부터 다시 내고 싶을 때만 지우세요.'),
+    h('button', { class: 'btn ghost', onclick: async () => { if (!confirm('이 행사의 퀴즈 출제 기록을 지울까요? (점수·기록은 그대로)')) return; await cmd('qreset', {}); toast('출제 기록을 지웠어요'); } }, '🧹 퀴즈 출제 기록 지우기')));
 }
 
 function tabSettings(body) {

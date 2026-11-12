@@ -77,7 +77,7 @@ V.bombpass = {
       c.textAlign = 'right'; c.font = '900 34px sans-serif'; c.fillStyle = bm ? '#ffd43b' : '#ffffffaa'; c.fillText(`💥 ${bm}`, ln.x + ln.w - 22, ln.y + 48);
     }
     // 폭탄들 (팀 구역 안에 펼쳐 놓음) + 심지 막대
-    const per = {}; for (const b of s.bombs) (per[b.t] ||= []).push(b);
+    const per = {}; for (const b of s.bombs) (per[b.t] = per[b.t] || []).push(b);
     for (const [tid, arr] of Object.entries(per)) {
       const ln = L.find((x) => x.t.id === +tid); if (!ln) continue; const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(arr.length * 1.6)))); const cw = (ln.w - 40) / cols; const rh = Math.min(130, (ln.h - 80) / Math.ceil(arr.length / cols));
       arr.forEach((b, i) => {
@@ -135,7 +135,7 @@ V.towerup = {
     c.fillStyle = '#3b2b6b'; c.fillRect(0, H - 70, W, 70); c.fillStyle = '#ffd43b'; c.fillRect(0, H - 74, W, 6);
     c.fillStyle = '#fff'; c.font = '900 32px sans-serif'; c.textAlign = 'center'; c.fillText('🏗 차례가 오면 블록이 탑과 딱 겹칠 때 탭!', W / 2, 52);
     if (!s) return;
-    const byT = {}; for (const l of s.lanes) (byT[l.t] ||= []).push(l);
+    const byT = {}; for (const l of s.lanes) (byT[l.t] = byT[l.t] || []).push(l);
     const n = ctx.teams.length; const cw = W / Math.max(1, n);
     ctx.teams.forEach((tm, i) => {
       const ls = byT[tm.id] || []; const x0 = i * cw; const ttl = s.team[tm.id] || 0;
