@@ -66,7 +66,8 @@ else live = new Live({ t: 'hello', role: 'screen', code }, onMsg, (st) => docume
 // 지금·다음 게임 곡만 미리 받기
 const nextIds = () => (S ? [S.playlist?.[S.idx], S.playlist?.[S.idx + 1]].filter(Boolean).map((p) => BGM.pick(S.settings, p.game, customList)?.id) : []);
 function onMsg(m) {
-  if (m.t === 'state') { const prev = S; S = m; if (prev && prev.idx !== S.idx && gate.classList.contains('hidden')) BGM.preloadAll(nextIds()); joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
+  if (m.t === 'state') { pracBadge(m);
+    const prev = S; S = m; if (prev && prev.idx !== S.idx && gate.classList.contains('hidden')) BGM.preloadAll(nextIds()); joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
   if (m.t === 'live' && cur?.inst && S?.phase === 'playing' && m.run === S.run?.id) {
     const vals = cur.inst.update(m.s);
     if (vals) overtake(vals);
@@ -147,6 +148,12 @@ function audioLevels() {
   BGM.setVolume((S.settings.bgmVol ?? 70) / 100); setSfxVolume((S.settings.sfxVol ?? 80) / 100);
   BGM.duck(!!S.settings.duck);
   let b = $('#duckb'); if (S.settings.duck && !b) document.body.append(h('div', { id: 'duckb' }, '🎤 선생님 말씀 중 · 음악 작게')); else if (!S.settings.duck && b) b.remove();
+}
+// 🧪 연습 중 표시 (큰 화면 위쪽 가운데) — 연습은 점수·순위에 안 들어감
+function pracBadge(st) {
+  let el = document.getElementById('pracBadge'); const on = !!st.practice?.on && ['countdown', 'playing'].includes(st.phase);
+  if (!el) { el = document.createElement('div'); el.id = 'pracBadge'; document.body.append(el); }
+  el.textContent = on ? `🧪 연습 ${(st.practice.done || 0) + 1}/${st.practice.max} · 점수에 안 들어가요` : ''; el.hidden = !on;
 }
 // 지금 단계에 맞는 음악 상태로 맞춤 (한 곳에서만 결정 → 겹침·누락 없음)
 function audioSync() {

@@ -10,11 +10,19 @@ const FLESH = ['#ff4d5e', '#fff3d6', '#ffb54d', '#fff7a8', '#c8a8f0', '#ff8a9a',
 export function createFruit3D(canvas, { quality = 'high', onSlow, sizeFrom } = {}) {
   const B = base(canvas, { quality, onSlow, sizeFrom, ortho: true }); if (!B) return null;
   const { THREE, scene, cam, hi } = B;
-  scene.add(new THREE.HemisphereLight('#fff6e8', '#4a3020', 1.0));
+  scene.add(new THREE.HemisphereLight('#fff6e8', '#6a4a30', 1.25));
   const key = new THREE.DirectionalLight('#ffffff', 1.9); key.position.set(-0.6, 1.2, 3); key.target.position.set(0.5, -0.8, 0); scene.add(key, key.target);
   if (hi) { key.castShadow = true; key.shadow.mapSize.set(512, 512); Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 10 }); key.shadow.bias = -0.002; }
   // 나무 도마 (뒤 배경 · 그림자가 떨어짐)
-  const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshPhongMaterial({ shininess: 15, map: tex(256, 512, (c, w, h) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#7a4e2c' : '#86563a'; c.fillRect(i * w / 8, 0, w / 8, h); } c.strokeStyle = '#00000022'; for (let i = 0; i < 160; i++) { const x = Math.random() * w; c.beginPath(); c.moveTo(x, Math.random() * h); c.lineTo(x + (Math.random() - 0.5) * 6, Math.random() * h); c.stroke(); } const g = c.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.75); g.addColorStop(0, '#00000000'); g.addColorStop(1, '#00000088'); c.fillStyle = g; c.fillRect(0, 0, w, h); }) }));
+  // 나무 도마: 밝은 원목 판자 + 결 무늬 + 칼자국 + 가장자리 손잡이 홈 (전에는 어두운 갈색 줄무늬만 있어 화면이 거의 까맣게 보였음)
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshPhongMaterial({ shininess: 12, map: tex(256, 512, (c, w, h) => {
+    const cols = ['#c8925a', '#d39d64', '#bf8650', '#cf975e', '#c48c55', '#d6a26a'];
+    for (let i = 0; i < 6; i++) { c.fillStyle = cols[i]; c.fillRect((i * w) / 6, 0, w / 6 + 1, h); c.fillStyle = '#00000018'; c.fillRect((i * w) / 6, 0, 1.5, h); }
+    for (let i = 0; i < 220; i++) { const x = Math.random() * w, y = Math.random() * h, L = 30 + Math.random() * 120; c.strokeStyle = Math.random() < 0.5 ? '#8a5a2a30' : '#ffffff18'; c.lineWidth = 1 + Math.random(); c.beginPath(); c.moveTo(x, y); c.bezierCurveTo(x + 3, y + L / 3, x - 3, y + (2 * L) / 3, x + (Math.random() - 0.5) * 4, y + L); c.stroke(); } // 나뭇결
+    for (let i = 0; i < 6; i++) { const x = w * (0.15 + Math.random() * 0.7), y = h * (0.15 + Math.random() * 0.7); c.fillStyle = '#7a4a2050'; c.beginPath(); c.ellipse(x, y, 6 + Math.random() * 6, 3 + Math.random() * 3, 0, 0, 7); c.fill(); } // 옹이
+    c.strokeStyle = '#ffffff22'; for (let i = 0; i < 40; i++) { const x = Math.random() * w, y = Math.random() * h, a = Math.random() * Math.PI; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18); c.stroke(); } // 칼자국
+    const g = c.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, h * 0.8); g.addColorStop(0, '#00000000'); g.addColorStop(1, '#00000055'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  }) }));
   board.position.z = -1; board.receiveShadow = hi; scene.add(board);
   // 과일 모양 만들기 (같은 종류는 재사용)
   const sph = new THREE.SphereGeometry(1, 20, 14); const hemi = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); const cap = new THREE.CircleGeometry(1, 20);

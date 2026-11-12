@@ -2,8 +2,10 @@
 import crypto from 'node:crypto';
 import { GAMES } from './games.js';
 import { AGE_LABEL, AGES6, BASE3, LV6 } from './common.js';
-import { pickSet } from './qpool.js';
-import { rng } from './gen.js';
+import { pickSet, qid } from './qpool.js';
+import { rng, shuffle } from './gen.js';
+// 골든벨 연습 문제 (본 경기 문제은행과 따로 · 누구나 아는 쉬운 것)
+const PRACTICE_BELL = [['(연습) 하늘은 보통 무슨 색일까요?', '파란색', '초록색', '보라색', '갈색'], ['(연습) 1 + 1 = ?', '2', '3', '11', '0'], ['(연습) 고양이는 어떻게 울까요?', '야옹', '멍멍', '음매', '꽥꽥']];
 
 export const TEAM_COLORS = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#b06bff', '#ff922b', '#22d3ee', '#f472b6',
   '#a3e635', '#94a3b8', '#fb7185', '#60a5fa', '#facc15', '#34d399', '#c084fc', '#fdba74'];
@@ -21,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   auto: true,             // 자동 진행
   autoPrep: true,         // 자동 진행이 꺼져 있어도 결과 다음엔 다음 게임 소개 화면까지 준비 (시작은 사회자가)
   introSec: 10,
+  practice: 0,            // 본 경기 전 연습 횟수 (0 없음 · 1 · 2) — 연습은 점수·순위·기록에 안 들어감
+  practiceSec: 20,        // 연습 1회 길이(초) — 라운드형(퀴즈 등)은 연습 문제 몇 개로 짧게
   resultSec: 12,
   voice: true,
   sfx: true,
@@ -82,7 +86,7 @@ export class Event {
       // 서버 재시작: 진행 중이던 게임은 '중단'으로 표시하고 대기 화면으로
       if (['intro', 'countdown', 'playing'].includes(s.phase)) {
         if (s.runId) this.db.run("UPDATE runs SET status='interrupted', ended_at=? WHERE id=? AND status='running'", Date.now(), s.runId);
-        this.state.phase = 'lobby'; this.state.paused = null; this.state.runId = null;
+        this.state.phase = 'lobby'; this.state.paused = null; this.state.runId = null; this.state.practicing = false;
         this.state.notice = '서버가 다시 시작되어 진행 중이던 게임이 중단되었습니다. 같은 게임을 다시 시작할 수 있어요.';
       }
       if (s.phase === 'results') this.state.phase = 'lobby';
@@ -211,8 +215,9 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', space: this.settings.space || 'gym', elemLevel: this.settings.elemLevel || 'low', favs: this.settings.favs || [], introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { practice: this.settings.practice || 0, practiceSec: this.settings.practiceSec || 20, mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', space: this.settings.space || 'gym', elemLevel: this.settings.elemLevel || 'low', favs: this.settings.favs || [], introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
+      practice: { max: this.settings.practice || 0, done: this.state.prac?.idx === this.state.idx ? this.state.prac.done : 0, on: !!this.game?.practice, sec: this.settings.practiceSec || 20, last: this.lastPractice || null },
       idx: this.state.idx, total: this.settings.playlist.length,
       playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur, rep: p.rep })),
       rep: this.state.rep || 1, startedAt: this.state.startedAt || null, // 반복 몇 번째 판 · 행사 실제 시작 시각(첫 게임 설명)
@@ -313,6 +318,7 @@ export class Event {
     switch (op) {
       case 'intro': return this.toIntro(arg.idx);
       case 'start': return this.startCountdown();
+      case 'practice': return this.startCountdown({ practice: true });
       case 'endNow': return this.finishGame('admin');
       case 'pause': return this.pause();
       case 'qreset': { this.qmem = {}; this.db.setKV('qset:' + this.id, '{}'); this.pendingQ = null; return; } // 진행자: 이 행사의 퀴즈 출제 기록 지우기 (처음부터 다시 출제)
@@ -365,17 +371,30 @@ export class Event {
     this.pendingQ = null; this.prepQ();
     // 자동 진행이면 설명 시간 = 설명 시간 설정과 시범 미리보기 시간 중 긴 쪽 (미리보기가 끝난 뒤 카운트다운)
     const introMs = Math.max(this.settings.introSec, this.settings.preview !== false ? (this.settings.previewSec || 6) : 0) * 1000;
+    if (this.state.prac?.idx !== this.state.idx || this.state.prac?.rep !== (this.state.rep || 1)) this.state.prac = { idx: this.state.idx, rep: this.state.rep || 1, done: 0 }; // 게임(판)이 바뀌면 연습 횟수 새로
+    this.lastPractice = null;
     this.bump('intro', this.settings.auto ? introMs : 0);
     this.audit('intro', { idx: this.state.idx, game: item.game });
-    if (this.settings.auto) this.schedule(introMs, () => this.startCountdown());
+    if (this.settings.auto) this.schedule(introMs, () => this.autoAfterIntro());
     this.broadcastState();
   }
 
-  startCountdown() {
+  // 자동 진행: 연습이 남았으면 연습 → 아니면 본 경기
+  autoAfterIntro() { if (this.state.phase !== 'intro') return; if ((this.state.prac?.done || 0) < (this.settings.practice || 0)) this.startCountdown({ practice: true }); else this.startCountdown(); }
+  // 연습용 문제: 골든벨은 따로 만든 쉬운 연습 문제(본 경기 문제를 미리 보여 주지 않게) · 다른 문제형 게임은 이번 본 경기 문제와 겹치지 않는 것 중 조금만 (출제 기록에는 안 남김)
+  practiceQ(def) {
+    if (def.id === 'bell') { const r = rng(crypto.randomInt(1, 2 ** 31)); return shuffle(r, PRACTICE_BELL).slice(0, 2).map((q) => q.slice()); } // 2문제면 30초쯤
+    const src = def.qsource(this.gameSettings()); const skip = new Set(this.pendingQ?.ids || []);
+    const pool = src.items.filter((q) => !skip.has(qid(src.key(q)))); const r = rng(crypto.randomInt(1, 2 ** 31));
+    return shuffle(r, pool.length >= 2 ? pool : src.items).slice(0, Math.max(2, Math.ceil(src.n / 3)));
+  }
+  startCountdown(opts = {}) {
     if (this.state.phase !== 'intro') throw new Err('게임 설명 화면에서 시작할 수 있어요');
     const item = this.currentItem();
     const def = GAMES[item.game];
     const now = Date.now();
+    if (opts.practice) return this.startPractice(item, def, now);
+    this.state.practicing = false;
     const runId = Number(this.db.run("INSERT INTO runs(event_id,seq,game,label,weight,status,config,started_at) VALUES(?,?,?,?,?,'running',?,?)",
       this.id, this.state.idx + 1, def.id, def.name, item.weight ?? 1, JSON.stringify(item), now).lastInsertRowid);
     this.state.runId = runId;
@@ -407,17 +426,62 @@ export class Event {
     this.broadcastState();
     this.flushViews(true);
   }
+  // 🧪 연습 한 판: 본 경기와 같은 규칙·화면이지만 기록(DB)·점수·순위·출제 기록에 아무것도 남기지 않음 · 끝나면 설명 화면으로 돌아감
+  startPractice(item, def, now) {
+    const max = this.settings.practice || 0; const done = this.state.prac?.done || 0;
+    if (!max) throw new Err('연습이 꺼져 있어요 (설정에서 연습 1회·2회를 고르세요)');
+    if (done >= max) throw new Err(`연습 ${max}회를 다 했어요. 본 경기를 시작하세요`);
+    const runId = 1e9 + (this.pracSeq = (this.pracSeq || 0) + 1); // DB에 없는 번호 (폰이 지난 판 입력을 가려내는 데만 씀)
+    this.state.runId = runId; this.state.practicing = true;
+    const players = this.activePlayers().map((p) => this.ctxPlayer(p));
+    const fullMs = this.durOf(item, def); const durMs = Math.min(fullMs, (this.settings.practiceSec || 20) * 1000);
+    const startAt = now + COUNTDOWN_MS;
+    const ctx = {
+      runId, def, players, teams: this.teams.map((t) => t.id), teamInfo: this.teams, teamName: (id) => { const t = this.teams.find((x) => x.id === id); return t ? `${t.icon || ''}${t.name}` : `${id}팀`; }, settings: this.gameSettings(), item: { ...item, dur: durMs / 1000 }, qset: def.qsource ? this.practiceQ(def) : null, practice: true,
+      seed: crypto.randomInt(1, 2 ** 31), startAt, durMs, now: () => Date.now(),
+      sendTo: (pid, m) => this.sendPlayer(pid, { t: 'g', ...m }),
+      endEarly: () => setImmediate(() => { if (this.game === inst && this.state.phase === 'playing') this.finishGame('auto'); }),
+      dirty: (pid) => this.dirtyPlayers.add(pid),
+      dirtyAll: () => { this.dirtyAllFlag = true; },
+      events: this,
+    };
+    const inst = def.create(ctx);
+    inst.def = def; inst.runId = runId; inst.startAt = startAt; inst.practice = true; inst.pracMs = durMs; inst.endAt = def.untimed ? null : startAt + durMs;
+    this.game = inst;
+    this.dirtyPlayers = new Set(); this.dirtyAllFlag = true;
+    this.bump('countdown', COUNTDOWN_MS);
+    this.audit('practice', { game: def.id, n: done + 1 });
+    this.schedule(COUNTDOWN_MS, () => this.beginPlay());
+    this.broadcastState();
+    this.flushViews(true);
+  }
+  finishPractice(g, reason) {
+    let res; try { res = g.finish(Date.now()); } catch (e) { console.error('practice finish', e); res = { players: {} }; }
+    const P = res.players || {}; const rows = Object.entries(P).filter(([, x]) => Number.isFinite(x?.norm)).sort((a, b) => b[1].norm - a[1].norm);
+    this.state.prac = { ...(this.state.prac || { idx: this.state.idx, rep: this.state.rep || 1 }), done: (this.state.prac?.done || 0) + 1 };
+    this.lastPractice = { game: g.def.id, n: this.state.prac.done, reason, top: rows.slice(0, 3).map(([pid, x]) => ({ name: this.players.get(pid)?.name, team: this.players.get(pid)?.team, show: x.show })) };
+    this.game = null; this.state.runId = null; this.state.practicing = false;
+    const more = this.state.prac.done < (this.settings.practice || 0);
+    const introMs = Math.max(6, this.settings.introSec) * 1000;
+    this.bump('intro', this.settings.auto ? introMs : 0);
+    this.state.notice = more ? `🧪 연습 ${this.state.prac.done}회 끝! 한 번 더 연습하거나 본 경기를 시작해요 (연습 점수는 기록에 안 들어가요)` : '🧪 연습 끝! 이제 본 경기예요 (연습 점수는 기록에 안 들어가요)';
+    this.audit('practiceEnd', { game: g.def.id, n: this.state.prac.done, reason });
+    if (this.settings.auto) this.schedule(introMs, () => this.autoAfterIntro());
+    this.broadcastState();
+    // 각자 내 연습 결과(본 경기와 상관없음)를 폰에 알려 줌
+    for (const pid of this.conns.keys()) { const x = P[pid]; this.sendPlayer(pid, { t: 'prac', n: this.state.prac.done, show: x?.show || null, rank: x ? 1 + rows.findIndex(([q]) => q === pid) : null, total: rows.length }); }
+  }
   dominantAge() { return this.settings.mode === 'mixed' ? 'elem' : BASE3[this.settings.mode] || 'elem'; }
   modeLv() { return this.settings.mode === 'mixed' ? 2 : LV6[this.settings.mode] ?? 2; }
 
   beginPlay() {
     if (this.state.phase !== 'countdown' || !this.game) return;
     const g = this.game; const now = Date.now();
-    g.startAt = now; if (g.endAt) g.endAt = now + (this.ctxDur(g));
+    g.startAt = now; if (g.endAt) g.endAt = now + (g.practice ? g.pracMs : this.ctxDur(g));
     g.start?.(now);
     this.bump('playing');
     if (g.endAt) this.schedule(g.endAt - now, () => this.finishGame('time'));
-    else this.schedule(10 * 60 * 1000, () => this.finishGame('safety')); // 라운드형 게임 안전장치
+    else this.schedule(g.practice ? 3 * 60 * 1000 : 10 * 60 * 1000, () => this.finishGame('safety')); // 라운드형 게임 안전장치
     this.broadcastState();
     this.flushViews(true);
     this.startTicker();
@@ -448,12 +512,14 @@ export class Event {
     const byTeam = {}; for (const r of rows) (byTeam[r.p.team] = byTeam[r.p.team] || []).push(r);
     const mode = this.settings.scoring;
     const tm = this.teams.map((t) => { let m = null; if (res.teams && res.teams[t.id] != null) m = res.teams[t.id]; else { const arr = byTeam[t.id] || []; if (arr.length) { const sum = arr.reduce((s, x) => s + x.norm, 0); m = mode === 'sum' ? sum : mode === 'top' ? arr.slice(0, Math.min(this.settings.topN, arr.length)).reduce((s, x) => s + x.norm, 0) / Math.min(this.settings.topN, arr.length) : mode === 'rep' ? (arr.find((x) => x.p.rep)?.norm ?? sum / arr.length) : sum / arr.length; } } return m == null ? null : [t.id, r1(m)]; }).filter(Boolean).sort((a, b) => b[1] - a[1]);
-    const top = rows.slice(0, 3).map((r) => [r.p.name, r1(r.raw), isAI(r.p) ? 1 : 0, r.p.team]);
+    const top = rows.slice(0, 4).map((r) => [r.p.name, r1(r.raw), isAI(r.p) ? 1 : 0, r.p.team]); const lo = rows.length ? Math.min(...rows.map((r) => r.raw)) : 0, hi = rows.length ? Math.max(...rows.map((r) => r.raw)) : 0;
     for (const pid of this.conns.keys()) {
       const p = this.players.get(pid); if (!p || p.excluded) continue;
       const i = rows.findIndex((r) => r.pid === pid); let me = null;
-      if (i >= 0) { const mine = rows[i]; const above = rows.filter((r) => r.norm > mine.norm); const ah = above.length ? above[above.length - 1] : null; me = { rank: above.length + 1, n: rows.length, g1: r1(Math.abs(rows[0].raw - mine.raw)), ah: ah ? r1(Math.abs(ah.raw - mine.raw)) : 0, ahn: ah ? ah.p.name : '', ai: ah && isAI(ah.p) ? 1 : 0 }; }
-      this.sendPlayer(pid, { t: 'lb', run: g.runId, tm, top: rows.length > 1 ? top : [], me });
+      if (i >= 0) { const mine = rows[i]; const above = rows.filter((r) => r.norm > mine.norm); const ah = above.length ? above[above.length - 1] : null; me = { i, raw: r1(mine.raw), rank: above.length + 1, n: rows.length, g1: r1(Math.abs(rows[0].raw - mine.raw)), ah: ah ? r1(Math.abs(ah.raw - mine.raw)) : 0, ahn: ah ? ah.p.name : '', ai: ah && isAI(ah.p) ? 1 : 0 }; }
+      // 고스트(내 앞뒤 2명씩): 폰 게임 화면 안에 반투명 캐릭터로 그림 · 이름·팀·점수만 (위치는 점수 차이로 계산)
+      const lo2 = i >= 0 ? Math.max(0, i - 2) : 0; const nb = rows.slice(lo2, lo2 + 5).filter((r) => r.pid !== pid).slice(0, 4).map((r) => [r.p.name, r1(r.raw), r.p.team, isAI(r.p) ? 1 : 0, r.pid.slice(0, 6)]);
+      this.sendPlayer(pid, { t: 'lb', run: g.runId, tm, top: rows.length > 1 ? top : [], me, nb, lo: r1(lo), hi: r1(hi), asc: rows.length > 1 && rows[0].raw < rows[rows.length - 1].raw ? 1 : 0 });
     }
   }
   stopTicker() { if (this.ticker) clearInterval(this.ticker); this.ticker = null; }
@@ -485,6 +551,7 @@ export class Event {
     this.clearTimer(); this.stopTicker();
     const g = this.game; const now = Date.now();
     if (this.state.paused) { this.state.paused = null; }
+    if (g.practice) return this.finishPractice(g, reason); // 연습: 점수·기록 없이 설명 화면으로
     let res;
     try { res = g.finish(now); } catch (e) { console.error('finish', e); res = { players: {} }; }
     const item = this.currentItem() || { weight: 1 };
@@ -600,6 +667,7 @@ export class Event {
   abortGame() {
     // 긴급 정지: 점수 반영 없이 중단
     this.clearTimer(); this.stopTicker();
+    if (this.game?.practice) { this.game = null; this.state.runId = null; this.state.paused = null; this.state.practicing = false; this.bump('intro'); this.state.notice = '연습을 멈췄어요 (기록 안 남음). 본 경기를 시작하거나 다시 연습할 수 있어요'; return this.broadcastState(); } // 연습 중단 → 설명 화면
     if (this.game) { this.db.run("UPDATE runs SET status='aborted', ended_at=? WHERE id=?", Date.now(), this.game.runId); this.audit('abort', { runId: this.game.runId }); }
     this.game = null; this.state.runId = null; this.state.paused = null;
     this.bump('lobby'); this.state.notice = '게임을 중단했어요 (점수 반영 안 됨).'; this.save();
@@ -607,7 +675,7 @@ export class Event {
   }
   replay(keep) {
     // 재경기: keep=true → 방금 판 점수는 그대로 두고 새 판 점수를 추가 / keep=false → 방금 그 판 점수만 지우고 다시
-    if (['playing', 'countdown'].includes(this.state.phase)) { this.abortGame(); return this.toIntro(); }
+    if (['playing', 'countdown'].includes(this.state.phase)) { if (this.game?.practice) throw new Err('연습 중에는 재경기를 할 수 없어요 (연습 그만 → 다시 연습)'); this.abortGame(); return this.toIntro(); }
     if (!['lobby', 'results'].includes(this.state.phase)) throw new Err('지금은 재경기할 수 없어요');
     const last = this.db.get("SELECT id, seq, game, label, status FROM runs WHERE event_id=? ORDER BY id DESC LIMIT 1", this.id);
     if (!last) throw new Err('재경기할 게임이 없어요');
@@ -792,6 +860,8 @@ export function sanitizeSettings(s) {
   if (Number.isInteger(s.topN) && s.topN >= 1 && s.topN <= 50) o.topN = s.topN;
   for (const k of ['auto', 'autoPrep', 'voice', 'sfx']) if (typeof s[k] === 'boolean') o[k] = s[k];
   if (Number.isInteger(s.introSec) && s.introSec >= 3 && s.introSec <= 60) o.introSec = s.introSec;
+  if ([0, 1, 2].includes(s.practice)) o.practice = s.practice;
+  if (Number.isInteger(s.practiceSec) && s.practiceSec >= 10 && s.practiceSec <= 60) o.practiceSec = s.practiceSec;
   if (Number.isInteger(s.resultSec) && s.resultSec >= 3 && s.resultSec <= 60) o.resultSec = s.resultSec;
   if (['choose', 'auto'].includes(s.teamAssign)) o.teamAssign = s.teamAssign;
   // 음악: 곡 id는 내장(g7 등) 또는 이 컴퓨터에 저장한 곡(u-로 시작)

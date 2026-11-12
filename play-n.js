@@ -35,7 +35,9 @@ function joystick(api, onVec) {
   };
   pad.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; pad.setPointerCapture(id); pad.classList.add('on'); upd(e); });
   pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) upd(e); });
-  const end = (e) => { if (e.pointerId !== id) return; id = null; vx = vy = 0; knob.style.transform = ''; pad.classList.remove('on'); onVec(0, 0); flush(true); };
+  // 손 뗌(멈춤)은 꼭 서버에 닿아야 함: 한 번 더(0.25초·0.7초 뒤) 보냄 — 메시지가 몰려 하나가 버려져도 혼자 계속 가지 않게
+  const stopAgain = () => { for (const ms of [250, 700]) setTimeout(() => { if (id == null && !vx && !vy && !keys.size) flush(true); }, ms); };
+  const end = (e) => { if (e.pointerId !== id) return; id = null; vx = vy = 0; knob.style.transform = ''; pad.classList.remove('on'); onVec(0, 0); flush(true); stopAgain(); };
   pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
   pad.addEventListener('lostpointercapture', end); // 손가락을 뗀 신호를 놓쳐도(알림창·화면 전환) 계속 움직이지 않게
   // 컴퓨터 테스트용 방향키
@@ -559,16 +561,20 @@ G.fruit = {
 };
 
 // ================================================================ 골든벨 서바이벌
+// 골든벨 경쟁 상황: 이번 문제를 낸 사람 수 · 살아 있는 사람 수 · 내 연속 정답 (정답·남의 답은 공개 시간 전까지 안 보여 줌)
+const bellRace = (v) => (v.n ? `✋ 제출 ${v.nA ?? 0}/${v.nAl ?? 0}명 · 🛡 생존 ${v.nAl ?? 0}/${v.n}명${v.streak ? ` · 🔥 내 연속 정답 ${v.streak}` : ''}` : '');
 G.bell = {
   mount(root, v, api) { this.api = api; this.root = h('div', { class: 'gwrap bell2' }); root.append(this.root); this.update(v); this.t = setInterval(() => this.tick(), 250); },
   update(v) {
+    const st = this.root.querySelector('.bellrace'); if (st) st.textContent = bellRace(v); // 다른 참가자 상황(수만)은 화면을 다시 만들지 않고 글자만 바꿈 (보기를 누르는 중에 깜빡이지 않게)
     const key = `${v.qi}:${v.ph}:${v.submitted}:${v.my}:${v.alive}`; this.v = v; if (key === this.key) return; this.key = key;
     const R = this.root; R.innerHTML = '';
     const head = h('div', { class: 'bellh' }, h('span', {}, `🔔 ${v.qi + 1} / ${v.N}`), v.revive ? h('span', { class: 'chip hot' }, '🔥 패자부활전') : null, h('span', { class: 'belltime' }));
+    this.raceEl = h('div', { class: 'bellrace' }, bellRace(v));
     const status = v.kid ? null : h('div', { class: `bellst ${v.alive ? 'ok' : 'out'}` }, v.alive ? `✅ 생존 중 · ${v.ok}개 정답` : '😤 탈락 중 · 이번 문제 맞히면 바로 부활!');
     // 답을 내면 보기를 감추고 '제출 완료'만 (옆 사람이 보고 따라 하기 어렵게) · 보기 순서는 사람마다 다름
     if (v.ph === 'q' && (v.submitted || this.sent === v.qi)) {
-      R.append(head, status, h('div', { class: 'bellq' }, v.text), h('div', { class: 'bellsent' }, h('div', { class: 'cic' }, '📨'), h('b', {}, '제출 완료'), h('small', {}, '모두 내거나 시간이 끝나면 정답을 함께 공개해요')));
+      R.append(head, status, this.raceEl, h('div', { class: 'bellq' }, v.text), h('div', { class: 'bellsent' }, h('div', { class: 'cic' }, '📨'), h('b', {}, '제출 완료'), h('small', {}, '모두 내거나 시간이 끝나면 정답을 함께 공개해요')));
       return this.tick();
     }
     const can = v.ph === 'q' && !v.submitted; // 탈락해도 매 문제 누를 수 있음
@@ -578,7 +584,7 @@ G.bell = {
     }));
     let foot = null;
     if (v.ph === 'reveal') foot = h('div', { class: `bellres ${v.my === v.ans ? 'ok' : 'no'}` }, v.my === v.ans ? '🎉 정답!' : v.my == null ? '⏰ 시간 초과' : '❌ 땡!');
-    R.append(head, status, h('div', { class: 'bellq' }, v.text), opts, foot);
+    R.append(head, status, this.raceEl, h('div', { class: 'bellq' }, v.text), opts, foot);
     this.tick();
   },
   tick() { const el = this.root.querySelector('.belltime'); if (el && this.v) el.textContent = this.v.ph === 'q' ? `⏱ ${left(this.api, this.v.until)}초` : ''; },

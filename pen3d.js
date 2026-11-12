@@ -23,17 +23,33 @@ export function createPen3D(canvas, { color = '#ff4d6d', quality = 'high', onSlo
   ln(30, 0.12, 0, 0); ln(16, 0.12, 0, 9); ln(0.12, 9, -8, 4.5); ln(0.12, 9, 8, 4.5); ln(8.5, 0.12, 0, 3.5); ln(0.12, 3.5, -4.25, 1.75); ln(0.12, 3.5, 4.25, 1.75);
   const spot = new THREE.Mesh(new THREE.CircleGeometry(0.12, 12), lineM); spot.rotation.x = -Math.PI / 2; spot.position.set(0, 0.012, 7.5); scene.add(spot);
   // 관중석 + 조명탑 (골대 뒤)
-  const standM = lam({ color: '#262d52' }); const fanCols = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#ffffff', '#ff9f43']; const o3 = new THREE.Object3D(); const col = new THREE.Color();
-  const fans = new THREE.InstancedMesh(new THREE.BoxGeometry(0.45, 0.55, 0.4), lam({ color: '#fff' }), 6 * 50); let fi = 0;
-  for (let r = 0; r < 6; r++) { const st = new THREE.Mesh(new THREE.BoxGeometry(44, 0.9, 1.4), standM); st.position.set(0, 0.45 + r * 0.9, -9 - r * 1.4); scene.add(st); for (let k = 0; k < 50; k++) { o3.position.set(-22 + k * 0.88 + Math.random() * 0.3, 0.9 + r * 0.9 + 0.28, -9 - r * 1.4); o3.updateMatrix(); fans.setMatrixAt(fi, o3.matrix); fans.setColorAt(fi++, col.set(fanCols[(Math.random() * fanCols.length) | 0])); } }
-  scene.add(fans);
+  // 관중: 상자 대신 '사람이 빽빽이 앉은 그림'을 계단식 관중석에 붙임 (멀리서 보면 진짜 관중처럼 · 물체 수도 적어 가벼움)
+  const fanCols = ['#ff4d6d', '#3d8bff', '#ffd43b', '#2fd27a', '#ffffff', '#ff9f43', '#9b5de5'];
+  const crowd = (seed) => tex(512, 96, (c, w, h) => {
+    let r = seed; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+    c.fillStyle = '#1a1f3d'; c.fillRect(0, 0, w, h);
+    for (let row = 0; row < 3; row++) for (let x = 0; x < w; x += 9 + rnd() * 3) {
+      const y = 20 + row * 28 + rnd() * 4; const k = 0.75 + rnd() * 0.25;
+      c.fillStyle = fanCols[(rnd() * fanCols.length) | 0]; c.globalAlpha = k; c.beginPath(); c.ellipse(x, y + 12, 5, 9, 0, 0, 7); c.fill(); // 옷
+      c.fillStyle = ['#f1c8a5', '#d9a77f', '#8a5a3c', '#2b2420'][(rnd() * 4) | 0]; c.beginPath(); c.arc(x, y, 3.6, 0, 7); c.fill(); // 얼굴
+      if (rnd() < 0.18) { c.fillStyle = fanCols[(rnd() * fanCols.length) | 0]; c.fillRect(x - 1, y - 14, 2, 8); c.fillRect(x - 4, y - 18, 8, 5); } // 응원 깃발
+    }
+    c.globalAlpha = 1;
+  }, [4, 1]);
+  const col = new THREE.Color();
+  for (let r = 0; r < 4; r++) {
+    const z = -9 - r * 2.2, y = 0.6 + r * 1.5;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(46, 0.3, 2.2), lam({ color: '#2a3058' })); step.position.set(0, y - 0.15, z); scene.add(step);
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(46, 1.5), lam({ map: crowd(7 + r * 13) })); wall.position.set(0, y + 0.75, z - 0.6); scene.add(wall);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(48, 0.4, 10), lam({ color: '#11152e' })); roof.position.set(0, 7.6, -14); scene.add(roof);
   const adM = lam({ map: tex(256, 32, (c, w, h) => { c.fillStyle = '#0f1a3a'; c.fillRect(0, 0, w, h); c.fillStyle = '#22e1ff'; c.font = '900 18px sans-serif'; for (let i = 0; i < 3; i++) c.fillText('IKIKI FC', 10 + i * 90, 23); }, [5, 1]) }); const ad = new THREE.Mesh(new THREE.BoxGeometry(40, 0.8, 0.1), adM); ad.position.set(0, 0.4, -6.5); scene.add(ad);
   for (const x of [-16, 16]) { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 16, 6), lam({ color: '#3a3f52' })); pole.position.set(x, 8, -14); scene.add(pole); const lamp = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 0.3), new THREE.MeshBasicMaterial({ color: '#fffbe6' })); lamp.position.set(x, 16, -14); scene.add(lamp); }
 
   // 골대 (높이는 화면 비율에 맞춰 다시 만듦) + 그물
   const goal = new THREE.Group(); scene.add(goal); let GH = 2.4, lastAsp = 0; let net = null;
   const postM = lam({ color: '#ffffff' });
-  const netTex = tex(64, 64, (c, w, h) => { c.clearRect(0, 0, w, h); c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 2; for (let i = 0; i <= 4; i++) { c.beginPath(); c.moveTo(i * w / 4, 0); c.lineTo(i * w / 4, h); c.stroke(); c.beginPath(); c.moveTo(0, i * h / 4); c.lineTo(w, i * h / 4); c.stroke(); } });
+  const netTex = tex(64, 64, (c, w, h) => { c.clearRect(0, 0, w, h); c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1.5; for (let i = 0; i <= 4; i++) { c.beginPath(); c.moveTo(i * w / 4, 0); c.lineTo(i * w / 4, h); c.stroke(); c.beginPath(); c.moveTo(0, i * h / 4); c.lineTo(w, i * h / 4); c.stroke(); } });
   function buildGoal(asp) {
     lastAsp = asp; goal.clear(); GH = GW * 0.42 * asp / 0.8; // 터치 칸 비율에 맞춘 골대 높이
     const p = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), postM); m.position.set(x, y, z); m.castShadow = hi; goal.add(m); };

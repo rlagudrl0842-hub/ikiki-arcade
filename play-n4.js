@@ -3,6 +3,7 @@
 import { h, sfx, vibrate } from './client.js';
 import { G } from './play-games.js';
 import { bowlRoll, PINS, BALL_R, PIN_R } from './bowl.js';
+import { ghostList, drawFeed } from './ghost.js'; // 다른 참가자 기록·소식
 
 const press = (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; };
 const loop = (self, fn) => { const f = () => { if (self.dead) return; try { fn(); } catch (e) { console.error(e); } self.raf = requestAnimationFrame(f); }; self.raf = requestAnimationFrame(f); };
@@ -104,6 +105,8 @@ G.ljump = {
     for (let m = 1; m <= 9; m++) { const x = pitX + (W - pitX) * (m / 9.5); c.fillStyle = '#00000044'; c.fillRect(x, gy, 2, 10); if (m % 2) continue; c.fillStyle = '#00000099'; c.font = `800 ${Math.round(Math.min(H * 0.04, W * 0.035))}px sans-serif`; c.textAlign = 'center'; c.fillText(`${m}m`, x, gy + H * 0.08); }
     const mX = (d) => pitX + (W - pitX) * (d / 9.5);
     for (const d of this.v.tries) if (d) { c.fillStyle = '#ffffffaa'; c.beginPath(); c.arc(mX(d), gy + 6, 5, 0, 7); c.fill(); }
+    // 👻 다른 참가자의 최고 기록: 모래판 위 팀 색 깃발 + 이름 (내 앞뒤 기록 몇 명)
+    for (const [i, g] of ghostList(this.api).entries()) { if (!(g.raw > 0)) continue; const x = mX(Math.min(9.4, g.raw)); c.globalAlpha = 0.75; c.strokeStyle = g.col; c.lineWidth = 2; c.beginPath(); c.moveTo(x, gy + 4); c.lineTo(x, gy - 26 - (i % 4) * H * 0.05); c.stroke(); c.fillStyle = g.col; c.beginPath(); c.moveTo(x, gy - 26 - (i % 4) * H * 0.05); c.lineTo(x + 12, gy - 21 - (i % 4) * H * 0.05); c.lineTo(x, gy - 16 - (i % 4) * H * 0.05); c.fill(); c.globalAlpha = 1; c.fillStyle = '#fff'; c.font = `800 ${Math.round(H * 0.028)}px sans-serif`; c.textAlign = 'center'; c.fillText(`${g.name} ${g.raw.toFixed(1)}m`, x, gy - 32 - (i % 4) * H * 0.05); }
     // 사람 위치
     let px = W * 0.08, py = gy, fs = H * 0.14;
     if (this.st === 'run') px = W * 0.08 + ((now - this.t0) / 2500) * W * 0.14 * (0.3 + this.spd());
@@ -169,6 +172,7 @@ G.bowl = {
     if (this.drag?.cur) { const a = this.drag.s, p = this.drag.cur; c.strokeStyle = '#ffd43b'; c.setLineDash([8, 8]); c.lineWidth = 3; c.beginPath(); c.moveTo(a[0] * W, a[1] * H); c.lineTo(p[0] * W, p[1] * H); c.stroke(); c.setLineDash([]); }
     if (!roll && !this.drag) { c.fillStyle = '#ffffffcc'; c.font = `800 ${Math.round(H * 0.035)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('⬆ 공 근처에서 위로 쓱 (빠를수록 세게)', W / 2, H * 0.62 + Math.sin(now / 300) * 4); }
     // 결과 글자
+    drawFeed(c, this.api, { W, H, d: W / 400, icon: '🎳', unit: '점', top: 0.08 }); // 다른 참가자 소식
     if (roll?.srv && k >= 1) { const r = roll.srv; const txt = r.mark === 'X' ? 'STRIKE!' : r.mark === '/' ? 'SPARE!' : r.n ? `${r.n}개` : roll.res.gutter ? '도랑…' : '0개'; c.fillStyle = '#000000aa'; rr(c, W * 0.18, H * 0.38, W * 0.64, H * 0.13, 14); c.fill(); c.fillStyle = r.mark ? '#ffd43b' : '#fff'; c.font = `900 ${Math.round(H * 0.08)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, W / 2, H * 0.445); }
   },
   unmount() { this.dead = true; cancelAnimationFrame(this.raf); },

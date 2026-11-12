@@ -307,7 +307,7 @@ function draw() {
   if (!$('.con')) {
     app.innerHTML = '';
     const moreRow = h('div', { class: 'morerow' }, ...MORE.map(([k, l]) => h('button', { 'data-t': k, onclick: () => goTab(k) }, l)));
-    app.append(h('header', { class: 'ah' }, h('a', { class: 'btn small ghost', href: '#' }, '← 목록'), h('div', { class: 'evname' }), h('span', { class: 'phase' })),
+    app.append(h('header', { class: 'ah' }, h('a', { class: 'btn small ghost', href: '#' }, '← 목록'), h('div', { class: 'evname' }), h('button', { class: 'btn small rmbtn', onclick: () => setRemote(!document.body.classList.contains('remote')) }), h('span', { class: 'phase' })),
       h('div', { class: 'con' }, h('nav', { class: 'tabs steps' },
         h('div', { class: 'steprow' }, ...STEPS.map(([k, l]) => h('button', { 'data-t': k, class: 'step', onclick: () => goTab(k) }, l)),
           h('button', { class: 'morebtn', onclick: () => moreRow.classList.toggle('open') }, '더보기 ▾')), moreRow),
@@ -326,6 +326,7 @@ function draw() {
   // 참가자가 들어오고 나갈 때마다 오는 상태 메시지로 버튼을 다시 만들면 누르던 버튼이 사라져 클릭이 씹힘
   // → 진행에 영향 있는 값이 바뀔 때만 다시 그리고, 인원수는 글자만 바꿈
   const ck = ctrlKey();
+  paintRmBtn();
   if (ck !== draw.ck || !$('.ctrl .bigbtns')) { draw.ck = ck; drawCtrl(); } else updateCounts();
   paintBoard(); drawQuick(); paintTime(); timeModal.paint?.();
   if (tab === 'run') { const rk = runKey(); if (rk !== draw.rk || !$('.tabbody .plist')) { draw.rk = rk; drawTab(); } }
@@ -345,7 +346,7 @@ function paintBoard() {
   if (!P.runs) { pb.append(h('span', { class: 'muted small' }, '🙋 개인 순위: 개인 점수가 집계되는 게임을 하면 표시돼요 (체육·진행자 판정 게임은 팀 점수만)')); return; }
   pb.append(h('b', { class: 'small' }, `🙋 개인 TOP 5 · 게임 평균 (${P.n}명${P.need > 1 ? ` · ${P.need}판 이상` : ''})`), ...(P.list || []).map((x) => { const t = S.teams.find((y) => y.id === x.team); return h('span', { class: 'pitem', style: { '--tc': t?.color || '#888' } }, `${x.tie ? '공동 ' : ''}${x.rank}위 ${t?.icon || ''}${x.name} 평균 ${x.total}점 · ${x.games}판`); }));
 }
-const ctrlKey = () => JSON.stringify([S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
+const ctrlKey = () => JSON.stringify([S.practice, S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
 const runKey = () => JSON.stringify([S.phase, S.idx, S.playlist, S.standings.rows, S.replayLog, S.teams.map((t) => [t.id, t.name, t.icon, t.color])]);
 // ---------------- ⚡ 퀵 점수판 (응원·수동 점수) ----------------
 // 팀별 +단위/−단위 버튼, 단위(1·2·3·5·10) 고르기, 직접 입력, 마지막 되돌리기, 최근 기록. 큰 점수(10점 이상)·기록 삭제는 확인
@@ -472,6 +473,18 @@ function timeModal() {
   };
   timeModal.paint = paint; paint();
 }
+// 📱 리모컨 모드: TV·컴퓨터 없이 이 폰 하나로 진행 (큰 진행 버튼만 보이게) · 다시 누르면 전체 관리 화면
+function setRemote(on) {
+  try { sessionStorage.setItem('ikiki:remote', on ? '1' : '0'); } catch { /* */ }
+  document.body.classList.toggle('remote', on); paintRmBtn(); if (on) goTab('run'); else drawTab();
+  toast(on ? '🎮 리모컨 모드 · 큰 버튼으로 진행해요' : '전체 관리 화면으로 돌아왔어요');
+}
+function paintRmBtn() { const b = $('.rmbtn'); if (b) b.textContent = document.body.classList.contains('remote') ? '⚙ 전체 화면' : '🎮 리모컨'; }
+// 🙋 진행자도 참가: QR 없이 이 폰에서 바로 참가 화면을 엶 (참가 화면 오른쪽 위 🎮 버튼으로 진행도 할 수 있음)
+function joinSelf() {
+  const u = `/play.html?e=${encodeURIComponent(S.event.code)}&host=1`;
+  const w = window.open(u, 'ikiki-play'); if (!w) location.href = u;
+}
 function drawCtrl() {
   const c = $('.ctrl'); c.innerHTML = '';
   const ph = S.phase; const it = S.item;
@@ -491,7 +504,9 @@ function drawCtrl() {
     if (it) more.append(B('⏭ 이 게임 건너뛰기', 'skip', 'ghost', null, `${it.name} 게임을 건너뛸까요?`));
     if (S.standings.played) more.append(h('button', { class: 'btn ghost', onclick: () => replayModal() }, '🔁 방금 게임 재경기'));
   }
-  if (ph === 'intro') { main.append(B(S.settings.preview !== false ? '🚀 게임 시작! (미리보기 생략)' : '🚀 게임 시작!', 'start', 'green big')); more.append(B('⏭ 이 게임 건너뛰기', 'skip', 'ghost', null, `${it?.name || '이'} 게임을 건너뛸까요?`)); }
+  if (ph === 'intro' && S.practice?.max && (S.practice.done || 0) < S.practice.max) main.append(B(`🧪 연습 시작 (${(S.practice.done || 0) + 1}/${S.practice.max}) · 점수 없음`, 'practice', 'blue big'));
+  if (ph === 'intro' && S.practice?.max) main.append(h('div', { class: 'pracnote' }, S.practice.done ? `🧪 연습 ${S.practice.done}/${S.practice.max}회 했어요${S.practice.last?.top?.length ? ` · 연습 1등 ${S.practice.last.top[0].name || ''} (${S.practice.last.top[0].show || ''})` : ''}` : `🧪 본 경기 전에 연습 ${S.practice.max}회까지 할 수 있어요 (건너뛰어도 돼요)`));
+  if (ph === 'intro') { main.append(B(S.practice?.max ? '🚀 본 경기 시작!' : S.settings.preview !== false ? '🚀 게임 시작! (미리보기 생략)' : '🚀 게임 시작!', 'start', 'green big')); more.append(B('⏭ 이 게임 건너뛰기', 'skip', 'ghost', null, `${it?.name || '이'} 게임을 건너뛸까요?`)); }
   if (ph === 'intro' && !S.settings.auto) main.append(h('div', { class: 'muted small prepnote' }, '✅ 다음 게임이 준비됐어요. [게임 시작]을 눌러야 시작해요'));
   if (ph === 'intro' && S.qinfo) {
     // 문제 세트 미리보기(사회자만) + 시작 전에 새 세트로 바꾸기
@@ -499,7 +514,11 @@ function drawCtrl() {
     main.append(qb);
     A(`/api/events/${eid}`).then((r) => { const ol = qb.querySelector('.qprev'); if (ol && r.qinfo?.preview) for (const t of r.qinfo.preview) ol.append(h('li', {}, t)); }).catch(() => {});
   }
-  if (ph === 'countdown' || ph === 'playing') {
+  if ((ph === 'countdown' || ph === 'playing') && S.practice?.on) {
+    // 🧪 연습 중: 점수·기록 없음 · 끝내면 설명 화면으로 (본 경기 시작은 그다음)
+    main.append(h('div', { class: 'pracnote' }, `🧪 연습 ${(S.practice.done || 0) + 1}/${S.practice.max} 진행 중 · 점수·순위·기록에 안 들어가요`), B('🏁 연습 끝내기', 'endNow', 'big'));
+    more.append(B('🛑 연습 그만 (설명 화면으로)', 'abort', 'ghost'));
+  } else if (ph === 'countdown' || ph === 'playing') {
     main.append(B('🏁 지금 종료 (점수 반영)', 'endNow', 'big', null, '지금 게임을 끝내고 점수를 반영할까요?'));
     more.append(B('🛑 게임 중단 (이번 점수 취소)', 'abort', 'red', null, '게임을 중단하고 이번 게임 점수를 반영하지 않을까요?'), B('🔁 다시 시작 (처음부터)', 'replay', 'ghost', null, '이번 게임을 처음부터 다시 할까요?'));
   }
@@ -519,7 +538,8 @@ function drawCtrl() {
   if (!['ended'].includes(ph)) more.append(B('⏹ 행사 종료', 'end', 'ghost danger', null, '행사를 종료할까요? (다시 열 수 있어요)'));
   const tools = h('div', { class: 'tools' },
     h('button', { class: 'btn blue', onclick: () => window.open(`/screen.html?e=${S.event.code}`, 'ikiki-screen', 'width=1280,height=720') }, '🖥 대형 화면(빔) 열기'),
-    h('button', { class: 'btn ghost', onclick: () => qrModal() }, '📱 참가 QR'));
+    h('button', { class: 'btn ghost', onclick: () => qrModal() }, '📱 참가 QR'),
+    h('button', { class: 'btn ghost', onclick: () => joinSelf() }, '🙋 나도 참가 (QR 없이)'));
   more.append(
     document.body.classList.contains('remote') ? null : h('button', { class: 'btn ghost', onclick: () => remoteModal() }, '🎮 폰 리모컨'),
     h('button', { class: `btn ${S.settings.duck ? 'yellow' : 'ghost'}`, onclick: () => save({ settings: { duck: !S.settings.duck } }) }, S.settings.duck ? '🎤 말씀 끝 · 음악 다시 크게' : '🎤 말할 때 음악 줄이기'),
@@ -686,6 +706,7 @@ function tabPrep(body) {
   const mode = select({ baby: '영아 (보호자와 함께)', kid: '유아 (만 3~7세)', elem: '초등', mid: '중등', high: '고등', adult: '성인', mixed: '전 연령 혼합' }, S.settings.mode);
   mode.onchange = () => save({ settings: { mode: mode.value } }).then(() => toast('연령 모드를 바꿨어요'));
   const spaceSel = select({ gym: '🏟️ 체육관 (넓은 공간)', class: '🏫 교실 (제자리 동작)' }, S.settings.space || 'gym'); spaceSel.onchange = () => save({ settings: { space: spaceSel.value } }).then(() => toast(spaceSel.value === 'class' ? '교실 모드: 뛰기·점프 동작을 제자리 동작으로 바꿔요' : '체육관 모드'));
+  const pracSel = select({ 0: '연습 없음', 1: '게임마다 1회', 2: '게임마다 2회' }, S.settings.practice || 0); pracSel.onchange = () => save({ settings: { practice: +pracSel.value } }).then(() => toast(+pracSel.value ? `게임마다 연습 ${pracSel.value}회 (점수 없음)` : '연습 없이 바로 본 경기'));
   const elemSel = select({ low: '저학년 (1~3학년)', high: '고학년 (4~6학년)' }, S.settings.elemLevel || 'low'); elemSel.onchange = () => save({ settings: { elemLevel: elemSel.value } });
   const presets = h('div', { class: 'row wrap' }, ...[...PRESETS, ['전체 게임', games.map((g) => g.id)]].map(([n, ids]) => h('button', { class: 'btn small ghost', disabled: locked, onclick: () => {
     const ok = ids.filter((id) => games.some((g) => g.id === id)); if (!ok.length) return toast('이 구성은 아직 없어요');
@@ -697,59 +718,27 @@ function tabPrep(body) {
   teamCount.onchange = () => save({ settings: { teamCount: +teamCount.value } }).then(() => toast(`${teamCount.value}팀으로 바꿨어요`));
   const assign = select({ choose: '참가자가 팀 고르기', auto: '자동 배정 (인원 균등)' }, S.settings.teamAssign); assign.onchange = () => save({ settings: { teamAssign: assign.value } });
   const teamChips = h('div', { class: 'row wrap' }, ...S.teams.map((t) => h('span', { class: 'chip', style: { borderColor: t.color, color: t.color } }, `${t.icon} ${t.name}`)), h('button', { class: 'btn small ghost', onclick: () => goTab('people') }, '팀 이름·참가자 관리 →'));
-  // 3) 게임 선택: 카드 + 필터(연령·장소·유형·시간·검색·즐겨찾기) · 누르면 넣고 빼기(자동 저장)
-  const inPl = new Set(pl.map((p) => p.game));
-  const F = pickF; const lvNow = LVMAP[S.settings.mode] ?? 2;
-  const fAge = select({ all: '모든 연령', now: `지금 연령(${PE_AGE[lvNow]})에 맞는 것`, 0: '영아', 1: '유아', 2: '초등', 3: '중등', 4: '고등', 5: '성인' }, F.age);
-  const fSpace = select({ all: '교실·체육관', class: '🏫 교실 가능', gym: '🏟️ 체육관' }, F.space);
-  const fType = select({ all: '모든 게임', phone: '📱 휴대폰 게임', pe: '🙌 폰 없는 체육 전체', ...Object.fromEntries(Object.entries(PE_TYPE).map(([k, v]) => [k, `🙌 ${v}`])) }, F.type);
-  const fTime = select({ all: '모든 시간', s: '2분 이하', m: '2~3분', l: '3분 넘게' }, F.time);
-  const fQ = h('input', { class: 'inp sm gsearch', placeholder: '🔍 게임 검색', value: F.q });
-  const fFav = h('button', { class: `btn small ${F.fav ? 'yellow' : 'ghost'}`, onclick: () => { F.fav = !F.fav; formDirty = false; drawTab(); } }, F.fav ? '★ 즐겨찾기만' : '☆ 즐겨찾기');
-  const favs = new Set(S.settings.favs || []);
-  const grid = h('div', { class: 'ggrid cards' });
-  const paintGrid = () => {
-    grid.innerHTML = ''; const q = F.q.trim().toLowerCase(); let n = 0;
-    for (const g of games) {
-      const m = g.pe2; const secs = g.dur[ageOf()] ?? g.dur.elem ?? 60;
-      if (F.age !== 'all') { const lv = F.age === 'now' ? lvNow : +F.age; if (m && (lv < m.ages[0] || lv > m.ages[1])) continue; }
-      if (F.space === 'class' && m && m.space === 'gym') continue; if (F.space === 'gym' && m && m.space === 'class') continue;
-      if (F.type === 'phone' && g.dev === 'none') continue; if (F.type === 'pe' && !m) continue; if (PE_TYPE[F.type] && m?.mech !== F.type) continue;
-      if (F.time === 's' && secs > 120) continue; if (F.time === 'm' && (secs <= 120 || secs > 180)) continue; if (F.time === 'l' && secs <= 180) continue;
-      if (q && !(`${g.name} ${m?.type || ''} ${m?.act || ''}`.toLowerCase().includes(q))) continue;
-      if (F.fav && !favs.has(g.id)) continue;
-      n++;
-      const fav = h('span', { class: `gfav ${favs.has(g.id) ? 'on' : ''}`, title: '즐겨찾기', onclick: (e) => { e.stopPropagation(); const f = new Set(S.settings.favs || []); f.has(g.id) ? f.delete(g.id) : f.add(g.id); S.settings.favs = [...f]; save({ settings: { favs: [...f] } }); paintGrid(); } }, favs.has(g.id) ? '★' : '☆');
-      grid.append(h('div', { 'data-g': g.id, class: `gpick ${inPl.has(g.id) ? 'on' : ''} ${devOk(g) ? '' : 'nodev'}`, title: m ? `${m.act}\n${g.rule}` : g.rule, onclick: () => {
-        if (locked) return; const i = pl.findIndex((p) => p.game === g.id);
-        if (i >= 0) { if (i < S.idx) return toast('이미 한 게임은 ② 게임 순서에서 빼 주세요'); pl.splice(i, 1); } else pl.push(defItem(g.id));
-        savePlaylist(pl); formDirty = false; drawTab();
-      } }, h('span', { class: 'ge' }, g.emoji), h('span', { class: 'gnm' }, g.name),
-        h('small', {}, m ? `${m.type} · ${PE_AGE[m.ages[0]]}~${PE_AGE[m.ages[1]]} · ${m.space === 'class' ? '🏫' : m.space === 'gym' ? '🏟️' : '🏫🏟️'} · ${Math.round(secs / 60 * 10) / 10}분` : `${DEV[g.dev]?.split(' ')[0] || ''} · ${Math.round(secs / 60 * 10) / 10}분`),
-        fav, h('span', { class: 'gpv', title: '미리보기', onclick: (e) => { e.stopPropagation(); previewModal(g.id); } }, '▶')));
-    }
-    if (!n) grid.append(h('p', { class: 'muted' }, '조건에 맞는 게임이 없어요'));
-    cnt.textContent = `${n}개`;
-    // 게임 카드 배경: 그 게임의 3D 장면 작은 그림 (한 번에 다 그리지 않고 조금씩 → 화면이 멈추지 않게)
-    const cards = [...grid.querySelectorAll('.gpick[data-g]')]; const step = () => { for (const el of cards.splice(0, 6)) { const id = el.dataset.g; try { el.style.setProperty('--thumb', `url(${S3.thumb(id, games.find((x) => x.id === id)?.pe2)})`); el.classList.add('th'); } catch { /* */ } } if (cards.length) requestAnimationFrame(step); }; requestAnimationFrame(step);
-  };
-  const cnt = h('span', { class: 'muted small' });
-  for (const [el, k] of [[fAge, 'age'], [fSpace, 'space'], [fType, 'type'], [fTime, 'time']]) el.onchange = () => { F[k] = el.value; paintGrid(); };
-  fQ.oninput = () => { F.q = fQ.value; paintGrid(); };
-  const moreBtn = h('button', { class: 'btn small ghost', onclick: () => { F.more = !F.more; if (!F.more) { F.age = 'now'; F.space = 'all'; F.time = 'all'; } formDirty = false; drawTab(); } }, F.more ? '필터 접기' : '필터 더보기');
-  const filters = h('div', { class: 'row wrap gfilt' }, fType, fQ, fFav, ...(F.more ? [fAge, fSpace, fTime] : []), moreBtn, cnt, h('button', { class: 'btn small blue', onclick: () => recommendModal() }, '🪄 추천 구성'));
-  paintGrid();
+  // 3) 게임 선택: 위 = 넣은 순서(▲▼✕▶) · 아래 = 고르기(검색·종류 칩·즐겨찾기) — 한 화면에서 고르고 순서 정하기 (바꾸면 자동 저장)
+  // 바꾸면 이 자리에서 바로 다시 그림 (검색창에 글자를 넣는 중에도 목록이 옛날 것으로 남지 않게)
+  const strip = h('div', {}); const sumN = h('b', {}); const sumT = h('span', { class: 'muted small' }); const h3n = h('span', {});
+  const redraw = () => { strip.replaceChildren(orderStrip(pl, locked, commit)); sumN.textContent = `넣은 순서 ${pl.length}개`; sumT.textContent = pl.length ? ` · ${fmtMin(estSec(pl))} (인사·설명·시상 포함)` : ''; h3n.textContent = `(${pl.length}개)`; picker?.refresh(); const eb = document.querySelector('.prepfoot .est b'); if (eb) eb.textContent = pl.length ? fmtMin(estSec(pl)) : '-'; };
+  const commit = (msg) => { savePlaylist(pl, msg); formDirty = false; redraw(); };
+  let picker = null;
+  picker = gamePicker(pl, locked, (gid) => { const k = pl.findIndex((p) => p.game === gid); if (k >= 0) { if (k < S.idx) return toast('이미 한 게임은 위 순서 목록의 ✕로 빼 주세요'); pl.splice(k, 1); } else pl.push(defItem(gid)); commit(); });
+  redraw();
   // 4) 예상 시간
   const est = estSec(pl);
   // 5) 혼자 테스트하기
   const lv = lvSelect();
   const soloBtn = h('button', { class: 'btn blue', disabled: !pl.length, onclick: () => soloStart(pl.map((p) => p.game), 'vs', lv.value) }, '🎮 혼자 테스트하기');
   body.append(h('div', { class: 'prep' },
-    h('div', { class: 'card stack' }, h('h3', {}, '1. 행사 종류'), h('div', { class: 'grid2' }, field('연령 모드', mode), hasPE ? field('장소 (폰 없는 체육 게임만 해당)', spaceSel, '교실은 뛰기·점프를 제자리 동작으로 바꿔요') : null), S.settings.mode === 'elem' ? field('초등 난이도', elemSel) : null, h('div', { class: 'muted small' }, '빠른 구성 (누르면 게임 순서가 바뀌어요)'), presets),
+    h('div', { class: 'card stack' }, h('h3', {}, '1. 행사 종류'), h('div', { class: 'grid2' }, field('연령 모드', mode), field('🧪 본 경기 전 연습', pracSel, '연습은 점수·순위·기록에 안 들어가요 · 참가자는 건너뛸 수 있어요'), hasPE ? field('장소 (폰 없는 체육 게임만 해당)', spaceSel, '교실은 뛰기·점프를 제자리 동작으로 바꿔요') : null), S.settings.mode === 'elem' ? field('초등 난이도', elemSel) : null, h('div', { class: 'muted small' }, '빠른 구성 (누르면 게임 순서가 바뀌어요)'), presets),
     h('div', { class: 'card stack' }, h('h3', {}, '2. 팀 설정'), h('div', { class: 'grid2' }, field('팀 수', teamCount, played ? '점수가 생긴 뒤에는 바꿀 수 없어요' : null), field('팀 정하기', assign)), teamChips),
-    h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('h3', {}, `3. 게임 선택 (${pl.length}개)`), h('span', { class: 'saveind muted small' }), h('button', { class: 'btn small ghost', onclick: () => goTab('playlist') }, '순서·시간·배점 → ② 게임 순서')),
+    h('div', { class: 'card stack' }, h('div', { class: 'row' }, h('h3', {}, '3. 게임 고르기 · 순서 ', h3n), h('span', { class: 'saveind muted small' }), h('button', { class: 'btn small ghost', onclick: () => goTab('playlist') }, '시간·배점·음악 → ② 게임 순서')),
       locked ? h('p', { class: 'err' }, '게임 중에는 바꿀 수 없어요') : null,
-      S.settings.device === 'nophone' ? h('p', { class: 'notice' }, '📋 휴대폰 없이 진행 모드: 📱 게임은 흐리게 보이고 진행할 때 건너뛰어요') : null, filters, grid),
+      S.settings.device === 'nophone' ? h('p', { class: 'notice' }, '📋 휴대폰 없이 진행 모드: 📱 게임은 흐리게 보이고 진행할 때 건너뛰어요') : null,
+      h('div', { class: 'osum' }, sumN, sumT, h('button', { class: 'btn small blue', onclick: () => recommendModal() }, '🪄 추천 구성')), strip,
+      h('div', { class: 'osum' }, h('b', {}, '게임 고르기')), picker),
     h('div', { class: 'card prepfoot' },
       h('div', { class: 'est' }, h('span', { class: 'muted' }, '전체 행사 예상 시간'), h('b', {}, pl.length ? fmtMin(est) : '-'), h('small', { class: 'muted' }, pl.length ? `이 게임 ${pl.length}개를 전부 진행하면 ${fmtMin(est)} 걸려요 (인사·설명·준비·발표·시상 포함)` : '게임을 고르면 바로 계산돼요'), h('button', { class: 'btn small ghost', onclick: () => timeModal() }, '⏱ 시간 상세보기')),
       h('div', { class: 'row wrap' }, h('label', { class: 'lvl' }, '🤖 컴퓨터 난이도 ', lv), soloBtn, h('small', { class: 'muted' }, '나(홍팀) vs 컴퓨터(청팀) · 실제 행사 점수와 따로 · 새 창')),
@@ -768,7 +757,10 @@ function previewModal(gid) {
       h('button', { class: 'btn big blue', onclick: () => { m.remove(); soloStart([gid], 'watch', lv.value); } }, '👀 화면 미리보기', h('small', {}, '컴퓨터끼리 실제 규칙으로 대결하는 걸 봐요')),
       h('button', { class: 'btn big green', onclick: () => { m.remove(); soloStart([gid], 'vs', lv.value); } }, '🎮 AI와 대결', h('small', {}, '내가 홍팀, 컴퓨터가 청팀'))),
     h('label', { class: 'lvl' }, '🤖 컴퓨터 난이도 ', lv), h('p', { class: 'muted small' }, '새 창(탭)에서 실제 게임 화면으로 열려요. 결과는 실제 행사 점수에 남지 않아요. 창을 닫으면 이 화면으로 돌아와요.')));
-  import('./preview.js').then((P) => { if (demo.isConnected && P.mountDemo) P.mountDemo(demo, gid, { mode: S.settings.mode, h, space: S.settings.space || 'gym' }); }).catch(() => {});
+  import('./preview.js').then((P) => {
+    if (demo.isConnected && P.mountDemo) P.mountDemo(demo, gid, { mode: S.settings.mode, h, space: S.settings.space || 'gym' });
+    if (demo.isConnected && P.howTo) { const k = P.howTo(gid, { team: g.team, scoring: S.settings.scoring }); demo.after(h('div', { class: 'howbox' }, ...[k.hold, `⚠️ ${k.miss}`, k.team, k.watch].map((t) => h('div', {}, t)))); } // 참가자 설명 화면에 나오는 방법 상자와 같은 내용
+  }).catch(() => {});
 }
 // 🪄 조건에 맞는 게임 추천 + 행사 시간 맞춤 (확인해야 적용)
 const recF = { lv: null, ppl: 30, space: null, min: 60, inten: 'mid', props: 'none', phones: 'no', seed: 1 };
@@ -826,11 +818,74 @@ function recommendModal() {
   };
   paint();
 }
+// ---------------- 게임 고르기 (검색·종류별) ----------------
+// 휴대폰 게임은 조작 방식으로, 폰 없는 체육 게임은 원래 분류(A~E)로 묶음. 게임 목록·설정·음악·점수는 건드리지 않고 '찾기'만 쉽게
+// 카드를 누르면 넣기/빼기(자동 저장) · 넣은 게임엔 순서 번호 · 목록은 상자 안에서만 스크롤 (휴대폰에서 화면이 끝없이 길어지지 않게)
+const KIND = {
+  move: ['🏃 달리기·움직이기', 'dodge zombie paint gems crown mugung runner flappy stairs bridge relay'],
+  sport: ['🎯 던지기·스포츠', 'tuho penalty basket curling fishing bowl ljump fire'],
+  quick: ['👆 순발력·연타', 'rope dalgona fruit eggs burger rhythm shout hold sync balloon bombpass boss towerup tug'],
+  brain: ['🧠 퀴즈·두뇌', 'bell tele mino draw spot hilo'],
+};
+const kindOf = (g) => { for (const [k, [, ids]] of Object.entries(KIND)) if (ids.split(' ').includes(g.id)) return k; return g.pe2 || g.dev === 'none' ? 'pe' : 'quick'; };
+const PK = { q: '', k: 'all', pe: 'all', ageFit: true };
+function gamePicker(pl, locked, onToggle) {
+  const PE_CATS = { A: '영아·유아', B: '초등 순발력', C: '팀 대항전', D: '전략·심리전', E: '운동회·레크' };
+  const chips = h('div', { class: 'gpchips' }); const sub = h('div', { class: 'gpchips sub' }); const grid = h('div', { class: 'gpgrid' }); const cnt = h('span', { class: 'muted small' });
+  const q = h('input', { class: 'inp gpq', type: 'search', placeholder: '🔍 이름·설명으로 찾기 (예: 줄, 퀴즈, 공)', value: PK.q });
+  q.oninput = () => { PK.q = q.value.trim(); draw(); };
+  const favs = () => new Set(S.settings.favs || []);
+  const tabs = { all: '전체', ...Object.fromEntries(Object.entries(KIND).map(([k, [l]]) => [k, l])), team: '🤝 팀 협동', pe: '🙌 폰 없이 체육', fav: '⭐ 즐겨찾기', mine: '✓ 넣은 게임' };
+  const lvNow = LVMAP[S.settings.mode] ?? 2;
+  const inKind = (g, k) => (k === 'all' ? true : k === 'team' ? g.team : k === 'fav' ? favs().has(g.id) : k === 'mine' ? pl.some((p) => p.game === g.id) : kindOf(g) === k);
+  const ok = (g) => {
+    if (!inKind(g, PK.k)) return false;
+    if (PK.k === 'pe' && PK.pe !== 'all' && g.pe2?.cat !== PK.pe) return false;
+    if (PK.ageFit && g.pe2 && (lvNow < g.pe2.ages[0] || lvNow > g.pe2.ages[1])) return false;
+    if (!PK.q) return true; const t = `${g.name} ${g.emoji} ${g.rule || ''} ${g.pe2?.type || ''} ${g.pe2?.act || ''}`.toLowerCase(); return PK.q.toLowerCase().split(/\s+/).every((w) => t.includes(w));
+  };
+  const age = h('label', { class: 'gpage muted small' }, h('input', { type: 'checkbox', checked: PK.ageFit, onchange: (e) => { PK.ageFit = e.target.checked; draw(); } }), ` 지금 연령(${PE_AGE[lvNow]})에 맞는 체육 게임만`);
+  const draw = () => {
+    chips.innerHTML = ''; for (const [k, l] of Object.entries(tabs)) { const n = games.filter((g) => inKind(g, k)).length; if ((k === 'fav' || k === 'mine') && !n) continue; chips.append(h('button', { class: `gpchip ${PK.k === k ? 'on' : ''}`, onclick: () => { PK.k = k; PK.pe = 'all'; draw(); } }, l, h('small', {}, ` ${n}`))); }
+    sub.innerHTML = ''; sub.hidden = PK.k !== 'pe'; if (PK.k === 'pe') for (const [k, l] of Object.entries({ all: '전체', ...PE_CATS })) sub.append(h('button', { class: `gpchip ${PK.pe === k ? 'on' : ''}`, onclick: () => { PK.pe = k; draw(); } }, l));
+    const nm = (g) => (PK.q && g.name.toLowerCase().includes(PK.q.toLowerCase()) ? 1 : 0); // 이름에 검색어가 있는 게임을 먼저
+    const list = games.filter(ok).sort((a, b) => nm(b) - nm(a)); grid.innerHTML = ''; cnt.textContent = `${list.length}개`;
+    const fv = favs();
+    for (const g of list) {
+      const at = pl.findIndex((p) => p.game === g.id) + 1; const secs = g.dur[ageOf()] ?? g.dur.elem ?? 60;
+      const tag = `${g.dev === 'none' ? '🙌 폰 없이' : g.dev === 'both' ? '🔁 폰·폰 없이' : '📱 폰'}${g.team ? ' · 🤝 팀' : ''} · ${g.untimed ? '라운드제' : `${Math.round((secs / 60) * 10) / 10}분`}`;
+      grid.append(h('div', { class: `gpcard ${at ? 'in' : ''} ${devOk(g) ? '' : 'nodev'}`, 'data-g': g.id },
+        h('button', { class: 'gpadd', disabled: locked, title: g.pe2 ? `${g.pe2.act || ''}\n${g.rule}` : g.rule, onclick: () => onToggle(g.id) },
+          h('span', { class: 'gpem' }, g.emoji), h('b', {}, g.name), h('small', {}, tag), at ? h('i', { class: 'gpin' }, `✓ ${at}번째`) : h('i', { class: 'gpplus' }, '＋')),
+        h('button', { class: `gpfav ${fv.has(g.id) ? 'on' : ''}`, title: '즐겨찾기', onclick: () => { const f = favs(); f.has(g.id) ? f.delete(g.id) : f.add(g.id); S.settings.favs = [...f]; save({ settings: { favs: [...f] } }); draw(); } }, fv.has(g.id) ? '★' : '☆'),
+        h('button', { class: 'gppv', title: '미리보기', onclick: () => previewModal(g.id) }, '▶')));
+    }
+    if (!list.length) grid.append(h('p', { class: 'muted' }, '찾는 게임이 없어요. 검색어를 지우거나 \'전체\'를 눌러 보세요'));
+  };
+  const box = h('div', { class: 'gpick2' }, q, chips, sub, age, h('div', { class: 'gpinfo muted small' }, cnt, ' · 카드를 누르면 넣고, 다시 누르면 빼요 · ▶ 미리보기 · ☆ 즐겨찾기'), grid);
+  box.refresh = draw; draw(); return box;
+}
+// 넣은 게임 순서 (짧은 줄 · ▲▼ 순서 · ✕ 빼기 · ▶ 미리보기) — 게임 고르기와 같은 화면에서 바로 확인
+function orderStrip(pl, locked, commit) {
+  const box = h('div', { class: 'ostrip' });
+  if (!pl.length) { box.append(h('p', { class: 'muted small' }, '아직 넣은 게임이 없어요. 아래에서 카드를 눌러 넣거나 빠른 구성을 골라 주세요')); return box; }
+  pl.forEach((p, i) => {
+    const g = games.find((x) => x.id === p.game); if (!g) return;
+    const mv = (d) => { const j = i + d; if (j < 0 || j >= pl.length) return; [pl[i], pl[j]] = [pl[j], pl[i]]; commit('순서 저장됨'); };
+    box.append(h('div', { class: `orow ${i < S.idx ? 'done' : ''} ${i === S.idx && S.phase !== 'lobby' ? 'cur' : ''} ${devOk(g) ? '' : 'nodev'}` },
+      h('b', {}, i + 1), h('span', { class: 'on' }, `${g.emoji} ${g.name}`),
+      h('button', { class: 'ob', title: '미리보기', onclick: () => previewModal(g.id) }, '▶'),
+      h('button', { class: 'ob', disabled: locked || i === 0, title: '위로', onclick: () => mv(-1) }, '▲'),
+      h('button', { class: 'ob', disabled: locked || i === pl.length - 1, title: '아래로', onclick: () => mv(1) }, '▼'),
+      h('button', { class: 'ob x', disabled: locked, title: '빼기', onclick: () => { if (i < S.idx && !confirm('이미 한 게임이에요. 순서에서 뺄까요?')) return; pl.splice(i, 1); commit('뺐어요'); } }, '✕')));
+  });
+  return box;
+}
 function tabPlaylist(body) {
   const pl = S.playlist.map((p) => ({ ...p }));
   const locked = busyPh();
   const list = h('div', { class: 'plist edit compact' });
-  const commit = (msg) => { savePlaylist(pl, msg); paint(); };
+  const commit = (msg) => { savePlaylist(pl, msg); paint(); picker?.refresh?.(); }; let picker = null;
   let dragFrom = null;
   const paint = () => {
     const keepScroll = saveScroll(list);
@@ -846,7 +901,8 @@ function tabPlaylist(body) {
           h('button', { class: 'btn small ghost', onclick: () => previewModal(p.game) }, '▶ 미리보기'),
           h('button', { class: `btn small ${open ? 'yellow' : 'ghost'}`, onclick: () => { plOpen = open ? null : p.game; paint(); } }, '⚙ 설정'),
           h('button', { class: 'btn small ghost', disabled: locked || i === 0, title: '위로', onclick: () => mv(-1) }, '▲'),
-          h('button', { class: 'btn small ghost', disabled: locked || i === pl.length - 1, title: '아래로', onclick: () => mv(1) }, '▼')));
+          h('button', { class: 'btn small ghost', disabled: locked || i === pl.length - 1, title: '아래로', onclick: () => mv(1) }, '▼'),
+          h('button', { class: 'btn small ghost pdel', disabled: locked, title: '순서에서 빼기', onclick: () => { if (i < S.idx && !confirm('이미 한 게임이에요. 순서에서 뺄까요?')) return; pl.splice(i, 1); if (plOpen === p.game) plOpen = null; commit('삭제 저장됨'); } }, '✕')));
       row.ondragstart = (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch { /* */ } row.classList.add('dragging'); };
       row.ondragend = () => row.classList.remove('dragging');
       row.ondragover = (e) => { if (dragFrom == null) return; e.preventDefault(); row.classList.add('dropto'); };
@@ -868,13 +924,9 @@ function tabPlaylist(body) {
     keepScroll();
   };
   paint();
-  // 게임 추가 (넣으면 기본 시간·배점·추천 음악이 자동으로 들어가요)
-  const FILT = { all: '전체 게임', none: '🙌 휴대폰 없이 가능', phone: '📱 참가자 휴대폰 필요', both: '🔁 둘 다 가능', host: '🎯 진행자 입력' };
-  const filt = select(FILT, S.settings.device === 'nophone' ? 'none' : 'all');
-  const pass = (g) => ({ all: true, none: g.dev !== 'phone', phone: g.dev === 'phone', both: g.dev === 'both', host: g.hostIn })[filt.value];
-  const add = h('select', { class: 'inp' });
-  const fillAdd = () => { add.innerHTML = ''; for (const g of games.filter(pass)) add.append(h('option', { value: g.id }, `${String(g.no).padStart(2, '0')}. ${g.emoji} ${g.name} — ${DEV[g.dev]}${g.hostIn ? ' · 진행자 입력' : ''}${g.team ? ' (팀 협동)' : ''}`)); };
-  filt.onchange = fillAdd; fillAdd();
+  // 게임 고르기: 검색 + 종류 칩 + 카드 (누르면 순서 맨 끝에 추가 · 넣으면 기본 시간·배점·추천 음악이 자동으로 들어가요)
+  picker = gamePicker(pl, locked, (gid) => { const k = pl.findIndex((p) => p.game === gid); if (k >= 0) { if (k < S.idx) return toast('이미 한 게임은 위 목록의 ✕로 빼 주세요'); pl.splice(k, 1); } else pl.push(defItem(gid)); plOpen = null; commit(k >= 0 ? '뺐어요' : '추가 저장됨'); });
+  const pickBox = h('details', { class: 'card gpwrap', open: !pl.length ? true : null }, h('summary', {}, '＋ 게임 더 넣기 · 빼기 (검색·종류별)'), picker);
   // 일괄 설정 (덮어쓰기 전에 확인)
   const bw = select({ 0.5: '×0.5', 1: '×1', 1.5: '×1.5', 2: '×2', 3: '×3' }, 1);
   const bt = h('input', { class: 'inp sm', type: 'number', min: 5, max: 300, placeholder: '예: 60' });
@@ -888,7 +940,7 @@ function tabPlaylist(body) {
   body.append(h('div', { class: 'row' }, h('h3', {}, `게임 순서 (${pl.length}개 · ${fmtMin(estSec(pl))})`), h('span', { class: 'saveind muted small ok' }, '✅ 바꾸면 자동 저장돼요')),
     locked ? h('p', { class: 'err' }, '게임 중에는 순서를 바꿀 수 없어요 (⚙ 설정·미리보기는 볼 수 있어요)') : null, list,
     S.settings.device === 'nophone' ? h('p', { class: 'notice' }, '📋 휴대폰 없이 진행 모드: 📱 표시 게임은 진행할 때 자동으로 건너뛰어요 (흐리게 보임)') : null,
-    h('div', { class: 'row wrap addrow' }, filt, add, h('button', { class: 'btn ghost', disabled: locked, onclick: () => { if (!add.value) return; pl.push(defItem(add.value)); plOpen = null; commit('추가 저장됨'); } }, '＋ 추가')),
+    pickBox,
     bulk,
     h('p', { class: 'muted small' }, '배점은 순위 포인트에 곱해져요 (1위 = 팀 수 × 10점 × 배점). PC는 줄을 끌어서, 휴대폰은 ▲▼로 순서를 바꿔요.'));
 }

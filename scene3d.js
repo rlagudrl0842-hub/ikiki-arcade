@@ -77,7 +77,7 @@ export function setQuality(q) { Q = q === 'low' ? 'low' : 'high'; judged = true;
 // 3D가 이 폰에서 느리거나 안 되면 기억해 둠 (7일) → 새로고침·다음 게임·늦은 입장 때 처음부터 가벼운 화면 (3D를 다시 켰다 끄는 사이 버튼이 늦어지지 않게)
 const NO3D = 'ikiki:no3d';
 try { const t = +localStorage.getItem(NO3D); if (t && Date.now() - t < 7 * 864e5 && !/[?&]r3d=force/.test(location.search)) Q = 'low'; } catch { /* */ }
-export function mark3dFail(why) { if (!['slow', 'cost', 'nogl', 'lost', 'black'].includes(why)) return; Q = 'low'; judged = true; try { if (!/[?&]r3d=force/.test(location.search)) localStorage.setItem(NO3D, String(Date.now())); } catch { /* */ } }
+export function mark3dFail(why) { try { (window.__r3dlog = window.__r3dlog || []).push(why); } catch { /* */ } if (!['slow', 'cost', 'nogl', 'lost', 'black'].includes(why)) return; Q = 'low'; judged = true; try { if (!/[?&]r3d=force/.test(location.search)) localStorage.setItem(NO3D, String(Date.now())); } catch { /* */ } }
 
 // ---------------- 그리기 도우미 ----------------
 const mix = (a, b, k) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * k)).join(',')})`; };

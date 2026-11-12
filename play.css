@@ -543,3 +543,33 @@ body.stage3d #bg3dshade { background: linear-gradient(180deg, #070a1e66, #0b0e24
 .n9btn:disabled { background: #2a335c; color: #9aa3c7; border-color: #ffffff22; }
 .tugbtn { min-height: 110px; font-size: 32px; }
 .n9info { flex: none; text-align: center; font-size: 14px; color: #c9cdf0; }
+/* 🎮 진행자 겸 참가자 버튼 · 진행 메뉴 */
+.hostbtn { flex: none; width: 40px; height: 40px; border-radius: 12px; border: 2px solid var(--y, #ffd43b); background: #ffd43b22; font-size: 20px; margin-right: 6px; }
+.hostsheet { z-index: 120; max-height: 86vh; overflow-y: auto; }
+.hsh { display: flex; flex-direction: column; gap: 2px; }
+.hsboard { display: grid; gap: 4px; background: #ffffff0a; border-radius: 12px; padding: 8px 10px; }
+.hsboard span { border-left: 4px solid var(--tc); padding-left: 8px; font-size: 14px; } .hsboard b { float: right; }
+/* 게임 중 진행 위치 트랙 (앞선 사람·팀과 나) */
+.lanes { display: grid; gap: 2px; margin-top: 3px; font-size: 11px; }
+.lane { display: grid; grid-template-columns: 74px 1fr 34px; gap: 6px; align-items: center; color: #c9cdf0; }
+.lane .ln { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lane b { text-align: right; font-weight: 800; }
+.lane .lt { position: relative; height: 6px; border-radius: 3px; background: #ffffff18; }
+.lane .lt i { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px #0b0e24; transition: left .8s; }
+.lane.me { color: #fff; font-weight: 800; } .lane.me .lt i { width: 14px; height: 14px; box-shadow: 0 0 0 2px #fff; }
+@media (max-height: 700px) { .lanes { display: none; } }
+.bellrace { text-align: center; font-size: 13px; font-weight: 700; color: #c9cdf0; margin: 2px 0 4px; }
+.bellrace:empty { display: none; }
+/* 작은 폰(높이 700px 이하)에서는 손맛 게임 판이 화면 아래로 잘리지 않게 최소 높이를 화면 높이에 맞춤 (실시간 순위 줄이 생긴 만큼) */
+@media (max-height: 700px) { .skw.sk-tall { min-height: min(440px, calc(100vh - 210px)); min-height: min(440px, calc(100dvh - 210px)); } .skw.sk-mid { min-height: min(340px, calc(100vh - 230px)); min-height: min(340px, calc(100dvh - 230px)); } }
+/* 순위 줄 자리 고정 (내용이 늦게 와도 아래 게임 판이 움직이지 않게) */
+.lbar { min-height: 40px; overflow: hidden; } .lbar.race { min-height: 86px; max-height: 86px; }
+.lanes .lane:nth-child(n+5) { display: none; }
+@media (max-height: 700px) { .lbar, .lbar.race { min-height: 24px; max-height: 24px; } }
+/* 게임 방법 상자 · 연습 표시 */
+.howbox { display: grid; gap: 5px; text-align: left; background: #ffffff0d; border: 1px solid #ffffff1a; border-radius: 14px; padding: 10px 12px; margin: 6px 0; font-size: 13.5px; line-height: 1.35; }
+.howbox .hrow { display: grid; grid-template-columns: 22px 1fr; gap: 6px; align-items: start; } .howbox .hic { font-size: 15px; }
+.pracinfo { background: #3d8bff22; border: 1px solid #3d8bff66; border-radius: 12px; padding: 8px 10px; margin: 4px 0; font-size: 14px; }
+.pracbar { display: flex; align-items: center; gap: 8px; background: #3d8bff; color: #fff; border-radius: 12px; padding: 6px 10px; margin: 2px 0 4px; font-size: 13px; flex: none; }
+.pracbar b { font-size: 14px; } .pracbar span { flex: 1; opacity: .9; }
+.pracskipbtn { background: #ffffff; color: #1b2a5a; border: 0; border-radius: 9px; padding: 6px 10px; font-weight: 800; font-size: 13px; }
+.pracskip { display: flex; flex-direction: column; gap: 12px; }

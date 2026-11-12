@@ -1,4 +1,5 @@
 // 2·3차 게임 참가자 폰 화면 (G에 등록)
+import { drawGhosts, drawFeed, stickSprite, birdSprite } from './ghost.js'; // 다른 참가자 고스트·소식
 import { h, sfx, vibrate } from './client.js';
 import { G } from './play-games.js';
 import { rng } from './gen.js';
@@ -54,6 +55,7 @@ function skillUI(g, opts = {}) {
         if (this.S.v.t0 && api.now() >= this.S.v.t0 && !window.__paused) { S.t += dt; if (M.on && g.tilt) g.tilt(S, M.tilt()); g.step(S, dt); }
         const { W, H, d } = fit(this.cv); const c = this.cv.getContext('2d'); c.clearRect(0, 0, W, H);
         if (this.r3 && g.overlay) { try { this.r3.render(S); } catch { this.drop3d('err'); } g.overlay(S, c, W, H, d); } else g.draw(S, c, W, H, d);
+        try { S.is3d = !!this.r3; g.ghost?.(S, c, W, H, d); } catch { /* 고스트는 장식 — 오류가 나도 게임은 계속 */ }
         if (S.msg && now - S.msgAt < 900) { c.globalAlpha = 1 - (now - S.msgAt) / 900; c.fillStyle = '#fff'; c.font = `900 ${26 * d}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = '#000'; c.shadowBlur = 8 * d; c.fillText(S.msg, W / 2, H * 0.32 - ((now - S.msgAt) / 900) * 30 * d); c.shadowBlur = 0; c.globalAlpha = 1; }
         this.sc.textContent = `${S.score}${opts.unit || ''}`;
         this.raf = requestAnimationFrame(loop);
@@ -123,6 +125,7 @@ G.dalgona = skillUI({
 // ---------------- 투호 / 버저비터 (위로 밀어 던지기)
 function throwGame(kind) {
   const g = {
+    ghost(S, c, W, H, d) { drawFeed(c, S.api, { W, H, d, icon: kind === 'tuho' ? '🏹' : '🏀', top: 0.2 }); }, // 다른 참가자 소식 (넣으면 잠깐 떠오름)
     init(S) { S.obj = null; S.cool = 0; S.wind = 0; S.newWind = () => { S.wind = kind === 'tuho' && S.lv >= 2 ? (S.r() - 0.5) * 0.5 : 0; }; S.newWind(); },
     target(S) { const sp = [0.25, 0.35, 0.5, 0.6, 0.65, 0.7][S.lv]; return 0.5 + Math.sin(S.t * sp * 2) * 0.32; },
     motion(S, ev) { if (ev.type !== 'swing' || S.obj || S.cool > 0) return; S.obj = { x: 0.5, y: 0.92, vx: ev.tx * 0.55, vy: 1.15 + ev.power * 1.35, t: 0 }; vibrate(15); sfx('pass', S.api.sfxOn); },
@@ -177,6 +180,8 @@ G.basket = throwGame('basket');
 
 // ---------------- 점프 러너
 G.runner = skillUI({
+  // 👻 다른 참가자: 달린 거리 차이만큼 앞(오른쪽)·뒤(왼쪽)에 반투명으로 (1m = 6px)
+  ghost(S, c, W, H, d) { drawGhosts(c, S.api, { W, H, d, edgeOnly: S.is3d, mine: S.score, unit: 'm', at: (df, i) => [0.2 * W + df * 6 * d + (Math.abs(df) < 4 ? (i % 2 ? -1 : 1) * (14 + 8 * (i >> 1)) * d : 0), H * 0.72 - (i % 2) * 8 * d], sprite: stickSprite }); },
   init(S) { S.y = 0; S.vy = 0; S.dist = 0; S.obs = []; S.next = 1.2; S.stun = 0; S.buf = 0; S.bh = 0.2; S.r2 = rng(S.v.seed + 99); },
   motion(S, ev) { if (ev.type === 'flick' || ev.type === 'swing') this.down(S); },
   // 공중에서 미리 눌러도 착지하자마자 점프 (0.15초 선입력)
@@ -214,6 +219,8 @@ G.runner = skillUI({
 
 // ---------------- 파닥파닥
 G.flappy = skillUI({
+  // 👻 다른 참가자: 통과한 기둥 수 차이만큼 앞뒤에 반투명 새로
+  ghost(S, c, W, H, d) { drawGhosts(c, S.api, { W, H, d, edgeOnly: S.is3d, mine: S.score, unit: '개', at: (df, i) => [0.22 * W + df * 0.3 * W, H * (0.25 + 0.14 * i)], sprite: birdSprite }); },
   init(S) { S.y = 0.45; S.vy = 0; S.pipes = []; S.next = 0.8; S.stun = 0; S.r2 = rng(S.v.seed + 5); },
   motion(S, ev) { if (ev.type === 'flick' || ev.type === 'swing') this.down(S); },
   down(S) { if (S.stun <= 0) { S.vy = -0.62; vibrate(6); sfx('tap', S.api.sfxOn); } },
@@ -240,6 +247,8 @@ G.flappy = skillUI({
 
 // ---------------- 하늘 계단
 G.stairs = skillUI({
+  // 👻 다른 참가자: 오른 계단 수 차이만큼 위·아래에 반투명으로 (화면 밖이면 ▲▼ 표시)
+  ghost(S, c, W, H, d) { drawGhosts(c, S.api, { W, H, d, edgeOnly: S.is3d, mine: S.score, unit: '칸', at: (df, i) => [W / 2 + (i % 2 ? -1 : 1) * 70 * d * (1 + (i >> 1) * 0.5), H * 0.68 - df * 30 * d], sprite: stickSprite }); },
   init(S) { S.r2 = rng(S.v.seed + 3); S.seq = [1]; for (let i = 0; i < 4000; i++) S.seq.push(S.r2() < [0.25, 0.3, 0.38, 0.42, 0.45, 0.45][S.lv] ? -S.seq[i] : S.seq[i]); S.i = 0; S.face = 1; S.fall = 0; S.anim = 0; },
   act(S, turn) {
     if (S.fall > 0) return; const nf = turn ? -S.face : S.face; S.face = nf;
@@ -262,6 +271,8 @@ G.stairs = skillUI({
 
 // ---------------- 다리 놓기
 G.bridge = skillUI({
+  // 👻 다른 참가자: 건넌 기둥 수 차이만큼 앞뒤 기둥 위치에 반투명으로
+  ghost(S, c, W, H, d) { drawGhosts(c, S.api, { W, H, d, edgeOnly: S.is3d, mine: S.score, unit: '개', at: (df, i) => [0.18 * W + df * 0.3 * W, H * 0.66 - i * 3 * d], sprite: stickSprite }); },
   init(S) { S.r2 = rng(S.v.seed + 8); S.plat = [{ x: 0.05, w: 0.22 }]; this.more(S); S.len = 0; S.grow = false; S.fallA = 0; S.phase = 'ready'; S.walk = 0; S.off = 0; },
   more(S) { const last = S.plat[S.plat.length - 1]; const gap = 0.12 + S.r2() * [0.2, 0.25, 0.32, 0.36, 0.38, 0.4][S.lv]; const w = [0.2, 0.17, 0.13, 0.11, 0.1, 0.09][S.lv] * (0.7 + S.r2() * 0.6); S.plat.push({ x: last.x + last.w + gap, w }); },
   down(S) { if (S.phase === 'ready') { S.grow = true; S.len = 0; } },
@@ -289,6 +300,8 @@ G.bridge = skillUI({
 // ---------------- 낚시왕
 const FISH = [['🐟', 5, '붕어'], ['🐠', 10, '열대어'], ['🐡', 15, '복어'], ['🦈', 25, '상어'], ['🐋', 40, '황금 고래']];
 G.fishing = skillUI({
+  // 다른 참가자 소식: 옆 사람이 물고기를 잡으면 오른쪽 위에 잠깐
+  ghost(S, c, W, H, d) { drawFeed(c, S.api, { W, H, d, icon: '🎣' }); },
   init(S) { S.st = 'wait'; S.tw = 1 + S.r() * 2.5; S.ten = 0.5; S.prog = 0; S.hold = false; },
   down(S) { S.touch = true; if (S.st === 'bite') { S.st = 'reel'; const roll = S.r(); S.fish = roll < 0.45 ? 0 : roll < 0.72 ? 1 : roll < 0.88 ? 2 : roll < 0.97 ? 3 : 4; S.ten = 0.5; S.prog = 0; vibrate(30); sfx('go', S.api.sfxOn); } else if (S.st === 'wait') { S.say('아직이에요…'); S.tw += 0.6; } S.hold = true; },
   up(S) { S.hold = false; S.touch = false; },
@@ -436,7 +449,7 @@ G.penalty = {
         c.clearRect(0, 0, W, H); const k = a ? Math.min(1, (performance.now() - a.at) / 500) : 0;
         if (!a || performance.now() - a.at > 1500) { c.strokeStyle = '#ffffff40'; c.lineWidth = 1.5 * d; c.setLineDash([6 * d, 6 * d]); for (let i = 1; i < 3; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 3, gy); c.lineTo(gx + (gw * i) / 3, gy + gh); c.stroke(); } c.beginPath(); c.moveTo(gx, gy + gh / 2); c.lineTo(gx + gw, gy + gh / 2); c.stroke(); c.setLineDash([]); }
         if (a?.res && k >= 1 && performance.now() - a.at < 1800) { c.fillStyle = a.res.res === 'goal' ? '#ffd43b' : '#ff8fa3'; c.shadowColor = '#000'; c.shadowBlur = 10 * d; c.font = `900 ${40 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(a.res.res === 'goal' ? 'GOAL!' : a.res.res === 'save' ? '막혔다!' : '빗나감', W / 2, H * 0.7); c.shadowBlur = 0; }
-        this.raf = requestAnimationFrame(loop); return;
+        drawFeed(c, this.api, { W, H, d, icon: '⚽', top: 0.62 }); this.raf = requestAnimationFrame(loop); return;
       }
       sceneBg(c, W, H, 'penalty');
       c.strokeStyle = '#ffffff22'; c.lineWidth = 1; for (let i = 0; i <= 12; i++) { c.beginPath(); c.moveTo(gx + (gw * i) / 12, gy); c.lineTo(gx + (gw * i) / 12, gy + gh); c.stroke(); } for (let j = 0; j <= 6; j++) { c.beginPath(); c.moveTo(gx, gy + (gh * j) / 6); c.lineTo(gx + gw, gy + (gh * j) / 6); c.stroke(); }
@@ -446,9 +459,23 @@ G.penalty = {
       let kx = W / 2, ky = gy + gh * 0.75;
       if (a?.res) { kx = zx(a.res.keeper); ky = zy(a.res.keeper); }
       const kk = a?.res ? k : 0; const KX = W / 2 + (kx - W / 2) * kk, KY = gy + gh * 0.75 + (ky - gy - gh * 0.75) * kk;
-      c.fillStyle = '#ffd43b'; rr(c, KX - 22 * d, KY - 34 * d, 44 * d, 56 * d, 12 * d); c.fill(); c.fillStyle = '#ffe2c6'; c.beginPath(); c.arc(KX, KY - 44 * d, 12 * d, 0, 7); c.fill();
+      // 골키퍼 (2D): 다리·반바지·유니폼·벌린 팔·장갑 · 몸을 날리면 그 쪽으로 기울어짐 (전에는 노란 네모 하나)
+      const dive = a?.res ? Math.sign(kx - W / 2) * Math.min(1, Math.abs(kx - W / 2) / (gw * 0.3)) * kk : 0; const bob = a?.res ? 0 : Math.sin(performance.now() / 260) * 2 * d;
+      c.save(); c.translate(KX, KY + bob); c.rotate(dive * 0.9); const s = d;
+      c.fillStyle = '#00000033'; c.beginPath(); c.ellipse(0, 26 * s, 26 * s, 6 * s, 0, 0, 7); c.fill();
+      c.strokeStyle = '#1f2440'; c.lineCap = 'round'; c.lineWidth = 9 * s; c.beginPath(); c.moveTo(-8 * s, 6 * s); c.lineTo(-13 * s, 24 * s); c.moveTo(8 * s, 6 * s); c.lineTo(13 * s, 24 * s); c.stroke(); // 다리
+      c.fillStyle = '#2b2f55'; rr(c, -15 * s, -4 * s, 30 * s, 14 * s, 4 * s); c.fill(); // 반바지
+      c.strokeStyle = '#ffd43b'; c.lineWidth = 8 * s; c.beginPath(); c.moveTo(-14 * s, -26 * s); c.lineTo(-34 * s, -46 * s); c.moveTo(14 * s, -26 * s); c.lineTo(34 * s, -46 * s); c.stroke(); // 팔
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(-36 * s, -48 * s, 7 * s, 0, 7); c.arc(36 * s, -48 * s, 7 * s, 0, 7); c.fill(); // 장갑
+      const jg = c.createLinearGradient(0, -34 * s, 0, 0); jg.addColorStop(0, '#ffe066'); jg.addColorStop(1, '#f5b700'); c.fillStyle = jg; rr(c, -17 * s, -34 * s, 34 * s, 32 * s, 9 * s); c.fill(); // 유니폼
+      c.fillStyle = '#1f2440'; c.font = `900 ${14 * s}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('1', 0, -18 * s);
+      c.fillStyle = '#ffd9b8'; c.beginPath(); c.arc(0, -44 * s, 11 * s, 0, 7); c.fill(); c.fillStyle = '#2a1f1a'; c.beginPath(); c.arc(0, -47 * s, 11 * s, Math.PI, 0); c.fill(); // 얼굴·머리
+      c.restore();
+      // 슛 전에는 페널티 지점에 공이 놓여 있음
+      if (!a) { const bx = W / 2, by = H * 0.85; c.fillStyle = '#00000044'; c.beginPath(); c.ellipse(bx, by + 14 * d, 16 * d, 5 * d, 0, 0, 7); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.arc(bx, by, 15 * d, 0, 7); c.fill(); c.fillStyle = '#1b1b1b'; c.beginPath(); for (let i = 0; i < 5; i++) { const an = -Math.PI / 2 + (i * 2 * Math.PI) / 5; c.lineTo(bx + Math.cos(an) * 6 * d, by + Math.sin(an) * 6 * d); } c.fill(); }
       drawFlightBall(0.2);
       if (a?.res && k >= 1) { c.fillStyle = a.res.res === 'goal' ? '#ffd43b' : '#ff8fa3'; c.font = `900 ${36 * d}px sans-serif`; c.textAlign = 'center'; c.fillText(a.res.res === 'goal' ? 'GOAL!' : a.res.res === 'save' ? '막혔다!' : '빗나감', W / 2, H * 0.68); }
+      drawFeed(c, this.api, { W, H, d, icon: '⚽', top: 0.62 }); // 다른 참가자 골 소식
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);

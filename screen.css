@@ -439,3 +439,5 @@ body[data-ph="playing"] #stage, body[data-ph="countdown"] #stage { background: l
 .snewrec::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffffb0 50%, transparent 70%); transform: translateX(-100%); animation: fxS 1.2s .4s ease forwards; }
 .srec { box-shadow: 0 10px 30px #0008; border: 1px solid #ffffff22; }
 @keyframes fxS { to { transform: translateX(100%); } }
+#pracBadge { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50; background: #3d8bff; color: #fff; font-weight: 900; font-size: 28px; padding: 10px 26px; border-radius: 999px; box-shadow: 0 8px 24px #0008; pointer-events: none; }
+#pracBadge[hidden] { display: none; }

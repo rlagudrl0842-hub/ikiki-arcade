@@ -7,7 +7,7 @@ import { saveCard } from './card.js';
 import './play-n2.js';
 import './play-n3.js';
 import './play-n4.js'; // 줄다리기·멀리뛰기·볼링
-import { mountDemo, demoText } from './preview.js';
+import { mountDemo, demoText, howTo } from './preview.js';
 import * as S3 from './scene3d.js';
 
 const app = $('#app'); window.__appOk = true; // 이 줄까지 실행되면 최신 문법을 아는 브라우저 (play.html의 안내 숨김)
@@ -23,6 +23,8 @@ if (embed || aiLv) document.body.classList.add('embed');
 let sess = code ? store(KEY) : null;        // {eventId, players:[{pid,secret,name,team,age}], active}
 let live = null, S = null;                   // S = 서버 공개 상태
 const ME = {}; const VIEW = {}; const RUN = {};
+const HOST = { ok: false, tok: null };
+const PRAC = {}; const SKIPPRAC = new Set(); // 내 연습 결과 · 연습을 건너뛴 판 번호 // 같은 폰에 이 행사 관리자 로그인이 있으면 진행 메뉴(🎮)를 보여 줌
 let mounted = null;                           // {key, inst, pid}
 let lastPhaseKey = '';
 let sfxOn = true;
@@ -122,6 +124,7 @@ function connect() {
   app.innerHTML = '';
   app.append(h('div', { class: 'top' }), h('div', { id: 'rk' }), h('main', { id: 'main' }), h('div', { id: 'bar' }));
   if (live) live.stop();
+  checkHost();
   live = new Live(() => ({ t: 'hello', role: 'player', eid: sess.eventId, players: sess.players.map((p) => ({ pid: p.pid, secret: p.secret })) }), onMsg, onStatus);
   clearInterval(connect.clock); connect.clock = setInterval(tickClock, 200); // 참가자 추가·취소로 다시 연결해도 시계 타이머가 겹겹이 쌓이지 않게
 }
@@ -141,6 +144,7 @@ function onMsg(m) {
   if (m.t === 'ok' && m.rid === 'team') { toast('✅ 팀 이름을 바꿨어요'); return; }
   if (m.t === 'state') { const prev = S; S = m; onState(prev); return; }
   if (m.t === 'me') { ME[m.pid] = m; const sp = sess.players.find((p) => p.pid === m.pid); if (sp) { sp.team = m.me.team; sp.name = m.me.name; store(KEY, sess); } if (m.game) { VIEW[m.pid] = m.game; if (m.run != null) RUN[m.pid] = m.run; } render(); return; }
+  if (m.t === 'prac') { PRAC[m.pid || active()?.pid] = m; if (S?.phase === 'intro') render(); return; }
   if (m.t === 'lb') { LB[m.pid] = m; if (m.pid === active()?.pid) liveBar(); return; }
   if (m.t === 'g') {
     if (m.v) { VIEW[m.pid] = m.v; RUN[m.pid] = m.run; }
@@ -153,6 +157,7 @@ function onMsg(m) {
 
 function onState(prev) {
   window.__paused = !!S.paused;
+  if (HOST.ok && $('.hostsheet') && (prev?.phase !== S.phase || prev?.paused !== S.paused || prev?.idx !== S.idx)) setTimeout(hostSheet, 0); // 진행 메뉴가 열려 있으면 지금 단계 버튼으로 바꿈
   if (prev?.paused && !S.paused) setTimeout(() => mounted?.inst?.resync?.(), 50); // 재개: 멈춘 동안 바뀐 조이스틱 방향을 다시 보냄
   sfxOn = S.settings.sfx && !aiLv; // 컴퓨터 폰은 소리 없음
   const me = ME[active()?.pid]?.me;
@@ -176,12 +181,42 @@ function header() {
   top.style.setProperty('--tc', t.color);
   top.append(h('div', { class: 'tm' }, h('span', { class: 'ti' }, t.icon), h('b', {}, t.name)), h('div', { class: 'nm' }, h('div', {}, me?.name || p?.name || '', me?.rep ? h('span', { class: 'rep' }, '👑대표') : null), h('div', { class: 'hrk' })), /* 이름 아래 작은 줄: 게임 중에도 팀·내 순위 (조작 칸을 밀지 않게 머리줄 안에) */
     (['playing', 'countdown'].includes(S.phase) && DEMO_OK(VIEW[p?.pid]?.g)) ? h('button', { class: 'helpbtn', 'aria-label': '하는 방법 다시 보기', onclick: () => helpSheet(VIEW[active().pid]?.g, t.color) }, '❓') : null,
+    HOST.ok ? h('button', { class: 'hostbtn', 'aria-label': '진행 메뉴', onclick: hostSheet }, '🎮') : null,
     h('button', { class: 'menu', onclick: openMenu }, '☰'));
   rankStrip();
   const bar = $('#bar'); bar.innerHTML = '';
   if (sess.players.length > 1) {
     bar.append(...sess.players.map((x) => h('button', { class: `pch ${x.pid === p.pid ? 'on' : ''}`, style: { '--tc': teamOf(S, ME[x.pid]?.me?.team ?? x.team).color }, onclick: () => { sess.active = x.pid; store(KEY, sess); unmount(); render(); } }, x.name)));
   }
+}
+// 🎮 진행자 겸 참가자: 같은 폰에 이 행사 관리자 로그인이 있으면 오른쪽 위에 🎮 버튼 → 진행 메뉴(시작·종료·다음·일시정지·점수)
+// 메뉴는 화면 아래에서 올라오는 판이라 게임 버튼과 겹치지 않음 · 열려 있는 동안 게임 입력은 가려짐 · 닫으면 바로 게임으로
+async function checkHost() { // 참가 정보(행사 번호)가 생긴 뒤에 확인 — 처음 열 때·참가한 직후
+  if (HOST.ok || HOST.busy) return; HOST.busy = true;
+  try { const t = JSON.parse(localStorage.getItem('ikiki:admin') || 'null'); if (!t || !sess?.eventId) return; await api(`/api/events/${sess.eventId}`, undefined, t); HOST.ok = true; HOST.tok = t; header();
+    if (/[?&]host=1/.test(location.search)) toast('🎮 진행자로 참가했어요 · 오른쪽 위 🎮로 게임을 진행해요', 4000); } catch { /* 관리자 아님 */ } finally { HOST.busy = false; }
+}
+function hostSheet() {
+  $('.sheet')?.remove(); if (!S) return;
+  const cmd = async (op, ask) => { if (ask && !confirm(ask)) return; m.remove(); /* 누르자마자 닫음 → 게임 버튼을 가리지 않음 */ try { await api(`/api/events/${sess.eventId}/command`, { op }, HOST.tok); vibrate(15); } catch (e) { toast(e.message || '진행하지 못했어요'); } };
+  const ph = S.phase; const it = S.item; const B = (l, op, cls, ask) => h('button', { class: `btn wide ${cls || ''}`, onclick: () => cmd(op, ask) }, l);
+  const main = ph === 'lobby' ? (it ? B(S.idx === 0 && !S.standings?.played ? '▶ 첫 게임 시작' : `▶ 다음 게임 시작 (${it.emoji} ${it.name})`, 'intro', 'green') : B('🏆 시상식 시작', 'ceremony'))
+    : ph === 'intro' ? B(S.practice?.max ? '🚀 본 경기 시작!' : '🚀 게임 시작!', 'start', 'green')
+    : ph === 'countdown' || ph === 'playing' ? (S.practice?.on ? B('🏁 연습 끝내기', 'endNow') : B('🏁 지금 종료 (점수 반영)', 'endNow', '', '지금 게임을 끝내고 점수를 반영할까요?'))
+    : ph === 'results' ? B(S.idx < S.total ? '⏭ 다음 게임 준비' : '🏆 마무리', 'next', 'green')
+    : ph === 'ceremony' ? B('▶ 다음 발표', 'ceremonyNext', 'green') : null;
+  const prac = ph === 'intro' && S.practice?.max && (S.practice.done || 0) < S.practice.max ? B(`🧪 연습 시작 (${(S.practice.done || 0) + 1}/${S.practice.max}) · 점수 없음`, 'practice', 'blue') : null;
+  const pause = ['intro', 'countdown', 'playing', 'results'].includes(ph) ? (S.paused ? B('▶ 다시 진행', 'resume', 'blue') : B('⏸ 일시정지', 'pause', 'yellow')) : null;
+  const skip = ['lobby', 'intro'].includes(ph) && it ? B(`⏭ 이 게임 건너뛰기`, 'skip', 'ghost', `${it.name} 게임을 건너뛸까요?`) : null;
+  const rows = [...(S.standings?.rows || [])].sort((a, b) => a.rank - b.rank);
+  const board = rows.length ? h('div', { class: 'hsboard' }, h('div', { class: 'muted small' }, '📊 종합 점수'), ...rows.map((r) => { const t = teamOf(S, r.id); return h('span', { style: { '--tc': t.color } }, `${r.rank}. ${t.icon} ${t.name} `, h('b', {}, `${r.total}점`)); })) : null;
+  const m = h('div', { class: 'sheet hostsheet' },
+    h('div', { class: 'hsh' }, h('b', {}, '🎮 진행 메뉴'), h('span', { class: 'muted small' }, `${it ? `${it.emoji} ${S.idx + 1}/${S.total} ${it.name}` : '게임 없음'} · ${({ lobby: '대기', intro: '소개', countdown: '카운트다운', playing: '게임 중', results: '결과', ceremony: '시상식', ended: '종료' })[ph] || ph}${S.paused ? ' · 일시정지' : ''}`)),
+    prac, main, pause, skip, board,
+    h('a', { class: 'btn ghost wide', href: `/admin.html#e=${sess.eventId}`, target: 'ikiki-admin' }, '🎛 전체 리모컨 화면 열기'),
+    h('div', { class: 'muted small' }, '이 메뉴가 열려 있는 동안은 게임 버튼이 가려져요. 닫으면 바로 게임으로 돌아가요.'),
+    h('button', { class: 'btn wide', onclick: () => m.remove() }, '닫기'));
+  document.body.append(m);
 }
 function openMenu() {
   const m = h('div', { class: 'sheet' },
@@ -350,10 +385,22 @@ function intro() {
   const tx = demoText(it.game, S.settings.mode);
   if (S.settings.preview !== false && tx) introDemo = mountDemo(dbox, it.game, { mode: S.settings.mode, color: teamOf(S, me?.team).color, sec: S.settings.previewSec || 6, h, t0: (demoT0[S.seq] = demoT0[S.seq] || performance.now()) });
   return h('div', { class: 'intro' }, h('div', { class: 'ie' }, it.emoji), h('div', { class: 'in' }, `GAME ${String(it.no).padStart(2, '0')}`), h('div', { class: 'it' }, it.name),
-    tx ? h('div', { class: 'igoal' }, `🏆 ${tx.goal}`) : null, dbox,
+    tx?.goal ? h('div', { class: 'igoal' }, `🏆 ${tx.goal}`) : null, pracInfo(), howBox(it.game, tx), dbox,
     S.record ? h('div', { class: 'irec' }, '🏅 이 게임 최고 기록 ', h('b', {}, recTxt(S.record))) : h('div', { class: 'irec' }, '🏅 아직 최고 기록이 없어요 — 첫 기록에 도전!'),
     h('div', { class: 'ir' }, it.rule), it.weight > 1 ? h('div', { class: 'chip big' }, `🔥 점수 ${it.weight}배!`) : null, it.durSec ? h('div', { class: 'muted' }, `⏱ ${it.durSec}초`) : null,
     h('div', { class: 'ready' }, me?.rep && it.team ? '👑 당신은 팀 대표예요!' : '준비하세요! 곧 시작합니다'), cheerBtn(teamOf(S, me?.team)));
+}
+// 게임 방법 상자 (설명 화면): 폰 드는 법·조작 / 점수·순위 / 실수·시간 초과 / 팀 점수 / 게임 중 볼 곳 — 아래 움직이는 시범과 함께
+function howBox(game, tx) {
+  const it = S.item; const k = howTo(game, { team: !!it?.team, scoring: S.settings.scoring, race: RACE.has(game) });
+  const row = (ic, t) => h('div', { class: 'hrow' }, h('span', { class: 'hic' }, ic), h('span', {}, t));
+  return h('div', { class: 'howbox' }, row('👆', k.hold.replace(/^📱 |^🙌 /, '')), row('🏅', it?.howto || tx?.score || '많이 할수록 점수가 올라가요'), row('⚠️', k.miss), row('🤝', k.team.replace(/^🤝 /, '')), row('👀', k.watch.replace(/^👀 /, '')));
+}
+// 연습 안내 (설명 화면): 몇 번 연습했는지 · 내 연습 결과 (기록에 안 들어감)
+function pracInfo() {
+  const P = S.practice; if (!P?.max) return null; const mine = PRAC[active()?.pid];
+  return h('div', { class: 'pracinfo' }, h('b', {}, `🧪 연습 ${P.done}/${P.max}회`), h('span', {}, P.done >= P.max ? ' · 이제 본 경기예요!' : ' · 본 경기 전에 연습해요 (점수에 안 들어가요)'),
+    mine && P.done ? h('div', { class: 'small' }, `내 연습 결과: ${mine.show || '기록 없음'}${mine.rank ? ` (${mine.rank}/${mine.total}등)` : ''}`) : null);
 }
 function results() {
   const lr = S.lastResult; if (!lr) return center('📊', '결과 집계 중…');
@@ -424,6 +471,8 @@ function renderGame() {
     return;
   }
   if (v.spectator) { unmount(); main.innerHTML = ''; main.append(center('👀', '이번 게임은 관전해요', '게임 중간에 들어와서 다음 게임부터 참여해요')); return; }
+  // 🧪 연습을 건너뛴 사람: 본 경기가 시작되면 바로 참여 (연습 화면 대신 대기 안내)
+  if (S.practice?.on && SKIPPRAC.has(RUN[p.pid])) { if (main.querySelector('.pracskip')) return; unmount(); main.innerHTML = ''; main.append(h('div', { class: 'pracskip' }, center('⏭', '연습을 건너뛰었어요', '본 경기가 시작되면 바로 참여해요 · 연습 점수는 원래 기록에 안 들어가요'), h('button', { class: 'btn ghost wide', onclick: () => { SKIPPRAC.delete(RUN[p.pid]); unmount(); main.innerHTML = ''; renderGame(); } }, '🔁 다시 연습하기'))); return; }
   const key = `${RUN[p.pid]}:${v.g}:${p.pid}`;
   preBadge(main, preOk);
   if (mounted?.key === key) { try { mounted.inst.update?.(v); } catch (e) { gameFail(main, v.g, e); } return; }
@@ -438,9 +487,11 @@ function renderGame() {
     teamName: (id) => { const x = teamOf(S, id); return `${x.icon}${x.name}`; },
     teamColor: (id) => teamOf(S, id).color,
     motion: S.settings.motion || 'auto',
+    ghosts: () => { const m = LB[p.pid]; return m && m.run === RUN[p.pid] ? m : null; }, // 같은 게임 다른 참가자(내 앞뒤) — 게임 화면 안 고스트용
   };
   const box = h('div', { class: 'game', style: { '--tc': t.color } });
-  main.append(timerBar(), h('div', { class: 'lbar' }), box); header(); liveBar(); // ❓ 도움 버튼은 맨 위 줄(☰ 옆)에 — 게임 화면 높이를 줄이지 않음
+  const prac = S.practice?.on ? h('div', { class: 'pracbar' }, h('b', {}, `🧪 연습 ${(S.practice.done || 0) + 1}/${S.practice.max}`), h('span', {}, '점수·순위에 안 들어가요'), h('button', { class: 'pracskipbtn', onclick: () => { SKIPPRAC.add(RUN[p.pid]); unmount(); main.innerHTML = ''; renderGame(); } }, '건너뛰기 ⏭')) : null;
+  main.append(...(prac ? [prac] : []), timerBar(), h('div', { class: `lbar ${RACE.has(v.g) ? 'race' : ''}` }), box); header(); liveBar(); // 순위 줄 자리는 처음부터 잡아 둠 → 1초 뒤 순위가 와도 게임 화면이 밀리지 않음 // ❓ 도움 버튼은 맨 위 줄(☰ 옆)에 — 게임 화면 높이를 줄이지 않음
   try { inst.mount(box, v, gapi); } catch (e) { try { inst.unmount?.(); } catch { /* */ } return gameFail(main, v.g, e); }
   mounted = { key, inst, pid: p.pid }; window.__game = inst; // 점검용
   document.body.classList.add('ingame'); // 게임 중: 폰을 가로로 돌리면 '세로로 돌려 주세요' 안내
@@ -457,14 +508,29 @@ function helpSheet(g, color) {
 }
 // 이번 게임 실시간 순위 (서버가 1초마다 보냄): 우리 팀 순위·1위와 차이 · 내 순위·앞사람과 차이 · 1~3등 (🤖 = 컴퓨터 상대)
 const LB = {};
+// 달리기·오르기·계주처럼 '얼마나 앞서 있나'가 중요한 게임: 작은 트랙에 앞선 사람(또는 팀)과 나의 위치를 점으로 (1등 = 오른쪽 끝)
+const RACE = new Set(['runner', 'stairs', 'flappy', 'bridge', 'towerup', 'relay', 'rope', 'tug', 'ljump', 'sync', 'balloon', 'curling', 'basket', 'penalty', 'tuho', 'bowl', 'fishing']);
+function lanes(m, p, g, myT) {
+  const box = h('div', { class: 'lanes' });
+  const teamRace = !m.top.length || ['relay', 'rope', 'tug', 'sync'].includes(g);
+  if (teamRace) { const mx = Math.max(1e-9, ...m.tm.map((x) => x[1])); for (const [id, v] of m.tm.slice(0, 6)) { const t = teamOf(S, id); box.append(lane(`${t.icon} ${t.name}`, mx ? v / mx : 0, t.color, id === myT, `${v}`)); } return box; }
+  const span = Math.max(1e-9, m.hi - m.lo); const pos = (raw) => (m.asc ? (m.hi - raw) / span : (raw - m.lo) / span); // 낮을수록 좋은 기록이면 거꾸로
+  const rows = m.top.map(([n, sc, ai, t], i) => ({ n: (ai ? '🤖' : '') + n, sc, t, me: !!m.me && i === m.me.i }));
+  if (m.me && !rows.some((r) => r.me)) rows.push({ n: '나', sc: m.me.raw, t: myT, me: true, rank: m.me.rank });
+  for (const r of rows.slice(0, 5)) box.append(lane(r.me ? `나${r.rank ? ` ${r.rank}위` : ''}` : r.n, Math.max(0.03, pos(r.sc)), teamOf(S, r.t).color, r.me, `${r.sc}`));
+  return box;
+}
+const lane = (label, k, col, me, val) => h('div', { class: `lane ${me ? 'me' : ''}` }, h('span', { class: 'ln' }, label), h('span', { class: 'lt' }, h('i', { style: { left: `${Math.round(Math.min(1, Math.max(0, k)) * 100)}%`, background: col } })), h('b', {}, val));
 function liveBar() {
   const el = $('.lbar'); if (!el) return; const p = active(); const m = LB[p?.pid];
-  if (!m || m.run !== RUN[p.pid] || !S || S.phase !== 'playing') { el.hidden = true; return; }
+  if (!m || m.run !== RUN[p.pid] || !S || S.phase !== 'playing') { el.style.visibility = 'hidden'; return; }
   const myT = ME[p.pid]?.me?.team ?? p.team; const ti = m.tm.findIndex((x) => x[0] === myT); const parts = [];
   if (ti >= 0 && m.tm.length > 1) { const sc = m.tm[ti][1]; const rank = 1 + m.tm.filter((x) => x[1] > sc).length; const g = Math.round((m.tm[0][1] - sc) * 10) / 10; parts.push(h('span', { class: 'lbt' }, h('i', {}, '팀'), `${rank}위/${m.tm.length}`, h('small', {}, rank === 1 ? (m.tm.length > 1 && m.tm[1][1] === sc ? ' 동점' : ' 선두') : ` 1위와 −${g}`))); }
   if (m.me && m.me.n > 1) parts.push(h('span', { class: 'lbm' }, h('i', {}, '나'), `${m.me.rank}위/${m.me.n}`, h('small', {}, m.me.rank === 1 ? ' 1등!' : ` 앞 ${m.me.ai ? '🤖' : ''}${m.me.ahn}와 ${m.me.ah}`)));
-  const top = m.top.length ? h('div', { class: 'lbtop' }, ...m.top.map(([n, sc, ai, t], i) => h('span', { style: { '--c': teamOf(S, t).color } }, ['🥇', '🥈', '🥉'][i], ai ? '🤖' : '', n, h('b', {}, ` ${sc}`)))) : null;
-  el.hidden = !parts.length; el.innerHTML = ''; el.append(h('div', { class: 'lbrow' }, ...parts), top);
+  const g = VIEW[p.pid]?.g; let top = null; el.classList.toggle('race', RACE.has(g));
+  if (RACE.has(g) && (m.top.length || m.tm.length > 1)) top = lanes(m, p, g, myT);
+  else if (m.top.length) top = h('div', { class: 'lbtop' }, ...m.top.slice(0, 3).map(([n, sc, ai, t], i) => h('span', { style: { '--c': teamOf(S, t).color } }, ['🥇', '🥈', '🥉'][i], ai ? '🤖' : '', n, h('b', {}, ` ${sc}`))));
+  el.style.visibility = parts.length ? '' : 'hidden'; el.innerHTML = ''; el.append(h('div', { class: 'lbrow' }, ...parts), top);
 }
 function timerBar() { return h('div', { class: `gtimer ${S.run?.endAt ? '' : 'hidden'}` }, h('div', { class: 'gbar' }), h('span', { class: 'gsec' })); }
 

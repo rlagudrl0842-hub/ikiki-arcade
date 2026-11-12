@@ -91,11 +91,14 @@ export const bell = {
         const p = P.get(pid); if (!p) return { g: 'bell', spectator: true };
         const i = Math.min(qi, N - 1); const q = qs[i]; const pm = perm(pid, i); const inv = (c) => (c == null ? null : pm.indexOf(c));
         const done = p.ans[i] != null;
+        // 경쟁 상황(누가 냈는지·누가 살아 있는지 '수'만): 같은 순간에 여러 명 화면을 만들 때 한 번만 셈
+        if (this._ck !== `${now}:${i}`) { this._ck = `${now}:${i}`; let nA = 0, nAl = 0, n = 0; for (const x of P.values()) { n++; if (x.alive) { nAl++; if (x.ans[i] != null) nA++; } } this._cnt = { nA, nAl, n }; }
+        let streak = 0; for (let k = (ph === 'reveal' ? i : i - 1); k >= 0; k--) { if (p.ans[k] != null && p.ans[k] === qs[k].ans) streak++; else break; }
         // 컴퓨터 참가자(테스트 전용): 난이도별 확률로 '아는 문제'면 정답 위치를 알려 줌 (모르면 찍음)
         let aiKnow;
         if (p.ai && ph === 'q') { p.know ||= {}; if (p.know[i] == null) p.know[i] = Math.random() < ({ easy: 0.35, normal: 0.6, hard: 0.85 }[p.ai] ?? 0.3 + Math.random() * 0.6); if (p.know[i]) aiKnow = pm.indexOf(q.ans); }
         // 낸 뒤에는 보기를 숨기고 '제출 완료'만 (정답·내 답·정답률은 공개 시간까지 안 보냄)
-        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: ph === 'q' && done ? null : pm.map((k) => q.opts[k]), submitted: done, aiKnow, kid: age === 'kid', my: ph === 'reveal' ? inv(p.ans[i]) : done ? -1 : null, ans: ph === 'reveal' ? inv(q.ans) : null, alive: p.alive, revive: qi === revive, ok: p.ok };
+        return { g: 'bell', qi, N, ph, until: now + Math.round(Math.max(0, phEnd - C.T) * 1000), text: q.text, opts: ph === 'q' && done ? null : pm.map((k) => q.opts[k]), submitted: done, aiKnow, kid: age === 'kid', my: ph === 'reveal' ? inv(p.ans[i]) : done ? -1 : null, ans: ph === 'reveal' ? inv(q.ans) : null, alive: p.alive, revive: qi === revive, ok: p.ok, streak, ...this._cnt };
       },
       screen() {
         const q = qs[qi] || qs[N - 1];
