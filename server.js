@@ -330,7 +330,10 @@ export function createServer(opts = {}) {
       if (!list.length) throw new Err('테스트할 게임을 골라 주세요');
       const mode = ['baby', 'kid', 'elem', 'mid', 'high', 'adult'].includes(body.mode) ? body.mode : 'elem';
       const dur = (g) => (Number.isInteger(body.dur?.[g]) && body.dur[g] >= 5 && body.dur[g] <= 300 ? { dur: body.dur[g] } : {});
-      const id = newEvent(user, { name: body.watch ? '👀 게임 미리보기' : '🎮 혼자 테스트', settings: { test: true, mode, teamCount: 2, teamAssign: 'choose', scoring: 'avg', auto: body.auto !== false, introSec: 6, resultSec: 8, previewSec: 5, voice: false, playlist: list.map((g) => ({ game: g, weight: 1, ...dur(g) })), ...(body.bgm && typeof body.bgm === 'object' ? { bgm: body.bgm } : {}) } });
+      // 행사 화면에서 누른 혼자 테스트: 그 행사의 우리 문제(골든벨·이유·세트 이름·행사 문제만·그림 단어)를 테스트에도 그대로 (읽기만, 원래 행사는 안 바뀜)
+      const src = typeof body.from === 'string' ? getEvent(body.from) : null; const own = src && (user.role === 'master' || src.ownerId === user.id);
+      const quiz = own ? Object.fromEntries(['bellCustom', 'bellWhy', 'bellTitle', 'bellOnly', 'drawCustom'].filter((k) => src.settings[k] != null).map((k) => [k, JSON.parse(JSON.stringify(src.settings[k]))])) : {};
+      const id = newEvent(user, { name: body.watch ? '👀 게임 미리보기' : '🎮 혼자 테스트', settings: { test: true, mode, teamCount: 2, teamAssign: 'choose', scoring: 'avg', auto: body.auto !== false, introSec: 6, resultSec: 8, previewSec: 5, voice: false, playlist: list.map((g) => ({ game: g, weight: 1, ...dur(g) })), ...quiz, ...(body.bgm && typeof body.bgm === 'object' ? { bgm: body.bgm } : {}) } });
       const ev = getEvent(id);
       ev.teams[0] = { ...ev.teams[0], name: '홍팀', icon: '🔴', color: '#ff4d6d' }; ev.teams[1] = { ...ev.teams[1], name: '청팀', icon: '🔵', color: '#3d8bff' };
       db.tx(() => { for (const t of ev.teams) db.run('UPDATE teams SET name=?, icon=?, color=? WHERE event_id=? AND id=?', t.name, t.icon, t.color, id, t.id); });

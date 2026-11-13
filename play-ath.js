@@ -3,6 +3,7 @@
 import { h, vibrate } from './client.js';
 import { G } from './play-games.js';
 import { ovalView, ovalBg, dotRunner, straightView, straightBg, sideRunner, makeSmoother, ROW } from './athdraw.js';
+const FXT = ['', '💥 몸싸움! 잠깐 느려졌어요', '↗ 바깥으로 빠져 추월!', '🚧 앞이 막혔어요 — 더 빨리 누르면 바깥으로 추월'];
 
 const STLBL = { setup: '대회 준비 중', ready: '출발 준비', marks: '제자리에', set: '차렷', go: '출발!', recall: '부정 출발 · 다시 출발', done: '경주 끝', over: '종목 결과' };
 const onPress = (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(e); }, { passive: false }); el.addEventListener('contextmenu', (e) => e.preventDefault()); return el; };
@@ -18,7 +19,7 @@ G.ath = {
     this.bl = mk(0, '왼발'); this.br = mk(1, '오른발'); this.hint = h('div', { class: 'athhint' });
     this.pad = h('div', { class: 'athpad' }, this.bl, this.br);
     root.append(h('div', { class: 'gwrap athw', style: { '--tc': api.team.color } }, this.top, this.sig, this.cv, this.info, this.mid, this.hint, this.pad));
-    this.iv = setInterval(() => { if (this.pend && this.v?.st === 'go') { const n = Math.min(4, this.pend); this.pend -= n; api.send({ a: 'st', n }); } else if (this.v?.st !== 'go') this.pend = 0; }, 100);
+    this.iv = setInterval(() => { if (this.pend && (this.v?.st === 'go' || this.v?.st === 'setup')) { const n = Math.min(4, this.pend); this.pend -= n; api.send({ a: 'st', n }); } else if (this.v?.st !== 'go' && this.v?.st !== 'setup') this.pend = 0; }, 100);
     const loop = () => { if (this.dead) return; const t = performance.now(); if (t - this.last > 45) { this.last = t; try { this.draw(); } catch (e) { console.error(e); } } this.raf = requestAnimationFrame(loop); };
     this.raf = requestAnimationFrame(loop);
     this.update(v);
@@ -30,6 +31,7 @@ G.ath = {
     this.side = s; vibrate(6);
     const t = performance.now(); this.pr.push(t); this.pr = this.pr.filter((x) => t - x < 1000);
     const live = this.racing();
+    if (v?.st === 'setup') { this.pend++; this.hint.className = 'athhint'; this.hint.textContent = `🏃 준비 운동 (기록 안 됨) · 1초에 ${this.pr.length}걸음${this.pr.length >= 7 ? ' 👍 최고 속도!' : ''}`; return; }
     if (!live) { this.hint.className = 'athhint'; this.hint.textContent = `연습 중 (기록 안 됨) · 1초에 ${this.pr.length}걸음${this.pr.length >= 7 ? ' 👍 최고 속도!' : ''}`; return; }
     const now = this.api.now();
     if (v.st === 'marks' || v.st === 'set') { if (v.tGo && now >= v.tGo) { this.pend++; return; } this.api.send({ a: 'st', n: 1 }); return; } // 신호 전 → 서버가 부정 출발 판정
@@ -80,7 +82,7 @@ G.ath = {
     if ((v.st === 'done' || v.st === 'over') && v.board?.length) mid.push(h('details', { class: 'athfin' }, h('summary', {}, '📋 이 종목 전체 기록'), ...v.board.map(([n, t, tm, f], i) => h('div', {}, `${i + 1}. `, h('i', { style: { background: api.teamColor(t) } }), n, h('small', {}, ` ${fmt(tm)}초${f ? ' (결승)' : ''}`)))));
     mid.push(h('div', { class: 'athnote' }, '기록은 게임이 계산한 기록이에요 (실제로 잰 달리기 기록이 아니에요)'));
     if (!same) { this.mid.innerHTML = ''; this.mid.append(...mid); } // 바뀔 때만 다시 그림 (펼친 목록이 닫히지 않게)
-    if (!running && !this.hint.classList.contains('bad')) { this.hint.className = 'athhint'; this.hint.textContent = me && v.ev === 'relay' && me.role === 'wait' ? '내 차례 전: 연습만 돼요 (기록 안 됨)' : '연습: 왼발·오른발을 번갈아 빠르게 (기록 안 됨)'; }
+    if (!running && !this.hint.classList.contains('bad')) { this.hint.className = 'athhint'; this.hint.textContent = v.st === 'setup' ? '🏃 준비 운동: 번갈아 누르면 트랙에서 내 선수가 달려요 · 친구들도 같이 보여요' : me && v.ev === 'relay' && me.role === 'wait' ? '내 차례 전: 연습만 돼요 (기록 안 됨)' : '연습: 왼발·오른발을 번갈아 빠르게 (기록 안 됨)'; }
     if (running && v.st === 'ready') { this.hint.className = 'athhint'; this.hint.textContent = '사회자가 출발 버튼을 누르면 "제자리에 → 차렷 → 탕!"'; }
     if (running && v.st === 'go' && !this.hint.classList.contains('bad')) { this.hint.className = 'athhint'; this.hint.textContent = '번갈아 빠르게! 1초에 7번이면 최고 속도'; }
   },
@@ -88,21 +90,22 @@ G.ath = {
     const v = this.v; if (!v) return; const cv = this.cv; const r = cv.getBoundingClientRect(); if (r.width < 10) return;
     const dpr = Math.min(1.5, devicePixelRatio || 1); const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr); if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; this.bgKey = ''; }
     const c = cv.getContext('2d'); const N = v.lanes || 8; const api = this.api; const now = api.now(); const D = v.D;
-    const straight = v.ev === '100'; const key = `${W}x${H}:${v.ev}:${N}`;
-    if (this.bgKey !== key) { this.bgKey = key; if (straight) { this.vw = straightView(W, H, N); this.bg = straightBg(W, H, this.vw, { big: W > 500 }); } else { this.vw = ovalView(W, H, N, { sy: 0.7, pad: 0.03, fit: true }); this.bg = ovalBg(W, H, this.vw, v.ev, { big: false }); } }
+    const evD = v.wu ? '100' : v.ev; const straight = evD === '100'; const NL = v.wu ? Math.max(4, (v.rs || []).length) : N; const key = `${W}x${H}:${evD}:${NL}`;
+    if (this.bgKey !== key) { this.bgKey = key; if (straight) { this.vw = straightView(W, H, NL); this.bg = straightBg(W, H, this.vw, { big: W > 500 }); } else { this.vw = ovalView(W, H, N, { sy: 0.7, pad: 0.03, fit: true }); this.bg = ovalBg(W, H, this.vw, evD, { big: false }); } }
     c.drawImage(this.bg, 0, 0);
-    const rows = v.rs || []; const myLane = v.me?.lane; const lead = v.rank?.[0];
-    const draws = rows.map((x) => ({ x, d: this.sm(x[ROW.lane], x[ROW.d], v.st === 'go' ? x[ROW.v] : 0, v.T, now, D) }));
+    const rows = v.rs || []; const myLane = v.me?.lane || v.wuLane; const lead = v.rank?.[0]; const moving = v.st === 'go' || v.wu;
+    const draws = rows.map((x) => ({ x, d: this.sm(x[ROW.lane], x[ROW.d], moving ? x[ROW.v] : 0, v.T, now, v.wu ? 100 : D) }));
     for (const { x, d } of draws.sort((a, b) => (a.x[ROW.lane] === myLane) - (b.x[ROW.lane] === myLane))) {
       const col = api.teamColor(x[ROW.team]); const me = x[ROW.lane] === myLane;
-      if (straight) sideRunner(c, this.vw, x[ROW.lane], d, col, { me, run: v.st === 'go' && x[ROW.v] > 0.3 });
-      else dotRunner(c, this.vw, v.ev, x[ROW.lane], d, col, { r: 1.6, me, small: true, lead: x[ROW.lane] === lead });
+      if (straight) sideRunner(c, this.vw, x[ROW.lane], d, col, { me, run: moving && x[ROW.v] > 0.3, label: me ? '나' : x[ROW.label] });
+      else dotRunner(c, this.vw, evD, x[ROW.lane], d, col, { r: 5.2, me, small: true, lead: x[ROW.lane] === lead, offset: evD === '800' ? (x[ROW.lat] || 0) * 1.8 : 0 });
       if (v.ev === 'relay' && x[ROW.od] && v.st === 'go') dotRunner(c, this.vw, v.ev, x[ROW.lane], x[ROW.od], col + '99', { r: 1.1, small: true });
     }
     // 순위·남은 거리
     const mine = rows.find((x) => x[ROW.lane] === myLane);
     const order = v.rank || []; const pos = myLane ? order.indexOf(myLane) + 1 : 0;
-    if (mine && ['go', 'done'].includes(v.st)) {
+    if (v.wu) { const lap = mine ? mine[14] || 0 : 0; const txt = `🏃 준비 운동 · 같이 달리는 친구 ${Math.max(0, rows.length - 1)}명${lap ? ` · 내가 ${lap}번 완주` : ''}`; if (this.info.dataset.k !== txt) { this.info.dataset.k = txt; this.info.textContent = txt; } }
+    else if (mine && ['go', 'done'].includes(v.st)) {
       const left = Math.max(0, D - (this.sm(myLane, mine[ROW.d], 0, v.T, v.T, D)));
       const e = mine[ROW.e]; const en = v.ev === '400' || v.ev === '800';
       const txt = mine[ROW.t] != null ? `🏁 ${pos}위 · ${fmt(mine[ROW.t])}초 (게임 기록)` : `${pos}위 / ${rows.length}명 · 결승까지 ${Math.round(left)}m${mine[ROW.hold] ? ' · ⏱ 1초 늦게 출발' : ''}${mine[ROW.auto] ? ' · 자동 달리기' : ''}`;
@@ -112,6 +115,7 @@ G.ath = {
       const txt = v.st === 'go' ? lst : rows.length ? `${rows.length}명 · ${rows.map((x) => `${x[ROW.lane]}${x[ROW.label]}`).slice(0, 8).join(' · ')}` : '';
       if (this.info.dataset.k !== txt) { this.info.dataset.k = txt; this.info.textContent = txt; }
     }
+    if (mine && v.ev === '800' && v.st === 'go' && mine[ROW.t] == null) { const fx = mine[ROW.fx] || 0; if (fx && this.fxK !== fx) { this.fxK = fx; this.hint.className = `athhint ${fx === 1 ? 'bad' : 'warn'}`; this.hint.textContent = FXT[fx]; if (fx === 1) vibrate([40, 30, 40]); } else if (!fx && this.fxK) { this.fxK = 0; this.hint.className = 'athhint'; this.hint.textContent = '번갈아 빠르게! 1초에 7번이면 최고 속도'; } }
     // 신호 색은 서버 시각으로 바로 바꿈 (총소리 순간)
     if (v.st === 'set' && v.tGo && now >= v.tGo && !this.sig.classList.contains('s-go')) { this.sig.className = 'athsig s-go'; this.sig.textContent = STLBL.go; if (v.me) vibrate(60); }
   },

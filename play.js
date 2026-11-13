@@ -16,7 +16,8 @@ const params = new URLSearchParams(location.search);
 const code = (params.get('e') || params.get('code') || '').toUpperCase();
 // 혼자 테스트하기: ?join=이름&team=1 → 바로 참가 / ?ai=난이도 → 컴퓨터 참가자 (같은 브라우저 안에서도 저장 칸을 따로 씀)
 const aiLv = params.get('ai'); const autoName = params.get('join'); const autoTeam = Number(params.get('team')) || 0; const embed = params.has('embed');
-const KEY = 'ikiki:' + code + (aiLv ? ':ai' + (autoTeam || 2) : embed ? ':me' : '');
+const aiSlot = (params.get('slot') || '').replace(/\W/g, '').slice(0, 4); // 팀마다 AI 여러 명: 칸마다 따로 저장
+const KEY = 'ikiki:' + code + (aiLv ? ':ai' + (autoTeam || 2) + (aiSlot ? ':' + aiSlot : '') : embed ? ':me' : '');
 let dev = store('ikiki:dev'); if (!dev) { dev = Math.random().toString(36).slice(2) + Date.now().toString(36); store('ikiki:dev', dev); }
 if (aiLv) dev = `ai:${aiLv}:${dev}`.slice(0, 40); else if (embed) dev = `me:${dev}`.slice(0, 40);
 if (embed || aiLv) document.body.classList.add('embed');

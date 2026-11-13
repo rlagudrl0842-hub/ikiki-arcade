@@ -4,7 +4,7 @@
 //   · 1초에 인정하는 걸음 수 상한(8) · 속도는 최근 1초 걸음 수로 정해지고 7걸음/초에서 최고 속도 → 더 빨리 눌러도 안 빨라짐
 //   · 출발 신호 전 입력 = 부정 출발 (서버가 받은 시각 기준)
 import { rng, shuffle } from './gen.js';
-import { EVENTS, EV_KEYS, ZONES } from './trackgeo.js';
+import { EVENTS, EV_KEYS, ZONES, BREAK, MERGE } from './trackgeo.js';
 
 const CAD = 7, CAP = 8; // 최고 속도 걸음 수 · 1초 인정 상한
 const r2 = (x) => Math.round(x * 100) / 100;
@@ -37,6 +37,10 @@ export const ath = {
     const G = { st: 'setup', heats: [], hi: 0, final: null, inFinal: false, races: [], over: null, sndT: 0, sndK: 0, msg: '' };
     let race = null; // 지금 조
     let seq = 0;
+    // 🏃 준비 운동(조 편성 전): 모두 100m 직선에서 자유롭게 달려 봄 · 8명씩 한 무리로 서로 보임 · 기록·점수 없음
+    const WU = new Map(); // pid → { d, v, steps, lap }
+    const wuOf = (pid) => { let w = WU.get(pid); if (!w) { w = { d: 0, v: 0, steps: [], lap: 0 }; WU.set(pid, w); } return w; };
+    function wuGroup(pid) { const ids = [...P.keys()].filter((q) => online(q) || q === pid); const i = Math.max(0, ids.indexOf(pid)); const g = Math.floor(i / 8); return ids.slice(g * 8, g * 8 + 8).map((q, k) => [q, k + 1]); }
 
     // ---------- 출전 선수 ----------
     const rawCount = (pid) => (mem.raced[pid] || []).length;
@@ -101,7 +105,7 @@ export const ath = {
     function seedLanes(k, N) { const mid = laneSet(Math.min(4, k), N); const rest = laneSet(N, N).filter((l) => !mid.includes(l)); return [...shuffle(R, mid), ...shuffle(R, rest)].slice(0, k); } // 결승: 기록 좋은 4명(팀)은 가운데 주로 추첨
     function begin() { // 출발 절차 시작
       const now = Date.now(); const r = race; r.att++; r.recall = null; r.firstFin = 0;
-      for (const x of r.rs) Object.assign(x, { d: 0, v: 0, e: 1, steps: [], last: 0, done: false, t: null, place: 0, leg: 0, od: 0, ov: 0, oSteps: [], oLast: 0, auto: false, turnAt: 0, react: null });
+      for (const x of r.rs) Object.assign(x, { lat: 0, inPack: 0, bump: 0, out: 0, blk: 0, d: 0, v: 0, e: 1, steps: [], last: 0, done: false, t: null, place: 0, leg: 0, od: 0, ov: 0, oSteps: [], oLast: 0, auto: false, turnAt: 0, react: null });
       r.tMarks = now; if (E().cmd === 'set') { r.tSet = now + 3500; r.tGo = r.tSet + 1200 + Math.floor(R() * 1300); } else { r.tSet = 0; r.tGo = now + 4200 + Math.floor(R() * 1000); } // 차렷 뒤 1.2~2.5초(예측 어렵게) · 800m는 제자리에 뒤 총
       G.st = 'marks'; ctx.dirtyAll();
     }
@@ -180,7 +184,29 @@ export const ath = {
     }
 
     // ---------- 매 0.1초 ----------
+    // 💥 800m 무리 달리기 (브레이크라인 합류 뒤): 앞사람을 뚫고 지나갈 수 없음
+    //  · 앞이 막혔는데 내가 더 빠르면 → 바깥 칸이 비었으면 자동으로 바깥으로 빠져 추월(조금 먼 길)
+    //  · 바깥 칸에 다른 선수가 있으면 → 몸싸움: 둘 다 잠깐 느려지고 나는 앞사람 뒤에 막힘
+    //  · 안쪽이 비면 다시 안쪽으로 (짧은 길)
+    const GAP = 1.3, SL = 0.9; // 앞뒤 간격(m) · 옆 칸 폭(m)
+    function pack(r, now) {
+      const L = r.rs.filter((x) => !x.done && x.d > BREAK + MERGE).sort((a, b) => b.d - a.d);
+      const busy = (me, lat, back = GAP, fwd = GAP) => L.some((o) => o !== me && o.inPack && Math.abs(o.lat - lat) < SL * 0.6 && o.d - me.d < fwd && me.d - o.d < back);
+      for (const x of L) {
+        if (!x.inPack) { x.inPack = 1; x.lat = 0; while (x.lat < SL * 4 && busy(x, x.lat)) x.lat += SL; } // 합류: 비어 있는 가장 안쪽 칸
+        const ahead = (o) => o.d > x.d || (o.d === x.d && L.indexOf(o) < L.indexOf(x));
+        const a = L.find((o) => o !== x && o.inPack && ahead(o) && o.d - x.d < GAP && Math.abs(o.lat - x.lat) < SL * 0.6); // 바로 앞 같은 칸
+        if (a) {
+          if (x.v > a.v + 0.15 && now - (x.out || 0) > 700) {
+            if (x.lat < SL * 4 - 0.01 && !busy(x, x.lat + SL)) { x.lat += SL; x.out = now; x.v *= 0.97; continue; } // 바깥으로 빠져 추월
+            if (now - (x.bump || 0) > 1500) { const s = L.find((o) => o !== x && Math.abs(o.lat - (x.lat + SL)) < SL * 0.6 && Math.abs(o.d - x.d) < GAP); x.bump = now; x.v *= 0.92; if (s) { s.bump = now; s.v *= 0.95; } } // 몸싸움
+          }
+          x.d = Math.min(x.d, a.d - GAP * 0.8); x.v = Math.min(x.v, a.v + 0.1); x.blk = now; // 뚫고 못 지나감
+        } else if (x.lat > 0 && now - (x.out || 0) > 1500 && !busy(x, x.lat - SL, GAP * 1.5, GAP * 1.5)) { x.lat = Math.max(0, x.lat - SL); x.out = now - 1000; } // 안쪽이 비면 들어옴
+      }
+    }
     function tick(now) {
+      if (G.st === 'setup') { let mv = false; for (const w of WU.values()) { const c = cadence(w.steps, now); const vt = 9 * Math.min(1, c / CAD); w.v += (vt - w.v) * (vt > w.v ? 0.13 : 0.2); if (w.v > 0.05) { mv = true; w.d += w.v * 0.1; if (w.d >= 100) { w.d -= 100; w.lap++; } } else w.v = 0; } if (mv && now - (G._w || 0) >= 250) { G._w = now; ctx.dirtyAll(); } return; }
       if (!race) return;
       const r = race; const ev2 = E();
       if (G.st === 'marks' && r.tSet && now >= r.tSet) { G.st = 'set'; ctx.dirtyAll(); }
@@ -198,7 +224,8 @@ export const ath = {
         const k = Math.min(1, c / CAD);
         if (ev2.energy) { if (k > 0.72) x.e = Math.max(0, x.e - ((k - 0.72) / 0.28) * ev2.energy * dt * 1.6); else if (k < 0.6) x.e = Math.min(1, x.e + 0.05 * dt); }
         const f = ev2.energy ? 0.7 + 0.3 * Math.min(1, x.e / 0.35) : 1;
-        const vt = ev2.vmax * f * k;
+        const wide = cfg.ev === '800' && x.lat ? 1 - 0.016 * (x.lat / 0.9) : 1; // 바깥으로 돌면 더 먼 길(속도 조금 손해)
+        const vt = ev2.vmax * f * k * wide;
         x.v += (vt - x.v) * (vt > x.v ? 1 - Math.exp(-dt / 0.7) : 1 - Math.exp(-dt / 0.45));
         const d0 = x.d; x.d += x.v * dt;
         if (relay && x.leg < 3) {
@@ -214,6 +241,7 @@ export const ath = {
         }
         if (x.d >= D) { const over = x.v > 0 ? (x.d - D) / x.v : 0; x.t = (now - r.tGo) / 1000 - over; x.d = D; x.done = true; x.v = 0; if (!r.firstFin) r.firstFin = now; void d0; ctx.dirtyAll(); }
       }
+      if (cfg.ev === '800') pack(r, now);
       const allDone = r.rs.every((x) => x.done);
       const capMs = (ev2.est * 3 + 20) * 1000;
       if (allDone || (r.firstFin && now - r.firstFin > (cfg.ev === 'relay' ? 15000 : 12000)) || now - r.tGo > capMs) finishRace(now, allDone ? 'all' : 'time');
@@ -224,7 +252,9 @@ export const ath = {
       if (!m || typeof m !== 'object') return null;
       if (m.a === 'pick' && G.st === 'setup' && cfg.choose && P.has(pid)) { const k = String(m.v); if (progList().includes(k)) { mem.choice[pid] = k; if (!prac) saveMem(ev); ctx.dirtyAll(); } return null; }
       if (m.a !== 'st') return null;
-      const n = Number.isInteger(m.n) ? Math.max(0, Math.min(4, m.n)) : 0; if (!n || !race) return null;
+      const n = Number.isInteger(m.n) ? Math.max(0, Math.min(4, m.n)) : 0; if (!n) return null;
+      if (G.st === 'setup') { if (P.has(pid)) takeSteps(wuOf(pid).steps, n, now); return null; } // 준비 운동
+      if (!race) return null;
       const who = runnerOf(pid); if (!who) return null; const { x, role } = who;
       if (G.st === 'marks' || G.st === 'set') {
         if (role !== 'run' || (cfg.ev === 'relay' && x.leg > 0)) return null;
@@ -238,7 +268,7 @@ export const ath = {
     }
 
     // ---------- 화면에 보낼 것 ----------
-    const rsOut = () => (race ? race.rs.map((x) => [x.lane, x.u.label, x.u.team, r1(x.d), r1(x.v), x.place, x.t != null ? r2(x.t) : null, x.fs, cfg.ev === 'relay' ? x.leg : 0, cfg.ev === 'relay' && x.leg < 3 && x.d >= ZONES[x.leg][0] - 25 ? r1(x.od) : 0, r2(x.e), x.auto ? 1 : 0, x.hold ? 1 : 0, cfg.ev === 'relay' ? (P.get(x.u.members[x.leg])?.name || '') : '']) : []);
+    const rsOut = () => (race ? race.rs.map((x) => [x.lane, x.u.label, x.u.team, r1(x.d), r1(x.v), x.place, x.t != null ? r2(x.t) : null, x.fs, cfg.ev === 'relay' ? x.leg : 0, cfg.ev === 'relay' && x.leg < 3 && x.d >= ZONES[x.leg][0] - 25 ? r1(x.od) : 0, r2(x.e), x.auto ? 1 : 0, x.hold ? 1 : 0, cfg.ev === 'relay' ? (P.get(x.u.members[x.leg])?.name || '') : '', r1(x.lat || 0), x.bump && Date.now() - x.bump < 1200 ? 1 : x.out && Date.now() - x.out < 1000 ? 2 : x.blk && Date.now() - x.blk < 600 ? 3 : 0]) : []);
     const liveRank = () => { if (!race) return []; return [...race.rs].sort((a, b) => (a.done && b.done ? a.t - b.t : a.done ? -1 : b.done ? 1 : b.d - a.d)).map((x) => x.lane); };
     const heatTag = () => (G.inFinal ? '결승' : G.heats.length ? `예선 ${G.hi + 1}조 / ${G.heats.length}조` : '');
     const boardTop = () => standingsRows().filter((r) => r.t != null).slice(0, 8).map((r) => [r.label, r.team, r.t, r.fin ? 1 : 0]);
@@ -264,6 +294,7 @@ export const ath = {
         const who = runnerOf(pid);
         o.me = who ? { lane: who.x.lane, role: who.role, i: who.i ?? null, leg: who.x.leg, sq: cfg.ev === 'relay' ? who.x.u.label : '', mem: cfg.ev === 'relay' ? who.x.u.members.map((q) => P.get(q)?.name || '') : null, myLeg: cfg.ev === 'relay' ? who.x.u.members.indexOf(pid) : 0 } : null;
         o.q = myQueue(pid);
+        if (G.st === 'setup') { o.rs = wuGroup(pid).map(([q, lane]) => { const w = WU.get(q) || { d: 0, v: 0, lap: 0 }; return [lane, P.get(q)?.name || '', P.get(q)?.team ?? 0, r1(w.d), r1(w.v), 0, null, 0, 0, 0, 1, 0, 0, '', w.lap]; }); o.wu = 1; o.me = null; o.wuLane = (wuGroup(pid).find(([q]) => q === pid) || [])[1] || 0; }
         if (G.st === 'setup') { const s = summary(); o.setup = { n: s.n, heats: s.heats, est: s.estSec, inEv: entrants().includes(pid) ? 1 : 0, choose: cfg.choose ? progList() : null, mine: mem.choice[pid] || null }; }
         if (G.st === 'done') o.res = lastRes();
         if (G.st === 'over' || G.st === 'done') o.board = boardTop();

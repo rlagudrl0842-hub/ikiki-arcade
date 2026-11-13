@@ -6,7 +6,8 @@ export const posOf = (ev, L, d, off = 0) => (off && ev === '800' && d > BREAK + 
 // 800m: 앞사람과 1.6m 안이면 한 칸 바깥(0.9m)으로 — 서로 가리지 않게 (그림만, 거리 계산과 무관)
 export function packOffsets(ev, list) { const out = new Map(); if (ev !== '800') return out; const s = [...list].sort((a, b) => b.d - a.d); const placed = []; for (const r of s) { let off = 0; if (r.d > BREAK + MERGE) { while (off < 3.6 && placed.some((p) => Math.abs(p.d - r.d) < 1.6 && Math.abs(p.off - off) < 0.5)) off += 0.9; } placed.push({ d: r.d, off }); out.set(r.key, off); } return out; }
 
-export const ROW = { lane: 0, label: 1, team: 2, d: 3, v: 4, place: 5, t: 6, fs: 7, leg: 8, od: 9, e: 10, auto: 11, hold: 12, runner: 13 };
+export const ROW = { lane: 0, label: 1, team: 2, d: 3, v: 4, place: 5, t: 6, fs: 7, leg: 8, od: 9, e: 10, auto: 11, hold: 12, runner: 13, lat: 14, fx: 15 }; // fx: 1 몸싸움 · 2 바깥 추월 · 3 막힘 (800m)
+export const FX = ['', ' 💥', ' ↗', ''];
 
 // 서버가 보낸 위치를 서버 시각에 맞춰 조금 앞으로 (최대 0.4초) + 부드럽게
 export function makeSmoother() {
@@ -67,12 +68,23 @@ function mark(c, vw, ev, L, d, col, w) {
 }
 // 선수 점(위에서 본 모습): 그림자 + 팀 색 몸통 + 주로 번호
 export function dotRunner(c, vw, ev, L, d, col, { r = 1.2, me = false, label = '', lead = false, offset = 0, small = false } = {}) {
-  const [x, y] = posOf(ev, L, d, offset); const [X, Y] = P(vw, x, y); const R = Math.max(small ? 6 : 8, r * vw.sc);
-  c.fillStyle = '#0006'; c.beginPath(); c.ellipse(X, Y + R * 0.5, R, R * 0.45, 0, 0, 7); c.fill();
-  if (me) { c.strokeStyle = '#fff'; c.lineWidth = 3; c.beginPath(); c.arc(X, Y - R * 0.3, R + 5, 0, 7); c.stroke(); }
-  c.fillStyle = col; c.beginPath(); c.arc(X, Y - R * 0.3, R, 0, 7); c.fill(); c.strokeStyle = '#0b0e24'; c.lineWidth = Math.max(1, R * 0.15); c.stroke();
-  c.fillStyle = '#fff'; c.font = `900 ${Math.round(R * 1.15)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 3; c.strokeStyle = '#0b0e24'; c.strokeText(String(L), X, Y - R * 0.25); c.fillText(String(L), X, Y - R * 0.25);
-  if (label) { c.font = `800 ${Math.max(10, Math.round(R * 0.85))}px sans-serif`; const tw = c.measureText(label).width + 10; c.fillStyle = lead ? '#ffd43be6' : '#0b0e24d0'; c.beginPath(); c.roundRect ? c.roundRect(X - tw / 2, Y - R * 2.6, tw, R * 1.25, 5) : c.rect(X - tw / 2, Y - R * 2.6, tw, R * 1.25); c.fill(); c.fillStyle = lead ? '#111' : '#fff'; c.fillText(label, X, Y - R * 1.95); }
+  // 트랙 위 선수(사람 모양): 달리는 방향을 보고 다리·팔이 움직임 · 팀 색 상의 · 주로 번호표
+  const [x, y] = posOf(ev, L, d, offset); const [x2] = posOf(ev, L, d + 0.6, offset); const [X, Y] = P(vw, x, y);
+  const R = Math.max(small ? 6 : 8, r * vw.sc); const h = R * 2.5; const dir = x2 >= x ? 1 : -1; const ph = d * 1.7; const sw = Math.sin(ph) * 0.9;
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+  c.fillStyle = '#0006'; c.beginPath(); c.ellipse(X, Y, h * 0.3, h * 0.08, 0, 0, 7); c.fill();
+  if (me) { c.strokeStyle = '#fff'; c.lineWidth = Math.max(2, h * 0.07); c.beginPath(); c.ellipse(X, Y, h * 0.42, h * 0.13, 0, 0, 7); c.stroke(); }
+  const hip = [X, Y - h * 0.46], sh = [X + dir * h * 0.09, Y - h * 0.8]; const skin = '#3b2a20';
+  c.strokeStyle = skin; c.lineWidth = Math.max(2, h * 0.13);
+  for (const sgn of [1, -1]) { const s2 = sw * sgn; const knee = [hip[0] + dir * Math.sin(s2) * h * 0.22, hip[1] + h * 0.22]; c.beginPath(); c.moveTo(...hip); c.lineTo(...knee); c.lineTo(knee[0] + dir * Math.sin(s2 - 0.6) * h * 0.2, Y - h * 0.02); c.stroke(); }
+  c.strokeStyle = '#0b0e24'; c.lineWidth = Math.max(4.5, h * 0.36); c.beginPath(); c.moveTo(...hip); c.lineTo(...sh); c.stroke(); // 테두리
+  c.strokeStyle = col; c.lineWidth = Math.max(3.5, h * 0.29); c.beginPath(); c.moveTo(...hip); c.lineTo(...sh); c.stroke(); // 팀 색 상의
+  c.strokeStyle = skin; c.lineWidth = Math.max(1.8, h * 0.1); for (const sgn of [-1, 1]) { c.beginPath(); c.moveTo(...sh); c.lineTo(sh[0] + dir * Math.sin(sw * sgn) * h * 0.24, sh[1] + h * 0.2); c.stroke(); }
+  c.fillStyle = skin; c.beginPath(); c.arc(sh[0] + dir * h * 0.05, sh[1] - h * 0.13, Math.max(2.5, h * 0.13), 0, 7); c.fill();
+  if (h >= 16) { const fs = Math.round(h * 0.17); c.fillStyle = '#fff'; c.fillRect(X - fs * 0.55 + dir * h * 0.04, Y - h * 0.72, fs * 1.1, fs * 1.05); c.fillStyle = '#111'; c.font = `900 ${fs}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(L), X + dir * h * 0.04, Y - h * 0.72 + fs * 0.55); } // 번호표
+  else { c.fillStyle = '#fff'; c.font = `900 ${Math.max(8, Math.round(h * 0.45))}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'bottom'; c.lineWidth = 2.5; c.strokeStyle = '#0b0e24'; c.strokeText(String(L), X, Y - h * 1.02); c.fillText(String(L), X, Y - h * 1.02); }
+  if (label) { c.font = `800 ${Math.max(10, Math.round(h * 0.32))}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; const tw = c.measureText(label).width + 10; const th = Math.max(14, h * 0.45); const ly = Y - h * 1.18; c.fillStyle = lead ? '#ffd43be6' : '#0b0e24d0'; c.beginPath(); c.roundRect ? c.roundRect(X - tw / 2, ly - th / 2, tw, th, 5) : c.rect(X - tw / 2, ly - th / 2, tw, th); c.fill(); c.fillStyle = lead ? '#111' : '#fff'; c.fillText(label, X, ly); }
+  c.restore();
   return [X, Y];
 }
 

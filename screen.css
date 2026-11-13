@@ -474,3 +474,7 @@ body[data-ph="playing"] #stage, body[data-ph="countdown"] #stage { background: l
 .athsnd { background: #0b0e24cc; border-radius: 18px; padding: 10px 14px; color: #fff; display: flex; flex-direction: column; gap: 6px; font-size: 17px; }
 .athsnd .btn { font-size: 18px; padding: 8px; } .athsnd input[type=range] { width: 70%; vertical-align: middle; }
 .athsm { font-size: 15px; } .athsm.ok { color: #8ce99a; } .athsm.warn { color: #ffd43b; }
+
+/* 🤖 팀별 AI 폰(보이지 않게 · 그래도 계속 움직이도록 화면 밖 작은 크기) */
+.aibox { position: fixed; left: -2000px; top: 0; width: 360px; height: 640px; overflow: hidden; pointer-events: none; }
+.aibox iframe { width: 360px; height: 640px; border: 0; position: absolute; left: 0; top: 0; }

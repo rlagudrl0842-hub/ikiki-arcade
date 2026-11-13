@@ -163,6 +163,16 @@ export class AI {
       case 'boss':
         once('boss', () => this.every(90, () => { const vv = this.v; if (!vv?.t0 || vv.done) return; const s = (now() - vv.t0) / 1000; const k = Math.floor(s / vv.slot); if (k === this.bk || s - k * vv.slot < R(0.15, 0.6) / sk) return; this.bk = k; if (Math.random() > 0.85 * sk + 0.1) return; const right = bossCell(vv.seed, this.pid, k, vv.cells); const c = Math.random() < (1 - sk) * 0.25 ? (right + 1) % vv.cells : right; this.in({ a: 'hit', k, c, ts: Math.round(now()) }); }));
         break;
+      case 'ath': // 🏟 육상: 총소리 뒤 반응 시간만큼 기다렸다가 왼·오 걸음 (실력 = 빠르기·반응) · 준비 운동도 가끔 · 계주는 앞 주자가 다가오면 출발
+        once('ath', () => this.every(100, () => { const vv = this.v; if (!vv) return; const key = `${vv.rid}:${vv.att}`; if (key !== this.athK) { this.athK = key; this.athR = R(180, 520) / (0.4 + sk * 0.6); this.acc = 0; }
+          let rate = 0;
+          if (vv.st === 'setup') rate = Math.random() < 0.02 ? 0 : (this.wu ??= Math.random() < 0.6 ? R(3, 6) : 0);
+          else if (vv.st === 'go' && vv.me && (vv.me.role === 'run' || vv.me.role === 'out') && now() - vv.tGo > this.athR) {
+            if (vv.me.role === 'out') { const row = (vv.rs || []).find((r) => r[0] === vv.me.lane); const z0 = [80, 180, 280][vv.me.leg] ?? 999; if (!row || row[3] < z0 - (4 + sk * 6)) return; }
+            rate = (vv.ev === '800' ? 6.2 : vv.ev === '400' ? 6.6 : 7.4) * (0.62 + 0.38 * sk) * R(0.95, 1.05);
+          }
+          if (!rate) return; this.acc += rate / 10; const n = Math.floor(this.acc); if (n) { this.acc -= n; this.in({ a: 'st', n: Math.min(4, n) }); } }));
+        break;
       case 'tug':
         once('tug', () => this.every(Math.round(170 / sk), () => this.in({ a: 'pull', n: Math.random() < 0.5 ? 1 : 2 })));
         break;

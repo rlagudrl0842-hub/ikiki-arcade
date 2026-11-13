@@ -346,7 +346,7 @@ function paintBoard() {
   if (!P.runs) { pb.append(h('span', { class: 'muted small' }, '🙋 개인 순위: 개인 점수가 집계되는 게임을 하면 표시돼요 (체육·진행자 판정 게임은 팀 점수만)')); return; }
   pb.append(h('b', { class: 'small' }, `🙋 개인 TOP 5 · 게임 평균 (${P.n}명${P.need > 1 ? ` · ${P.need}판 이상` : ''})`), ...(P.list || []).map((x) => { const t = S.teams.find((y) => y.id === x.team); return h('span', { class: 'pitem', style: { '--tc': t?.color || '#888' } }, `${x.tie ? '공동 ' : ''}${x.rank}위 ${t?.icon || ''}${x.name} 평균 ${x.total}점 · ${x.games}판`); }));
 }
-const ctrlKey = () => JSON.stringify([S.practice, S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
+const ctrlKey = () => JSON.stringify([S.settings.aiBots, S.settings.aiLv, S.teams.map((t) => S.counts[t.id]?.total || 0), S.practice, S.phase, S.seq, S.paused, S.idx, S.total, S.item?.game, S.item?.host, S.notice, S.settings.duck, S.settings.auto, S.ceremonyStep, S.standings.played, S.teams.map((t) => [t.id, t.name, t.icon, t.color]), S.settings.league, S.qinfo?.ver, S.lastResult?.runId, S.settings.preview]);
 const runKey = () => JSON.stringify([S.phase, S.idx, S.playlist, S.standings.rows, S.replayLog, S.teams.map((t) => [t.id, t.name, t.icon, t.color])]);
 // ---------------- ⚡ 퀵 점수판 (응원·수동 점수) ----------------
 // 팀별 +단위/−단위 버튼, 단위(1·2·3·5·10) 고르기, 직접 입력, 마지막 되돌리기, 최근 기록. 큰 점수(10점 이상)·기록 삭제는 확인
@@ -481,9 +481,24 @@ function setRemote(on) {
 }
 function paintRmBtn() { const b = $('.rmbtn'); if (b) b.textContent = document.body.classList.contains('remote') ? '⚙ 전체 화면' : '🎮 리모컨'; }
 // 🙋 진행자도 참가: QR 없이 이 폰에서 바로 참가 화면을 엶 (참가 화면 오른쪽 위 🎮 버튼으로 진행도 할 수 있음)
-function joinSelf() {
+function joinSelf(team) {
+  if (team) { const u = `/play.html?e=${encodeURIComponent(S.event.code)}&host=1&team=${team}&join=${encodeURIComponent('사회자')}`; const w = window.open(u, 'ikiki-play'); if (!w) location.href = u; return; }
   const u = `/play.html?e=${encodeURIComponent(S.event.code)}&host=1`;
   const w = window.open(u, 'ikiki-play'); if (!w) location.href = u;
+}
+// 👥 팀별 참가: 참가자가 없어도 사회자가 팀을 골라 바로 참가 · 팀마다 AI(컴퓨터) 참가자 0~8명
+// AI는 대형 화면(빔) 창 안에서 실제 참가자처럼 게임해요 → 대형 화면이 켜져 있어야 움직임 · 점수도 팀 점수에 들어감(🤖 표시)
+function teamJoinBox() {
+  const bots = { ...(S.settings.aiBots || {}) }; const lv = S.settings.aiLv || 'normal';
+  const setN = (i, n) => { const b = { ...bots }; if (n > 0) b[i] = n; else delete b[i]; save({ settings: { aiBots: b } }); };
+  const total = S.teams.reduce((a, t) => a + (S.counts[t.id]?.total || 0), 0); const nAI = Object.values(bots).reduce((a, b) => a + b, 0);
+  return h('details', { class: 'tjbox', open: total === 0 || nAI > 0 }, h('summary', {}, `👥 팀별 참가 (나 · 🤖 AI)${nAI ? ` · AI ${nAI}명` : ''}`),
+    ...S.teams.map((t, k) => { const i = k + 1; const n = bots[i] || 0; return h('div', { class: 'tjrow', style: { '--tc': t.color } }, h('b', {}, `${t.icon} ${t.name}`), h('span', { class: 'muted small' }, `${S.counts[t.id]?.total || 0}명`),
+      h('button', { class: 'btn ghost sm', onclick: () => joinSelf(i) }, '🙋 내가 참가'),
+      h('span', { class: 'tjai' }, h('button', { class: 'btn ghost sm', disabled: !n, onclick: () => setN(i, n - 1) }, '−'), h('b', {}, `🤖 ${n}`), h('button', { class: 'btn ghost sm', disabled: n >= 8, onclick: () => setN(i, n + 1) }, '+'))); }),
+    h('div', { class: 'row wrap' }, h('label', { class: 'muted small' }, 'AI 실력 ', h('select', { class: 'inp sm', onchange: (e) => save({ settings: { aiLv: e.target.value } }) }, ...[['easy', '🟢 쉬움'], ['normal', '🟡 보통'], ['hard', '🔴 어려움'], ['random', '🟣 랜덤']].map(([v, l]) => h('option', { value: v, selected: v === lv }, l)))),
+      nAI ? h('button', { class: 'btn ghost sm', onclick: () => save({ settings: { aiBots: {} } }) }, '🤖 AI 모두 빼기') : null),
+    h('p', { class: 'muted small' }, '🤖 AI는 대형 화면(빔) 창이 열려 있을 때만 움직여요. AI 점수도 팀 점수에 들어가요 (순위표에 🤖 표시). 뺀 AI는 접속 끊김으로 남아요.'));
 }
 function drawCtrl() {
   const c = $('.ctrl'); c.innerHTML = '';
@@ -540,7 +555,7 @@ function drawCtrl() {
   const tools = h('div', { class: 'tools' },
     h('button', { class: 'btn blue', onclick: () => window.open(`/screen.html?e=${S.event.code}`, 'ikiki-screen', 'width=1280,height=720') }, '🖥 대형 화면(빔) 열기'),
     h('button', { class: 'btn ghost', onclick: () => qrModal() }, '📱 참가 QR'),
-    h('button', { class: 'btn ghost', onclick: () => joinSelf() }, '🙋 나도 참가 (QR 없이)'));
+    h('button', { class: 'btn ghost', onclick: () => joinSelf() }, '🙋 나도 참가 (QR 없이)'), teamJoinBox());
   more.append(
     document.body.classList.contains('remote') ? null : h('button', { class: 'btn ghost', onclick: () => remoteModal() }, '🎮 폰 리모컨'),
     h('button', { class: `btn ${S.settings.duck ? 'yellow' : 'ghost'}`, onclick: () => save({ settings: { duck: !S.settings.duck } }) }, S.settings.duck ? '🎤 말씀 끝 · 음악 다시 크게' : '🎤 말할 때 음악 줄이기'),
@@ -641,7 +656,7 @@ const ATH_RULES = [
   ['부정 출발', '총 전에 출발하면 한 번에 실격 (반응 0.100초 미만도 부정 출발)', '총 전 입력만 판정(서버가 받은 시각) · 1회 = 경고 후 다시 출발 · 같은 선수 2회째 = 1초 늦게 출발 (실격 없음) · 800m는 "제자리에" 2초 뒤부터 판정'],
   ['100m', '직선 주로, 자기 주로 유지', '같음 (홈 직선 연장 구간에서 출발)'],
   ['200m·400m', '엇갈린 출발, 끝까지 자기 주로', '표준 트랙 치수(직선 84.39m·곡선 반지름 36.5m·주로 1.22m)로 출발 위치 계산 — 8주로 400m는 약 53m 앞'],
-  ['800m', '첫 곡선이 끝나는 브레이크라인까지 자기 주로, 이후 안쪽 합류 (2026년 개정 실내 규정은 해당 없음 · 실외 기준)', '같음. 합류 뒤 거리는 1주로 기준으로 같게 처리(브레이크라인 곡선 보정 단순화) · 몸싸움·길막힘 없음'],
+  ['800m', '첫 곡선이 끝나는 브레이크라인까지 자기 주로, 이후 안쪽 합류 (2026년 개정 실내 규정은 해당 없음 · 실외 기준)', '같음. 합류 뒤 거리는 1주로 기준(브레이크라인 곡선 보정 단순화) · 무리 달리기: 앞사람을 뚫고 못 지나감 → 더 빠르면 바깥 칸이 빌 때 자동으로 바깥 추월(조금 먼 길) · 바깥 칸에 사람이 있으면 몸싸움(둘 다 잠깐 느려짐) · 밀치기 반칙·실격은 없음'],
   ['4×100m 계주', '30m 교환 구역(표시선 앞 20m~뒤 10m) 안에서 배턴 · 구역 밖 교대·배턴 떨어뜨림 = 실격', '다음 주자는 구역 시작점에서 출발해 구역 끝을 넘지 못하고 기다림(실격 대신) · 따라잡으면 자동 교대 · 배턴 떨어뜨림 없음 · 3초 안 누르면 자동으로 천천히 달림'],
   ['기록·결승', '전자 계시 기록 · 조별 순위+기록으로 다음 라운드', '게임 계산 기록(실제보다 짧게 압축, 실제 기록 아님) · 모든 조 기록을 합쳐 빠른 순서로 결승 (주로 수만큼) · 팀 점수 = 순위 점수 1인 평균 (결승·계주 2배)'],
 ];
@@ -748,7 +763,7 @@ async function soloStart(gamesList, mode, lv) {
   // 팝업 차단을 피하려고 창을 먼저 열고 주소를 나중에 넣음
   const w = window.open('about:blank', '_blank');
   try {
-    const r = await A('/api/solo', { games: gamesList, mode: S?.settings?.mode || 'elem', bgm: S?.settings?.bgm || {}, dur: Object.fromEntries((S?.playlist || []).filter((p) => p.dur).map((p) => [p.game, p.dur])), watch: mode === 'watch' });
+    const r = await A('/api/solo', { from: typeof eid === 'string' ? eid : undefined, games: gamesList, mode: S?.settings?.mode || 'elem', bgm: S?.settings?.bgm || {}, dur: Object.fromEntries((S?.playlist || []).filter((p) => p.dur).map((p) => [p.game, p.dur])), watch: mode === 'watch' });
     const url = `/solo.html?e=${r.id}&c=${r.code}&mode=${mode}&lv=${lv}&back=${encodeURIComponent(location.pathname + location.hash)}`;
     if (w && !w.closed) w.location.href = url; else location.href = url;
   } catch (e) { w?.close(); toast(e.message); }
@@ -1178,9 +1193,6 @@ function printResult() {
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// 📋 행사용 문제 세트 (버튼 한 번으로 칸을 채우고 저장) — 행사 후 이 목록과 버튼만 지우면 됨
-const BELL_PRESETS = [{ title: '스포츠 진로 도전 골든벨', q: ["운동선수가 경기 외에 꾸준히 관리해야 하는 것은? | 몸 상태와 생활 습관 | 경기장 조명 | 관중석 좌석 | 경기 포스터", "스포츠지도사의 주요 역할은? | 사람들에게 운동을 가르치는 것 | 경기 점수를 대신 정하는 것 | 선수 계약을 협상하는 것 | 경기 기사를 쓰는 것", "경기 규칙에 따라 공정하게 판정하는 사람은? | 심판 | 스포츠 기자 | 트레이너 | 마케터", "경기 시간과 점수, 기록을 정확히 측정하고 남기는 사람은? | 경기 기록원 | 스포츠 에이전트 | 체육교사 | 캐스터", "대회 일정과 경기장 운영, 안전을 준비하는 사람은? | 경기 운영 요원 | 운동선수 | 스포츠 심리상담사 | 해설위원", "테이핑과 응급처치, 재활 운동으로 선수의 회복을 돕는 직업은? | 선수 트레이너 | 스포츠 기자 | 경기 운영 요원 | 스포츠 마케터", "사람의 몸 상태를 확인하고 맞춤 운동을 처방하는 직업은? | 건강운동관리사 | 심판 | 캐스터 | 스포츠 에이전트", "다친 근육과 관절의 움직임 회복을 돕는 직업은? | 물리치료사 | 스포츠 기자 | 전력분석관 | 감독", "선수의 부상을 진단하고 치료하는 직업은? | 스포츠의학 의사 | 경기 기록원 | 스포츠 마케터 | 캐스터", "경기를 취재하고 기사로 쓰는 사람은? | 스포츠 기자 | 심판 | 선수 트레이너 | 경기 운영 요원", "경기 중계를 진행하는 사람은? | 캐스터 | 전력분석관 | 물리치료사 | 에이전트", "경기 영상과 기록을 분석해 팀의 전술 수립을 돕는 직업은? | 전력분석관 | 스포츠 기자 | 건강운동관리사 | 경기 운영 요원", "스포츠 구단과 대회를 알리고 관중이나 후원사를 연결하는 직업은? | 스포츠 마케터 | 심판 | 물리치료사 | 기록원", "선수의 계약이나 이적, 광고 협상을 지원하는 직업은? | 스포츠 에이전트 | 캐스터 | 선수 트레이너 | 체육교사", "선수가 긴장이나 슬럼프를 관리하도록 돕는 직업은? | 스포츠 심리상담사 | 경기 기록원 | 스포츠 마케터 | 심판", "2025년에 가장 많은 사람이 취득한 스포츠지도자 자격은? | 생활스포츠지도사 | 건강운동관리사 | 장애인스포츠지도사 | 유소년스포츠지도사", "스포츠 직업을 가지려면 반드시 운동선수가 되어야 할까? | 아니다. 글쓰기·의학·분석 등 다양한 역할이 있다 | 그렇다. 선수만 스포츠 일을 할 수 있다 | 그렇다. 운동선수 외에는 스포츠 직업이 없다 | 아니다. 스포츠에는 직업이 없다"], why: ["운동선수는 훈련과 경기뿐 아니라 몸 상태와 생활 습관도 관리해야 해요.", "스포츠지도사는 사람들에게 운동을 가르치는 일을 해요.", "심판은 경기 규칙에 따라 공정하게 판정해요.", "경기 기록원은 점수와 시간, 기록을 정확히 측정하고 남겨요.", "경기 운영 요원은 대회가 안전하고 원활하게 진행되도록 준비해요.", "선수 트레이너는 부상을 예방하고 응급처치와 재활 운동으로 회복을 도와요.", "건강운동관리사는 몸 상태를 확인해 사람마다 알맞은 운동을 처방해요.", "물리치료사는 다친 사람이 근육과 관절을 다시 잘 움직이도록 도와요.", "스포츠의학 의사는 선수의 부상을 진단하고 치료해요.", "스포츠 기자는 경기를 취재하고 기사로 써요.", "캐스터는 경기 상황을 시청자에게 중계해요.", "전력분석관은 경기 영상과 기록을 살펴 팀의 작전 수립을 도와요.", "스포츠 마케터는 구단이나 대회를 알리고 관중과 후원사를 연결해요.", "스포츠 에이전트는 선수를 대신해 계약이나 광고 협상을 지원해요.", "스포츠 심리상담사는 선수가 긴장이나 슬럼프를 관리하도록 도와요.", "2025년 자료에서 생활스포츠지도사 취득자는 16,281명으로 다른 자격보다 많아요.", "스포츠 분야에는 선수 외에도 가르치기, 치료하기, 기록·분석하기 등 여러 직업이 있어요."] }];
-
 function tabQuiz(body) {
   const s = full?.settings || {};
   const bell = h('textarea', { class: 'inp ta', rows: 10, placeholder: '한 줄에 한 문제: 문제 | 정답 | 오답 | 오답 | 오답\n예) 우리 원장님 성함은? | 김민지 | 이수진 | 박지영\n예) 오늘 운동회 장소는? | 별빛체육관 | 달빛강당' });
@@ -1219,11 +1231,6 @@ function tabQuiz(body) {
     h('div', { class: 'field' }, h('label', {}, '📘 문제 세트 이름 (참가자 폰·큰 화면 위에 표시)'), title),
     h('div', { class: 'field' }, h('label', {}, '💡 정답 이유 (정답 공개 때 정답과 함께 표시 · 위 문제와 같은 순서로 한 줄씩)'), why),
     h('div', { class: 'row wrap' }, h('button', { class: 'btn ghost', onclick: backup }, '💾 백업 내려받기 (지금 저장된 것)')),
-    ...BELL_PRESETS.map((p) => h('button', { class: 'btn green', onclick: async () => {
-      // 이미 다른 문제가 있으면 먼저 백업 파일을 내려받고(자동) 바꿀지 물어봄 → 칸 채우기 → 저장
-      if ((s.bellCustom || []).length && (s.bellCustom || []).map((q) => q.join(' | ')).join('\n') !== p.q.join('\n')) backup();
-      bell.value = p.q.join('\n'); why.value = p.why.join('\n'); title.value = p.title; only.checked = true; await save2();
-    } }, `📋 '${p.title}' ${p.q.length}문제 불러와서 저장`)),
     h('h3', {}, '🖍 그려라 맞혀라 단어'), h('p', { class: 'muted small' }, '6개 이상 넣으면 넣은 단어만 써요 (팀마다 다른 단어가 나와요).'), words,
     h('button', { class: 'btn', onclick: save2 }, '💾 문제·이유·단어 저장'),
     h('h3', {}, '🔁 출제 기록'), h('p', { class: 'muted small' }, '같은 행사에서는 이미 낸 문제를 다 쓰기 전까지 다시 내지 않아요 (새로고침·서버 재시작 후에도 기억). 처음부터 다시 내고 싶을 때만 지우세요.'),

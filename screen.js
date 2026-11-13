@@ -31,6 +31,16 @@ const sayV = (t, r) => { if (voiceOn() && t) BGM.voice(Math.min(6, 0.9 + String(
 const bgmApi = { hold: (on) => BGM.hold(on), active: () => !!(BGM.status().playing || BGM.status().held) };
 const ctx = { now: () => live.now(), get teams() { return S.teams; }, team, sfx: (n) => sfx(n, sfxOn()), say: sayV, bgm: bgmApi };
 
+// 🤖 팀별 AI 참가자: 사회자가 정한 수만큼 이 화면 안에 보이지 않는 'AI 폰'을 띄워 실제 참가자처럼 게임함 (이 화면을 닫으면 AI도 멈춤)
+const AIBOX = document.createElement('div'); AIBOX.className = 'aibox'; document.body.append(AIBOX);
+function aiSync() {
+  if (new URLSearchParams(location.search).has('embed') || !S) return; // 혼자 테스트 화면 안에서는 안 씀
+  const want = new Map(); const lv = S.settings.aiLv || 'normal';
+  for (const [ti, n] of Object.entries(S.settings.aiBots || {})) for (let k = 1; k <= n; k++) want.set(`${ti}-${k}`, `/play.html?e=${encodeURIComponent(S.event.code)}&ai=${lv}&team=${ti}&slot=${ti}x${k}&join=${encodeURIComponent(`AI ${ti}팀-${k}`)}`);
+  for (const f of [...AIBOX.children]) { const u = want.get(f.dataset.k); if (!u) f.remove(); else if (f.dataset.u !== u) { f.src = u; f.dataset.u = u; } want.delete(f.dataset.k); }
+  for (const [k, u] of want) { const f = document.createElement('iframe'); f.dataset.k = k; f.dataset.u = u; f.src = u; f.title = 'AI 참가자'; f.tabIndex = -1; AIBOX.append(f); }
+}
+
 // 소리 켜기 (브라우저 자동재생 제한 때문에 한 번 클릭 필요)
 const gate = $('#gate');
 // 혼자 테스트·미리보기 안에 넣은 화면: 안내 덮개 없이, 바깥 화면에서 '시작'을 누르면 소리 켜기 (iframe allow=autoplay)
@@ -68,7 +78,7 @@ else live = new Live({ t: 'hello', role: 'screen', code }, onMsg, (st) => docume
 const nextIds = () => (S ? [S.playlist?.[S.idx], S.playlist?.[S.idx + 1]].filter(Boolean).map((p) => BGM.pick(S.settings, p.game, customList)?.id) : []);
 function onMsg(m) {
   if (m.t === 'state') { pracBadge(m);
-    const prev = S; S = m; if (prev && prev.idx !== S.idx && gate.classList.contains('hidden')) BGM.preloadAll(nextIds()); joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
+    const prev = S; S = m; aiSync(); if (prev && prev.idx !== S.idx && gate.classList.contains('hidden')) BGM.preloadAll(nextIds()); joinUrl = (S.settings.joinUrl || localBase || location.origin) + '/play.html?e=' + S.event.code; render(prev); quickFx(prev); return; }
   if (m.t === 'live' && cur?.inst && S?.phase === 'playing' && m.run === S.run?.id) {
     const vals = cur.inst.update(m.s);
     if (vals) overtake(vals);

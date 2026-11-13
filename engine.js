@@ -215,7 +215,7 @@ export class Event {
     return {
       t: 'state', now: Date.now(),
       event: { id: this.id, code: this.code, name: this.name },
-      settings: { practice: this.settings.practice || 0, practiceSec: this.settings.practiceSec || 20, mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', space: this.settings.space || 'gym', elemLevel: this.settings.elemLevel || 'low', favs: this.settings.favs || [], introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct },
+      settings: { practice: this.settings.practice || 0, practiceSec: this.settings.practiceSec || 20, mode: this.settings.mode, elemLevel: this.settings.elemLevel, auto: this.settings.auto, autoPrep: this.settings.autoPrep !== false, voice: this.settings.voice, sfx: this.settings.sfx, teamAssign: this.settings.teamAssign, scoring: this.settings.scoring, topN: this.settings.topN, joinUrl: this.settings.joinUrl, teamRename: this.settings.teamRename, motion: this.settings.motion || 'auto', league: this.settings.league || '', bgm: this.settings.bgm || {}, bgmVol: this.settings.bgmVol ?? 70, sfxVol: this.settings.sfxVol ?? 80, fanfareSec: this.settings.fanfareSec ?? 12, winTrack: this.settings.winTrack || 'fanfare', space: this.settings.space || 'gym', elemLevel: this.settings.elemLevel || 'low', favs: this.settings.favs || [], introSec: this.settings.introSec, resultSec: this.settings.resultSec, timing: this.settings.timing || {}, duck: !!this.settings.duck, quickUnit: this.settings.quickUnit || 1, device: this.settings.device || 'phone', preview: this.settings.preview !== false, previewSec: this.settings.previewSec || 6, cheer: true, rouletteCapPct: this.settings.rouletteCapPct, aiBots: this.settings.aiBots || null, aiLv: this.settings.aiLv || 'normal' },
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       practice: { max: this.settings.practice || 0, done: this.state.prac?.idx === this.state.idx ? this.state.prac.done : 0, on: !!this.game?.practice, sec: this.settings.practiceSec || 20, last: this.lastPractice || null },
       idx: this.state.idx, total: this.settings.playlist.length,
@@ -272,7 +272,7 @@ export class Event {
     while (names.has(shown)) shown = `${name}${n++}`;
     const p = { id: id(9), team: teamId, name: shown, age, secret: id(16), device: device ? String(device).slice(0, 40) : null, rep: false, excluded: false, joinedAt: Date.now(), online: false };
     // 컴퓨터 참가자: 테스트 행사에서만 (기기 이름이 ai:난이도)
-    if (this.settings.test && /^ai:(easy|normal|hard|random)/.test(p.device || '')) p.ai = p.device.split(':')[1];
+    if ((this.settings.test || this.settings.aiBots) && /^ai:(easy|normal|hard|random)/.test(p.device || '')) p.ai = p.device.split(':')[1]; // 테스트 행사 · 사회자가 팀별 AI를 넣은 행사
     if (!this.activePlayers().some((x) => x.team === teamId && x.rep)) p.rep = true;
     this.db.run('INSERT INTO players(id,event_id,team_id,name,age,secret,device,rep,excluded,joined_at) VALUES(?,?,?,?,?,?,?,?,0,?)', p.id, this.id, p.team, p.name, p.age, p.secret, p.device, p.rep ? 1 : 0, p.joinedAt);
     this.players.set(p.id, p);
@@ -293,7 +293,7 @@ export class Event {
     const c = this.teamCounts();
     return this.teams.slice().sort((a, b) => c[a.id].total - c[b.id].total || a.id - b.id)[0].id;
   }
-  ctxPlayer(p) { const a = AGES6.includes(this.ageOf(p)) ? this.ageOf(p) : 'elem'; return { id: p.id, team: p.team, age: BASE3[a], age6: a, lv: LV6[a], name: p.name, rep: p.rep, ai: p.ai || (/^ai:/.test(p.device || '') && this.settings.test ? p.device.split(':')[1] : null) }; }
+  ctxPlayer(p) { const a = AGES6.includes(this.ageOf(p)) ? this.ageOf(p) : 'elem'; return { id: p.id, team: p.team, age: BASE3[a], age6: a, lv: LV6[a], name: p.name, rep: p.rep, ai: p.ai || (/^ai:/.test(p.device || '') && (this.settings.test || this.settings.aiBots) ? p.device.split(':')[1] : null) }; }
 
   playerView(p) {
     const base = { t: 'me', me: { id: p.id, name: p.name, team: p.team, age: p.age, rep: p.rep, excluded: p.excluded }, prank: this.myPersonal(p.id) };
@@ -891,6 +891,9 @@ export function sanitizeSettings(s) {
   // 진행자 문제: [문제, 정답, 오답1~3] 최대 40개 · 그림 단어 최대 60개
   const txt = (v, n) => String(v ?? '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, n);
   if (typeof s.bellOnly === 'boolean') o.bellOnly = s.bellOnly; // 골든벨: 행사 문제만 (기본 문제 안 섞음)
+  // 🤖 팀별 AI 참가자 수 {팀 순서(1부터): 0~8} · 난이도 — 대형 화면이 켜져 있는 동안 그 화면 안에서 AI 폰이 실제 게임을 함
+  if (s.aiBots && typeof s.aiBots === 'object') { const a = {}; for (const [k, v] of Object.entries(s.aiBots).slice(0, 12)) { const i = Number(k), n = Number(v); if (Number.isInteger(i) && i >= 1 && i <= 12 && Number.isInteger(n) && n >= 1 && n <= 8) a[i] = n; } o.aiBots = Object.keys(a).length ? a : null; }
+  if (['easy', 'normal', 'hard', 'random'].includes(s.aiLv)) o.aiLv = s.aiLv;
   if (typeof s.bellTitle === 'string') o.bellTitle = txt(s.bellTitle, 30); // 골든벨 문제 세트 이름 (화면 위에 표시)
   if (s.bellWhy && typeof s.bellWhy === 'object' && !Array.isArray(s.bellWhy)) { const w = {}; for (const [k, v] of Object.entries(s.bellWhy).slice(0, 40)) { const kk = txt(k, 80), vv = txt(v, 120); if (kk && vv) w[kk] = vv; } o.bellWhy = w; } // 정답 이유 (문제 글 → 이유)
   if (Array.isArray(s.bellCustom)) o.bellCustom = s.bellCustom.slice(0, 40).map((q) => (Array.isArray(q) ? q.slice(0, 5).map((x, i) => txt(x, i ? 30 : 80)).filter(Boolean) : [])).filter((q) => q.length >= 3 && new Set(q.slice(1)).size === q.length - 1);

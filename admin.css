@@ -299,3 +299,8 @@ body.remote .ctrlmore .chk { display: none; }
 .athsum { background: #fff3bf; color: #333; border-radius: 10px; padding: 8px; font-weight: 700; }
 .athdet { margin-top: 6px; } .athdet summary { font-weight: 800; cursor: pointer; } .athdet .warn { color: #e8590c; font-weight: 700; }
 .athrule { border-top: 1px solid #0001; padding: 4px 0; } .athrule .gm { color: #1971c2; }
+
+/* 👥 팀별 참가 (나 · AI) */
+.tjbox { margin-top: 8px; background: #ffffff0d; border-radius: 12px; padding: 6px 10px; } .tjbox summary { font-weight: 800; cursor: pointer; }
+.tjrow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-left: 4px solid var(--tc); padding-left: 8px; margin: 4px 0; flex-wrap: wrap; } .tjrow > b { min-width: 90px; }
+.tjai { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; } .tjai b { min-width: 42px; text-align: center; }

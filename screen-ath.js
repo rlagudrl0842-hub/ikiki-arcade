@@ -4,7 +4,7 @@
 import { h, audioUnlock, audioCtx } from './client.js';
 import { V } from './screen-games.js';
 import { loop } from './screen-n.js';
-import { ovalView, ovalBg, dotRunner, straightView, straightBg, sideRunner, makeSmoother, packOffsets, ROW } from './athdraw.js';
+import { ovalView, ovalBg, dotRunner, straightView, straightBg, sideRunner, makeSmoother, packOffsets, ROW, FX } from './athdraw.js';
 
 const ST = { setup: '대회 준비', ready: '출발 준비', marks: '제자리에', set: '차렷', go: '경주 중', recall: '부정 출발 — 다시 출발', done: '경주 결과', over: '종목 결과' };
 const fmt = (t) => (t == null ? '—' : t.toFixed(2));
@@ -101,9 +101,9 @@ V.ath = {
     const list = rows.map((x) => ({ x, key: x[ROW.lane], d: this.sm(x[ROW.lane], x[ROW.d], s.st === 'go' ? x[ROW.v] : 0, s.T, now, s.D) }));
     const offs = packOffsets(s.ev, list);
     for (const r of list.sort((a, b) => a.d - b.d)) {
-      const x = r.x; const col = this.ctx.team(x[ROW.team]).color; const nm = s.ev === 'relay' ? x[ROW.runner] : x[ROW.label];
+      const x = r.x; const col = this.ctx.team(x[ROW.team]).color; const nm = (s.ev === 'relay' ? x[ROW.runner] : x[ROW.label]) + (s.st === 'go' ? FX[x[ROW.fx]] || '' : '');
       if (straight) sideRunner(this.vw ? c : c, this.vw, x[ROW.lane], r.d, col, { label: nm, lead: go && x[ROW.lane] === lead, run: go && x[ROW.v] > 0.3 });
-      else { dotRunner(c, this.vw, s.ev, x[ROW.lane], r.d, col, { r: 1.9, label: nm, lead: go && x[ROW.lane] === lead, offset: offs.get(r.key) || 0 }); if (s.ev === 'relay' && x[ROW.od] && s.st === 'go') dotRunner(c, this.vw, s.ev, x[ROW.lane], x[ROW.od], col, { r: 1.3, label: `다음 ${x[ROW.leg] + 2}번`, offset: 0 }); }
+      else { dotRunner(c, this.vw, s.ev, x[ROW.lane], r.d, col, { r: 2.9, label: nm, lead: go && x[ROW.lane] === lead, offset: s.ev === '800' && x[ROW.lat] != null ? x[ROW.lat] * 1.8 : offs.get(r.key) || 0 }); /* 무리 칸은 그림에서 넓게 벌려 보기 쉽게 */ if (s.ev === 'relay' && x[ROW.od] && s.st === 'go') dotRunner(c, this.vw, s.ev, x[ROW.lane], x[ROW.od], col, { r: 1.3, label: `다음 ${x[ROW.leg] + 2}번`, offset: 0 }); }
     }
     // 위쪽 줄: 종목 · 조 · 게임 시계
     c.fillStyle = '#0b0e24d9'; c.fillRect(0, 0, W, 56); c.fillStyle = '#fff'; c.font = '900 34px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(`${s.evName}  ${s.heat || ''}`, 20, 29);

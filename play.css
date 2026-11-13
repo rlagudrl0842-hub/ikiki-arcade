@@ -584,7 +584,7 @@ body.stage3d #bg3dshade { background: linear-gradient(180deg, #070a1e66, #0b0e24
 .athsig { text-align: center; font-weight: 900; font-size: 26px; padding: 8px 4px; border-radius: 12px; background: #2a2f55; color: #fff; letter-spacing: 1px; }
 .athsig.s-marks { background: #c92a2a; } .athsig.s-set { background: #f59f00; color: #111; } .athsig.s-go { background: #2fb344; font-size: 34px; } .athsig.s-recall { background: #c92a2a; animation: athblink .5s steps(2) infinite; } .athsig.s-done, .athsig.s-over { background: #3b4a8a; }
 @keyframes athblink { 50% { background: #5c0f0f; } }
-.athcv { width: 100%; flex: 1 1 32vh; min-height: 120px; max-height: 40vh; border-radius: 12px; background: #123b23; display: block; }
+.athcv { width: 100%; flex: 1 0 30vh; min-height: 170px; max-height: 40vh; border-radius: 12px; background: #123b23; display: block; }
 .athinfo { min-height: 22px; font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .athinfo b { font-size: 17px; }
 .athen { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; } .athen i { display: inline-block; height: 10px; border-radius: 5px; min-width: 2px; max-width: 90px; } .athen::after { content: ''; }
 .athmid { display: flex; flex-direction: column; gap: 6px; overflow: auto; max-height: 30vh; min-height: 0; }
