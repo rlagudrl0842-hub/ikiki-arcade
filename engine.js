@@ -219,7 +219,7 @@ export class Event {
       phase: this.state.phase, seq: this.state.seq, paused: this.state.paused, notice: this.state.notice,
       practice: { max: this.settings.practice || 0, done: this.state.prac?.idx === this.state.idx ? this.state.prac.done : 0, on: !!this.game?.practice, sec: this.settings.practiceSec || 20, last: this.lastPractice || null },
       idx: this.state.idx, total: this.settings.playlist.length,
-      playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur, rep: p.rep })),
+      playlist: this.settings.playlist.map((p) => ({ game: p.game, weight: p.weight, dur: p.dur, rep: p.rep, ...(p.dist ? { dist: p.dist } : {}) })),
       rep: this.state.rep || 1, startedAt: this.state.startedAt || null, // 반복 몇 번째 판 · 행사 실제 시작 시각(첫 게임 설명)
       item: item ? { ...item, ...gameInfo(item.game, this) } : null,
       run: g ? { id: g.runId, game: g.def.id, startAt: g.startAt, endAt: g.endAt, phaseAt: this.phaseAt } : null,
@@ -904,6 +904,7 @@ export function sanitizeSettings(s) {
       weight: [0.5, 1, 1.5, 2, 3].includes(p.weight) ? p.weight : 1,
       ...(Number.isInteger(p.dur) && p.dur >= 5 && p.dur <= 300 ? { dur: p.dur } : {}),
       ...(Number.isInteger(p.rep) && p.rep >= 2 && p.rep <= 5 ? { rep: p.rep } : {}), // 같은 게임 반복 판 수
+      ...(p.game === 'ath' && ['100', '200', '400', '800', 'relay'].includes(p.dist) ? { dist: p.dist } : {}), // 🏟 육상 대회 종목 (없으면 진행할 때 고름)
     }));
   }
   return o;

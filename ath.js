@@ -33,7 +33,8 @@ export const ath = {
     for (const p of ctx.players) add(p);
     const online = (pid) => !ev?.conns || ev.conns.has(pid);
     const nextEv = () => EV_KEYS.find((k) => !mem.done[k]) || '100';
-    const cfg = { ev: nextEv(), entry: 0, lanes: 8, final: 1, choose: 0 };
+    const cfg = { ev: EV_KEYS.includes(String(ctx.item?.dist)) ? String(ctx.item.dist) : nextEv(), // 게임 순서에서 정한 종목 → 없으면 아직 안 한 종목 순서대로
+      entry: 0, lanes: 8, final: 1, choose: 0 };
     const G = { st: 'setup', heats: [], hi: 0, final: null, inFinal: false, races: [], over: null, sndT: 0, sndK: 0, msg: '' };
     let race = null; // 지금 조
     let seq = 0;

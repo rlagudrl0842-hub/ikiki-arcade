@@ -987,7 +987,8 @@ function tabPlaylist(body) {
         const rp = select({ 1: '1판 (기본)', 2: '2판', 3: '3판', 4: '4판', 5: '5판' }, p.rep || 1); rp.onchange = () => { const v = +rp.value; if (v > 1) p.rep = v; else delete p.rep; commit('반복 판 수 저장됨'); };
         const bs = bgmSelect(p.game); bs.addEventListener('change', () => { formDirty = false; });
         const pv = h('button', { class: 'btn small ghost pvbtn', onclick: (e) => { const tr = BGM.pick(S.settings, p.game, myMusic); preview(tr?.id || 'none', e.currentTarget); } }, '▶ 미리듣기');
-        list.append(h('div', { class: 'pdetail' }, field('시간(초)', d), field('반복', rp), field('배점', w), field('🎵 배경음악', bs), pv,
+        let dz = null; if (p.game === 'ath') { dz = h('select', { class: 'inp' }, ...[['', '진행할 때 고르기 (안 한 종목 순서대로)'], ['100', '100m'], ['200', '200m'], ['400', '400m'], ['800', '800m'], ['relay', '4×100m 계주']].map(([k, v]) => h('option', { value: k, selected: k === (p.dist || '') }, v))); dz.onchange = () => { if (dz.value) p.dist = dz.value; else delete p.dist; commit('종목 저장됨'); }; }
+        list.append(h('div', { class: 'pdetail' }, dz ? field('🏟 종목', dz) : null, field('시간(초)', d), field('반복', rp), field('배점', w), field('🎵 배경음악', bs), pv,
           h('button', { class: 'btn small red', disabled: locked, onclick: () => { if (i < S.idx && !confirm('이미 한 게임이에요. 순서에서 뺄까요?')) return; pl.splice(i, 1); plOpen = null; stopPreview(); commit('삭제 저장됨'); } }, '✕ 삭제')));
       }
     });
